@@ -48,6 +48,7 @@ dependencies = [
     "pyyaml>=6.0",
     "pydantic>=2.9,<3",
     "fastapi>=0.115",        # apps/api shares model definitions
+    "mangum>=0.17",          # ASGI adapter for Vercel (apps/api uses it)
     "python-telegram-bot[ext]>=21.6",
     "tzdata>=2024.1",        # required on Windows for ZoneInfo("Asia/Seoul")
 ]
