@@ -209,13 +209,12 @@ async def cmd_risk(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def cmd_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not context.args:
-        await update.message.reply_text(
-            "사용법: /feedback 메시지 내용", parse_mode="MarkdownV2",
-        )
-        return
+    """3단계 피드백 흐름 시작 — 정확도 → 유용성 → 코멘트(선택).
+
+    Stateless: 모든 단계의 응답은 callback_data에 인코딩되어
+    Vercel webhook의 무상태 환경에서도 동작한다.
+    """
     chat_id = str(update.effective_chat.id)
-    comment = " ".join(context.args)
     sb = get_admin_client()
     profile = (
         sb.table("profiles").select("id").eq("telegram_chat_id", chat_id)
@@ -226,13 +225,109 @@ async def cmd_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "먼저 /link 명령으로 웹앱과 연동해주세요\\.", parse_mode="MarkdownV2",
         )
         return
+
+    # If user provided text inline (legacy syntax: /feedback 좋았어요),
+    # save as a comment-only row immediately.
+    if context.args:
+        comment = " ".join(context.args)
+        sb.table("user_feedback").insert({
+            "user_id": profile[0]["id"],
+            "date": _today_kst().isoformat(),
+            "comment": comment,
+            "source": "telegram",
+        }).execute()
+        await update.message.reply_text("🙏 피드백 감사합니다\\!", parse_mode="MarkdownV2")
+        return
+
+    # Step 1: 정확도 1~5 inline buttons
+    rows = [[{"text": f"{n} {'⭐' * n}", "callback_data": f"fb:acc:{n}"} for n in (1, 2)],
+            [{"text": f"{n} {'⭐' * n}", "callback_data": f"fb:acc:{n}"} for n in (3, 4)],
+            [{"text": f"5 {'⭐' * 5}", "callback_data": "fb:acc:5"}]]
+    await update.message.reply_text(
+        "📊 *피드백 \\(1/3\\) — 정확도*\n오늘 신호의 정확도는 어땠나요?",
+        parse_mode="MarkdownV2",
+        reply_markup=_inline_keyboard(rows),
+    )
+
+
+async def _feedback_step_usefulness(update: Update, accuracy: int) -> None:
+    rows = [[{"text": f"{n} {'⭐' * n}", "callback_data": f"fb:use:{accuracy}:{n}"} for n in (1, 2)],
+            [{"text": f"{n} {'⭐' * n}", "callback_data": f"fb:use:{accuracy}:{n}"} for n in (3, 4)],
+            [{"text": f"5 {'⭐' * 5}", "callback_data": f"fb:use:{accuracy}:5"}]]
+    await update.callback_query.edit_message_text(
+        "📊 *피드백 \\(2/3\\) — 유용성*\n실제 의사결정에 얼마나 유용했나요?",
+        parse_mode="MarkdownV2",
+        reply_markup=_inline_keyboard(rows),
+    )
+
+
+async def _feedback_save(
+    chat_id: str, accuracy: int, usefulness: int,
+) -> tuple[bool, str]:
+    sb = get_admin_client()
+    profile = (
+        sb.table("profiles").select("id").eq("telegram_chat_id", chat_id)
+          .limit(1).execute().data
+    )
+    if not profile:
+        return False, "프로필을 찾을 수 없습니다."
     sb.table("user_feedback").insert({
-        "user_id": profile[0]["id"],
-        "date": _today_kst().isoformat(),
-        "comment": comment,
-        "source": "telegram",
+        "user_id":          profile[0]["id"],
+        "date":             _today_kst().isoformat(),
+        "accuracy_score":   accuracy,
+        "usefulness_score": usefulness,
+        "source":           "telegram",
     }).execute()
-    await update.message.reply_text("🙏 피드백 감사합니다\\!", parse_mode="MarkdownV2")
+    return True, "ok"
+
+
+async def cmd_feedback_note(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """가장 최근(1시간 내) 피드백 행에 코멘트 추가."""
+    if not context.args:
+        await update.message.reply_text(
+            "사용법: /feedback\\_note 코멘트 내용",
+            parse_mode="MarkdownV2",
+        )
+        return
+    chat_id = str(update.effective_chat.id)
+    sb = get_admin_client()
+    profile = (
+        sb.table("profiles").select("id").eq("telegram_chat_id", chat_id)
+          .limit(1).execute().data
+    )
+    if not profile:
+        await update.message.reply_text(
+            "먼저 /link 명령으로 웹앱과 연동해주세요\\.", parse_mode="MarkdownV2",
+        )
+        return
+
+    from datetime import datetime, timedelta, timezone
+    one_hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    recent = (
+        sb.table("user_feedback")
+          .select("id, created_at, comment")
+          .eq("user_id", profile[0]["id"])
+          .eq("source", "telegram")
+          .gte("created_at", one_hour_ago)
+          .order("created_at", desc=True)
+          .limit(1)
+          .execute()
+          .data
+    )
+    comment = " ".join(context.args)
+    if recent:
+        sb.table("user_feedback").update({
+            "comment": comment,
+        }).eq("id", recent[0]["id"]).execute()
+    else:
+        # Comment-only feedback (no rating yet)
+        sb.table("user_feedback").insert({
+            "user_id": profile[0]["id"],
+            "date":    _today_kst().isoformat(),
+            "comment": comment,
+            "source":  "telegram",
+        }).execute()
+    await update.message.reply_text("🙏 코멘트 저장 완료\\!", parse_mode="MarkdownV2")
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -243,7 +338,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/sector 반도체 \\- 섹터 요약\n"
         "/top \\- 상위 5\n"
         "/risk \\- 위험 종목\n"
-        "/feedback 내용 \\- 피드백\n"
+        "/feedback \\- 피드백 \\(3단계 인터랙티브\\)\n"
+        "/feedback\\_note 코멘트 \\- 피드백 코멘트 추가\n"
         "/link 123456 \\- 웹앱 연동\n"
         "/help \\- 도움말"
     )
@@ -343,6 +439,41 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await query.edit_message_text(
             "\n".join(lines), parse_mode="MarkdownV2",
             disable_web_page_preview=True,
+        )
+        return
+
+    # ── Feedback flow callbacks ──
+    if action == "fb":
+        # data shapes:
+        #   fb:acc:{N}              → step 1 클릭 → step 2 표시
+        #   fb:use:{accuracy}:{N}   → step 2 클릭 → 저장 + step 3 안내
+        sub, _, rest = arg.partition(":")
+        if sub == "acc" and rest.isdigit() and 1 <= int(rest) <= 5:
+            await _feedback_step_usefulness(update, int(rest))
+            return
+        if sub == "use":
+            acc_str, _, use_str = rest.partition(":")
+            if acc_str.isdigit() and use_str.isdigit():
+                acc = int(acc_str)
+                use = int(use_str)
+                if 1 <= acc <= 5 and 1 <= use <= 5:
+                    chat_id = str(update.effective_chat.id)
+                    ok, msg = await _feedback_save(chat_id, acc, use)
+                    if ok:
+                        await query.edit_message_text(
+                            "✅ *피드백 저장 완료* \\(3/3\\)\n\n"
+                            f"정확도 {acc}⭐ · 유용성 {use}⭐\n\n"
+                            "추가 코멘트가 있으면 1시간 내에:\n"
+                            "`/feedback_note 코멘트 내용`",
+                            parse_mode="MarkdownV2",
+                        )
+                    else:
+                        await query.edit_message_text(
+                            f"❌ {escape(msg)}", parse_mode="MarkdownV2",
+                        )
+                    return
+        await query.edit_message_text(
+            "잘못된 피드백 응답입니다\\.", parse_mode="MarkdownV2",
         )
         return
 

@@ -42,6 +42,7 @@ def main() -> int:
     application.add_handler(CommandHandler("top", h.cmd_top))
     application.add_handler(CommandHandler("risk", h.cmd_risk))
     application.add_handler(CommandHandler("feedback", h.cmd_feedback))
+    application.add_handler(CommandHandler("feedback_note", h.cmd_feedback_note))
     application.add_handler(CommandHandler("help", h.cmd_help))
     application.add_handler(CallbackQueryHandler(h.callback_handler))
 

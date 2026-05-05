@@ -47,6 +47,7 @@ async def _get_application() -> Application:
     app.add_handler(CommandHandler("top", h.cmd_top))
     app.add_handler(CommandHandler("risk", h.cmd_risk))
     app.add_handler(CommandHandler("feedback", h.cmd_feedback))
+    app.add_handler(CommandHandler("feedback_note", h.cmd_feedback_note))
     app.add_handler(CommandHandler("help", h.cmd_help))
     app.add_handler(CallbackQueryHandler(h.callback_handler))
 

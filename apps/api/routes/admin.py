@@ -97,17 +97,17 @@ async def cost_report(date: str | None = Query(default=None)) -> dict:
     sentiment_model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
     sentiment_calls = int(cache.get(f"llm:count:{on_date.isoformat()}:{sentiment_model}") or 0)
 
-    # Report uses the same model + counter currently — split tracking deferred.
-    report_calls = sentiment_calls            # placeholder until per-purpose counter
-
+    # Per-purpose split (sentiment vs report) tracking is not yet wired —
+    # both call paths share the same daily counter. Report cost is therefore
+    # NOT estimated separately to avoid double-counting; only sentiment cost
+    # is reported. When per-purpose counters land, add report_calls + cost.
     sentiment_cost = sentiment_calls * 0.0075
-    report_cost = report_calls * 0.0225
 
     return {
         "date": on_date.isoformat(),
         "model": sentiment_model,
         "sentiment_calls": sentiment_calls,
-        "estimated_usd": round(sentiment_cost + report_cost, 4),
+        "estimated_usd": round(sentiment_cost, 4),
         "cap": int(os.environ.get("LLM_DAILY_CAP", "200")),
     }
 

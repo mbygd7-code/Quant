@@ -5,105 +5,47 @@ Lightweight only (Vercel 60s execution + 250MB build limit). Heavy work
 via workflow_dispatch. See SKILL.md §11-2.
 
 Routes:
-  GET  /api/health                  — health check
-  POST /api/telegram/webhook        — Telegram → bot updates
-  GET  /api/admin/data-quality      — daily collection metrics
-  GET  /api/admin/cost              — LLM token / USD usage
-  POST /api/backtest/start          — trigger GitHub workflow_dispatch
-  GET  /api/backtest/{job_id}/status — poll backtest_jobs row
+  GET  /api/health                       — health check
+  POST /api/telegram/webhook             — Telegram → bot updates
+  GET  /api/admin/data-quality           — daily collection metrics
+  GET  /api/admin/cost                   — LLM token / USD usage
+  POST /api/backtest/start               — trigger workflow_dispatch (or mock)
+  GET  /api/backtest/{job_id}/status     — poll backtest_jobs row
+  GET  /api/backtest/{job_id}/result     — Storage signed URL + summary
+  GET  /api/backtest/recent              — recent jobs
+  GET  /api/notifications/preview-today  — DRY_RUN preview
+  GET  /api/notifications/recent         — send history
+  POST /api/notifications/send-now       — synchronous dispatch
+  POST /api/users/invite                 — issue beta invite
+  PATCH /api/users/{id}/role             — change role
+  POST /api/users/{id}/disconnect-telegram
+  DELETE /api/users/{id}                 — hard delete (cascade)
+  GET  /api/users/list                   — admin list
+  GET  /api/users/stats                  — by-role + recent counts
 """
 from __future__ import annotations
 
-import os
-import uuid
-from typing import Any
-
-import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from mangum import Mangum
-from pydantic import BaseModel, Field
 
-app = FastAPI(title="QuantSignal API", version="0.1.0")
+app = FastAPI(title="QuantSignal API", version="0.2.0")
 
-# Routers — Prompt 08 (telegram webhook) + Prompt 10 (admin endpoints)
 from apps.api.routes.admin import router as admin_router  # noqa: E402
+from apps.api.routes.backtest import router as backtest_router  # noqa: E402
+from apps.api.routes.notifications import router as notifications_router  # noqa: E402
 from apps.api.routes.telegram_webhook import router as telegram_router  # noqa: E402
+from apps.api.routes.users import router as users_router  # noqa: E402
 
 app.include_router(telegram_router)
 app.include_router(admin_router)
+app.include_router(backtest_router)
+app.include_router(notifications_router)
+app.include_router(users_router)
 
 
-# ─────────────────────────────────────────────────────────────
-# Health
-# ─────────────────────────────────────────────────────────────
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": "quant-signal-api"}
-
-
-# ─────────────────────────────────────────────────────────────
-# Backtest trigger — GitHub workflow_dispatch
-# ─────────────────────────────────────────────────────────────
-class BacktestRequest(BaseModel):
-    start_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
-    end_date:   str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
-    strategy:   str = Field(default="score_above_065")
-    weight_config_id: str | None = None
-
-
-@app.post("/api/backtest/start")
-async def start_backtest(req: BacktestRequest) -> dict[str, str]:
-    # NOTE: Prompt 09 will add `Depends(get_current_admin)` JWT verification.
-    job_id = str(uuid.uuid4())
-
-    repo = os.environ.get("GITHUB_REPO")
-    pat  = os.environ.get("GITHUB_PAT")
-    if not (repo and pat):
-        raise HTTPException(500, "GITHUB_REPO / GITHUB_PAT not configured")
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        r = await client.post(
-            f"https://api.github.com/repos/{repo}/actions/workflows/backtest.yml/dispatches",
-            headers={
-                "Authorization": f"Bearer {pat}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-            json={
-                "ref": "main",
-                "inputs": {
-                    "job_id":           job_id,
-                    "start_date":       req.start_date,
-                    "end_date":         req.end_date,
-                    "strategy":         req.strategy,
-                    "weight_config_id": req.weight_config_id or "",
-                },
-            },
-        )
-        if r.status_code >= 400:
-            raise HTTPException(502, f"GitHub dispatch failed: {r.status_code} {r.text}")
-
-    # Prompt 09 will also INSERT into backtest_jobs(status='queued') here.
-    return {"job_id": job_id, "status": "queued"}
-
-
-@app.get("/api/backtest/{job_id}/status")
-async def backtest_status(job_id: str) -> dict[str, Any]:
-    """Poll backtest_jobs row."""
-    from db.supabase_client import get_admin_client
-    sb = get_admin_client()
-    rows = (
-        sb.table("backtest_jobs")
-          .select("id, status, progress, result_url, error, run_url, "
-                  "created_at, started_at, completed_at, params")
-          .eq("id", job_id)
-          .limit(1)
-          .execute()
-          .data
-    )
-    if not rows:
-        raise HTTPException(404, f"job_id {job_id} not found")
-    return rows[0]
 
 
 # Vercel ASGI handler
