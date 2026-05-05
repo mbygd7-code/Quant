@@ -25,18 +25,30 @@ jobs:
         run: ruff check .
 
       - name: Pytest
-        run: pytest -v --tb=long --color=no --junitxml=test-results.xml
+        run: |
+          set -o pipefail
+          pytest -v --tb=long --color=no --junitxml=test-results.xml 2>&1 | tee pytest-stdout.log
         env:
           # Test instance — separate Supabase project (optional, can be the same).
           SUPABASE_URL:               ${{ secrets.SUPABASE_URL_TEST || secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_TEST || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      - name: Show last 100 lines on failure
+        if: failure()
+        run: |
+          echo "================ LAST 100 LINES OF PYTEST OUTPUT ================"
+          tail -n 100 pytest-stdout.log
+          echo "================ FAILED TEST NAMES ============================="
+          grep -E "^FAILED|^ERROR" pytest-stdout.log || true
 
       - name: Upload test results (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: pytest-results
-          path: test-results.xml
+          path: |
+            test-results.xml
+            pytest-stdout.log
           retention-days: 7
 
   web-lint-typecheck:
