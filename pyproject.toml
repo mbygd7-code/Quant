@@ -90,6 +90,7 @@ ignore = [
     "RUF003", # ambiguous unicode in comments (× and Korean punctuation)
     "RUF022", # __all__ ordering — semantic order > alphabetical for our re-exports
     "N818",   # exception names — DailyCapExceeded reads better than DailyCapExceededError
+    "N806",   # uppercase X/y in ML code follows scikit-learn convention
 ]
 
 [tool.ruff.lint.per-file-ignores]
