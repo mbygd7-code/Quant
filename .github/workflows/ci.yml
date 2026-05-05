@@ -25,11 +25,19 @@ jobs:
         run: ruff check .
 
       - name: Pytest
-        run: pytest -v
+        run: pytest -v --tb=long --color=no --junitxml=test-results.xml
         env:
           # Test instance — separate Supabase project (optional, can be the same).
           SUPABASE_URL:               ${{ secrets.SUPABASE_URL_TEST || secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_TEST || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      - name: Upload test results (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: test-results.xml
+          retention-days: 7
 
   web-lint-typecheck:
     name: Web (lint + typecheck)
