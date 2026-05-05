@@ -52,18 +52,26 @@ def _chat_ids() -> list[str]:
 class NotificationDispatcher:
     def __init__(self) -> None:
         self._notifiers: list[TelegramNotifier] = []
-        for ch in _channels():
+        channels = _channels()
+        log.info("NotificationDispatcher init: channels=%s", channels)
+        for ch in channels:
             if ch == "telegram":
                 token = os.environ.get("TELEGRAM_BOT_TOKEN")
                 if not token:
                     log.warning("TELEGRAM_BOT_TOKEN unset — telegram channel disabled")
                     continue
-                self._notifiers.append(TelegramNotifier(token, _chat_ids()))
+                chat_ids = _chat_ids()
+                log.info("Telegram notifier: token_len=%d, chat_ids=%d %s",
+                         len(token), len(chat_ids),
+                         [c[:3] + "***" + c[-2:] if len(c) > 6 else "***" for c in chat_ids])
+                self._notifiers.append(TelegramNotifier(token, chat_ids))
             elif ch == "kakao":
                 from notifier.kakao import KakaoNotifier
                 self._notifiers.append(KakaoNotifier())
             else:
                 log.warning("Unknown notify channel: %s", ch)
+        log.info("NotificationDispatcher init done: %d active notifiers",
+                 len(self._notifiers))
 
     async def dispatch(self, on_date: Date) -> dict:
         if not self._notifiers:
@@ -72,6 +80,8 @@ class NotificationDispatcher:
 
         sb = get_admin_client()
         market, sector_counts, top5 = _gather_preview(sb, on_date)
+        log.info("Preview data: market_symbols=%d, sectors=%d, top5=%d",
+                 len(market), len(sector_counts), len(top5))
 
         sent, failed = 0, 0
         for notifier in self._notifiers:
