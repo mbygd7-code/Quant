@@ -5,7 +5,6 @@ We mock all of those at the boundary so tests run offline and deterministic.
 """
 from __future__ import annotations
 
-import os
 from datetime import date as Date
 from unittest.mock import MagicMock
 

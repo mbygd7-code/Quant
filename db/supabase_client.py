@@ -56,5 +56,5 @@ def verify_connection() -> None:
     try:
         sb = get_admin_client()
         sb.table("stocks").select("id").limit(1).execute()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise SystemExit(f"Supabase connection failed: {exc}") from exc

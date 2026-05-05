@@ -1,9 +1,9 @@
 """FinnhubCollector — quote validation, partial failure, news mapping."""
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from datetime import date as Date
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import ValidationError
@@ -33,7 +33,7 @@ class TestGlobalSchemas:
     def test_news_rejects_invalid_url(self):
         with pytest.raises(ValidationError):
             GlobalNews(
-                published_at=datetime(2026, 5, 5, tzinfo=timezone.utc),
+                published_at=datetime(2026, 5, 5, tzinfo=UTC),
                 source="reuters", title="Big news", url="not-a-url",
                 related_symbols=["NVDA"],
             )

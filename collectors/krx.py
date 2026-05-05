@@ -17,8 +17,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from collectors._base import BaseCollector, CollectorResult
 from collectors.__schemas__.korea import KoreaQuote, KoreaSupplyDemand
+from collectors._base import BaseCollector, CollectorResult
 from collectors.utils.business_days import prev_kr_business_day
 from db.supabase_client import get_admin_client
 
@@ -50,7 +50,7 @@ class KrxCollector(BaseCollector):
         # 1) Bulk OHLCV — single pykrx call returns DataFrame indexed by ticker.
         try:
             ohlcv_df = self._fetch_ohlcv_bulk(target)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.error("KRX bulk OHLCV failed: %s", exc)
             ohlcv_df = None
             self._record_failure(result, "bulk_ohlcv", exc)
@@ -71,13 +71,13 @@ class KrxCollector(BaseCollector):
                     result.items.append(supply)
             except ValidationError as exc:
                 self._record_failure(result, ticker, exc)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self._record_failure(result, ticker, exc)
 
         # 3) Archive raw payload
         try:
             result.raw_storage_path = self._backup_raw(raw_payload, target)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning("KRX raw backup failed (non-fatal): %s", exc)
 
         log.info("KRX done — success=%d failed=%d (rate %.1f%%)",

@@ -12,15 +12,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from datetime import UTC, datetime, timedelta
 from datetime import date as Date
-from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from pydantic import ValidationError
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from collectors._base import BaseCollector, CollectorResult
 from collectors.__schemas__.global_ import FxQuote, GlobalNews, GlobalQuote
+from collectors._base import BaseCollector, CollectorResult
 from collectors.utils.business_days import prev_us_business_day
 
 log = logging.getLogger("collectors.finnhub")
@@ -97,7 +97,7 @@ class FinnhubCollector(BaseCollector):
         # Backup raw
         try:
             result.raw_storage_path = self._backup_raw(raw, target)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning("Finnhub raw backup failed (non-fatal): %s", exc)
 
         log.info("Finnhub done — success=%d failed=%d (rate %.1f%%)",
@@ -130,7 +130,7 @@ class FinnhubCollector(BaseCollector):
                 result.items.append(quote)
             except ValidationError as exc:
                 self._record_failure(result, symbol, exc)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self._record_failure(result, symbol, exc)
 
     async def _fetch_fx(
@@ -152,7 +152,7 @@ class FinnhubCollector(BaseCollector):
                     change_rate=(float(data["dp"]) / 100.0) if data.get("dp") is not None else None,
                 )
                 result.items.append(fx)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self._record_failure(result, our_sym, exc)
 
     async def _fetch_news(
@@ -169,7 +169,7 @@ class FinnhubCollector(BaseCollector):
                 for item in items:
                     try:
                         news = GlobalNews(
-                            published_at=datetime.fromtimestamp(item["datetime"], tz=timezone.utc),
+                            published_at=datetime.fromtimestamp(item["datetime"], tz=UTC),
                             source=item.get("source", "finnhub"),
                             title=item.get("headline", "").strip(),
                             body=item.get("summary"),
@@ -179,7 +179,7 @@ class FinnhubCollector(BaseCollector):
                         result.items.append(news)
                     except (ValidationError, KeyError, TypeError) as exc:
                         self._record_failure(result, f"{symbol}/news#{item.get('id')}", exc)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self._record_failure(result, f"{symbol}/news", exc)
 
     # ──────────────────────────────────────────────────────
