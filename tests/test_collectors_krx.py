@@ -103,6 +103,48 @@ class TestKrxCollector:
         assert result.success_count == 0
         assert result.failure_count >= 1
 
+    @patch("collectors.krx.prev_kr_business_day", return_value=Date(2026, 5, 1))
+    @patch("pykrx.stock.get_market_trading_value_by_date")
+    @patch("pykrx.stock.get_market_ohlcv_by_ticker")
+    def test_bulk_ohlcv_falls_back_when_one_market_keyerrors(
+        self, mock_ohlcv, mock_supply, _mock_bizday, mock_storage,
+    ):
+        """Regression: pykrx raised KeyError for market='ALL' when one market
+        returned an empty payload. Now we fetch KOSPI + KOSDAQ separately and
+        tolerate per-market failures, as long as at least one returns data."""
+        kospi_df = _make_ohlcv_df({"005930": _ohlcv_row()})
+
+        def per_market(_ymd, market):
+            if market == "KOSPI":
+                return kospi_df
+            # Simulate the KeyError that pykrx raises when KRX returns empty.
+            raise KeyError("None of [Index(['시가', '고가', '저가', '종가'], "
+                           "dtype='object')] are in the [columns]")
+
+        mock_ohlcv.side_effect = per_market
+        mock_supply.return_value = pd.DataFrame([
+            {"외국인합계": 0, "기관합계": 0},
+        ])
+
+        coll = KrxCollector(tickers=["005930"])
+        result = coll.fetch(Date(2026, 5, 4))
+        # KOSPI returned 005930 → quote + supply succeed.
+        assert result.success_count == 2
+        assert result.failure_count == 0
+
+    @patch("collectors.krx.prev_kr_business_day", return_value=Date(2026, 5, 1))
+    @patch("pykrx.stock.get_market_ohlcv_by_ticker",
+           side_effect=KeyError("internal pandas error"))
+    def test_bulk_ohlcv_both_markets_fail(
+        self, _mock_ohlcv, _mock_bizday, mock_storage,
+    ):
+        coll = KrxCollector(tickers=["005930"])
+        result = coll.fetch(Date(2026, 5, 4))
+        # Both markets KeyError → bulk fetch raises RuntimeError ('both empty')
+        # → per-ticker loop records 1 failure for the bulk and 1 per ticker.
+        assert result.success_count == 0
+        assert result.failure_count >= 1
+
 
 class TestBusinessDayLogic:
     """Smoke tests — pandas_market_calendars (XKRX) must skip weekends + KR holidays."""

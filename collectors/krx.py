@@ -100,13 +100,43 @@ class KrxCollector(BaseCollector):
 
     @BaseCollector._retry()
     def _fetch_ohlcv_bulk(self, target: Date):
-        """Returns DataFrame indexed by ticker with columns 시가/고가/저가/종가/거래량/거래대금/등락률."""
-        from pykrx import stock  # imported lazily — heavy dep, not for apps/api
+        """Returns DataFrame indexed by ticker with columns 시가/고가/저가/종가/거래량/거래대금/등락률.
+
+        We fetch KOSPI + KOSDAQ separately and concat. Some pykrx versions raise
+        an internal pandas KeyError on `market='ALL'` when one of the two markets
+        returns an empty payload (e.g. KRX backend hiccup), and the per-market
+        path is more resilient.
+        """
+        import pandas as pd
+        from pykrx import stock  # lazy — heavy dep, not for apps/api
 
         ymd = target.strftime("%Y%m%d")
-        df = stock.get_market_ohlcv_by_ticker(ymd, market="ALL")
-        if df is None or df.empty:
-            raise RuntimeError(f"pykrx returned empty OHLCV for {ymd}")
+        frames: list[pd.DataFrame] = []
+        for market in ("KOSPI", "KOSDAQ"):
+            try:
+                part = stock.get_market_ohlcv_by_ticker(ymd, market=market)
+                if part is not None and not part.empty:
+                    frames.append(part)
+            except Exception as exc:
+                log.warning("[krx] %s OHLCV fetch failed: %s", market, exc)
+
+        if not frames:
+            raise RuntimeError(
+                f"pykrx returned no OHLCV for {ymd} (KOSPI + KOSDAQ both empty)"
+            )
+        df = pd.concat(frames)
+        # Defensive dedup — KOSPI and KOSDAQ are disjoint by KRX policy, but tests
+        # and edge cases (cross-listings, version drift) can produce duplicate
+        # ticker indices; keep the first occurrence.
+        df = df[~df.index.duplicated(keep="first")]
+        # Defensive: ensure required columns exist (pykrx schema can change).
+        required = {"시가", "고가", "저가", "종가", "거래량", "거래대금", "등락률"}
+        missing = required - set(df.columns)
+        if missing:
+            raise RuntimeError(
+                f"pykrx OHLCV for {ymd} missing columns: {sorted(missing)} "
+                f"(got: {sorted(df.columns)})"
+            )
         return df
 
     def _build_quote(self, ticker: str, target: Date, ohlcv_df) -> KoreaQuote:
