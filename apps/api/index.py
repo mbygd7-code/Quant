@@ -25,10 +25,12 @@ from pydantic import BaseModel, Field
 
 app = FastAPI(title="QuantSignal API", version="0.1.0")
 
-# Telegram webhook router — Prompt 08 wires real command handlers.
+# Routers — Prompt 08 (telegram webhook) + Prompt 10 (admin endpoints)
+from apps.api.routes.admin import router as admin_router  # noqa: E402
 from apps.api.routes.telegram_webhook import router as telegram_router  # noqa: E402
 
 app.include_router(telegram_router)
+app.include_router(admin_router)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -37,21 +39,6 @@ app.include_router(telegram_router)
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": "quant-signal-api"}
-
-
-# ─────────────────────────────────────────────────────────────
-# Admin endpoints (Prompt 10 will flesh these out)
-# ─────────────────────────────────────────────────────────────
-@app.get("/api/admin/data-quality")
-async def data_quality(date: str) -> dict[str, Any]:
-    """Per-day collection success / refinery discard / LLM cost summary."""
-    return {"date": date, "status": "not_implemented_until_prompt_10"}
-
-
-@app.get("/api/admin/cost")
-async def cost_report(date: str) -> dict[str, Any]:
-    """LLM token usage + USD estimate for the day."""
-    return {"date": date, "status": "not_implemented_until_prompt_10"}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -102,8 +89,21 @@ async def start_backtest(req: BacktestRequest) -> dict[str, str]:
 
 @app.get("/api/backtest/{job_id}/status")
 async def backtest_status(job_id: str) -> dict[str, Any]:
-    """Poll backtest_jobs row. Prompt 09 wires Supabase fetch."""
-    return {"job_id": job_id, "status": "not_implemented_until_prompt_09"}
+    """Poll backtest_jobs row."""
+    from db.supabase_client import get_admin_client
+    sb = get_admin_client()
+    rows = (
+        sb.table("backtest_jobs")
+          .select("id, status, progress, result_url, error, run_url, "
+                  "created_at, started_at, completed_at, params")
+          .eq("id", job_id)
+          .limit(1)
+          .execute()
+          .data
+    )
+    if not rows:
+        raise HTTPException(404, f"job_id {job_id} not found")
+    return rows[0]
 
 
 # Vercel ASGI handler

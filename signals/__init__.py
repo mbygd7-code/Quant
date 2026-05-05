@@ -8,7 +8,13 @@ Public surface:
   - validate_report, ForbiddenWordError   — CLAUDE.md §3-A enforcement
   - generate_batch                        — daily report run
   - build_preview_markdown                — daily 50-stock summary
+  - Backtest, BacktestParams, BacktestSummary, TradeRecord — Prompt 10
 """
+from signals.__schemas__.backtest import (
+    BacktestParams,
+    BacktestSummary,
+    TradeRecord,
+)
 from signals.__schemas__.prediction import Prediction
 from signals.__schemas__.report import (
     DISCLAIMER,
@@ -19,6 +25,7 @@ from signals.__schemas__.report import (
     validate_report,
     with_disclaimer,
 )
+from signals.backtest import Backtest
 from signals.features import FEATURE_NAMES, FeatureBuilder, FeatureRow
 from signals.gbm import GBMPredictor, InsufficientDataError, TrainResult
 from signals.preview_report import build_preview_markdown, upload_preview
@@ -34,4 +41,6 @@ __all__ = [
     "ForbiddenWordError", "ReportSkipped",
     "FORBIDDEN_WORDS", "DISCLAIMER",
     "build_preview_markdown", "upload_preview",
+    # Prompt 10
+    "Backtest", "BacktestParams", "BacktestSummary", "TradeRecord",
 ]
