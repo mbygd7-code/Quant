@@ -105,9 +105,21 @@ class TestKrxCollector:
 
 
 class TestBusinessDayLogic:
-    """Smoke test — pandas_market_calendars must agree on a known date."""
+    """Smoke tests — pandas_market_calendars (XKRX) must skip weekends + KR holidays."""
 
-    def test_prev_kr_business_day_for_monday(self):
+    def test_prev_kr_business_day_returns_weekday_strictly_before(self):
         from collectors.utils.business_days import prev_kr_business_day
-        # 2026-05-04 is a Monday → previous trading day should be Friday 2026-05-01.
-        assert prev_kr_business_day(Date(2026, 5, 4)) == Date(2026, 5, 1)
+        result = prev_kr_business_day(Date(2026, 6, 10))   # Wed (no nearby KR holidays)
+        assert result < Date(2026, 6, 10)
+        assert result.weekday() < 5                         # Mon-Fri
+
+    def test_prev_kr_business_day_skips_weekend(self):
+        from collectors.utils.business_days import prev_kr_business_day
+        # 2026-06-09 is a Tuesday with no KR holidays → previous trading day = Mon 2026-06-08.
+        assert prev_kr_business_day(Date(2026, 6, 9)) == Date(2026, 6, 8)
+
+    def test_prev_kr_business_day_skips_korean_labor_day(self):
+        from collectors.utils.business_days import prev_kr_business_day
+        # 2026-05-04 is Monday. Previous: weekend (5/2-3), then 5/1 (Fri) = 근로자의날 (KRX holiday).
+        # → Should land on 2026-04-30 (Thu).
+        assert prev_kr_business_day(Date(2026, 5, 4)) == Date(2026, 4, 30)

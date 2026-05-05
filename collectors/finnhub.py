@@ -40,8 +40,13 @@ FX_PAIRS: list[tuple[str, str]] = [
 ]
 
 # Free-tier safety: 60/min ≈ 1 req per second. 1.5 s gives margin for retries.
-_REQ_INTERVAL_SEC = float(os.environ.get("FINNHUB_REQ_INTERVAL", "1.5"))
-_CONCURRENCY = int(os.environ.get("FINNHUB_CONCURRENCY", "4"))
+# Read at call time (NOT module-import time) so tests can override via env or monkeypatch.
+def _req_interval() -> float:
+    return float(os.environ.get("FINNHUB_REQ_INTERVAL", "1.5"))
+
+
+def _concurrency() -> int:
+    return int(os.environ.get("FINNHUB_CONCURRENCY", "4"))
 
 
 class FinnhubCollector(BaseCollector):
@@ -66,7 +71,7 @@ class FinnhubCollector(BaseCollector):
     # ──────────────────────────────────────────────────────
     async def _fetch_all(self, target: Date) -> CollectorResult:
         result = CollectorResult()
-        sem = asyncio.Semaphore(_CONCURRENCY)
+        sem = asyncio.Semaphore(_concurrency())
         client = self._build_client()
 
         raw: dict[str, Any] = {"date": target.isoformat(), "quotes": [], "news": [], "fx": []}
@@ -112,7 +117,7 @@ class FinnhubCollector(BaseCollector):
         target: Date, raw: dict, result: CollectorResult,
     ) -> None:
         async with sem:
-            await asyncio.sleep(_REQ_INTERVAL_SEC)
+            await asyncio.sleep(_req_interval())
             try:
                 data = await asyncio.to_thread(self._call_quote, client, symbol)
                 raw["quotes"].append({"symbol": symbol, "asset_class": asset_class, "data": data})
@@ -138,7 +143,7 @@ class FinnhubCollector(BaseCollector):
         target: Date, raw: dict, result: CollectorResult,
     ) -> None:
         async with sem:
-            await asyncio.sleep(_REQ_INTERVAL_SEC)
+            await asyncio.sleep(_req_interval())
             try:
                 # Finnhub FX uses /quote with broker-prefixed symbols.
                 data = await asyncio.to_thread(self._call_quote, client, finnhub_sym)
@@ -160,7 +165,7 @@ class FinnhubCollector(BaseCollector):
         raw: dict, result: CollectorResult,
     ) -> None:
         async with sem:
-            await asyncio.sleep(_REQ_INTERVAL_SEC)
+            await asyncio.sleep(_req_interval())
             try:
                 items = await asyncio.to_thread(
                     self._call_news, client, symbol, since.isoformat(), until.isoformat(),
