@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("cognition.sentiment")
 
-DEFAULT_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-7")
+DEFAULT_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 SENTIMENT_CONCURRENCY = 5
 CACHE_TTL_SECONDS = 7 * 24 * 3600       # 7 days
 MAX_INPUT_TOKENS = 4000

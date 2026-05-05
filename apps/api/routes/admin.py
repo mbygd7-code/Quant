@@ -94,7 +94,7 @@ async def cost_report(date: str | None = Query(default=None)) -> dict:
     from cognition.utils.cache import make_cache
     cache = make_cache()
 
-    sentiment_model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-7")
+    sentiment_model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
     sentiment_calls = int(cache.get(f"llm:count:{on_date.isoformat()}:{sentiment_model}") or 0)
 
     # Report uses the same model + counter currently — split tracking deferred.

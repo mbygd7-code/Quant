@@ -25,4 +25,4 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           TELEGRAM_BOT_TOKEN:        ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_ADMIN_CHAT_ID:    ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
-          ANTHROPIC_MODEL:           claude-sonnet-4-7
+          ANTHROPIC_MODEL:           claude-sonnet-4-6

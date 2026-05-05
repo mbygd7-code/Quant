@@ -50,7 +50,7 @@ GitHub Actions Runner ──► collectors → refinery → cognition → signal
    ```
 
 ### C. API 키
-- Anthropic (https://console.anthropic.com) — Claude Sonnet 4.7
+- Anthropic (https://console.anthropic.com) — Claude Sonnet 4.6 (`claude-sonnet-4-6`)
 - OpenAI (https://platform.openai.com) — `text-embedding-3-small`
 - Finnhub (https://finnhub.io) — free tier OK
 - DART (https://opendart.fss.or.kr) — Phase 3 공시 수집 시 필요

@@ -29,7 +29,7 @@ class TestRender:
         }
 
     def _cost(self):
-        return {"model": "claude-sonnet-4-7", "calls_today": 78, "cap": 200,
+        return {"model": "claude-sonnet-4-6", "calls_today": 78, "cap": 200,
                 "usage_pct": 0.39, "estimated_usd": 2.34}
 
     def test_renders_basic_sections(self):

@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("signals.report")
 
-DEFAULT_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-7")
+DEFAULT_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 REPORT_CONCURRENCY = 3                       # longer outputs than sentiment
 CACHE_TTL_SECONDS = 24 * 3600                # 1 report per (ticker, date)
 MAX_OUTPUT_TOKENS = 1200

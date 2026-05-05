@@ -77,7 +77,7 @@ def collect_daily_metrics(on_date: Date) -> dict:
 def collect_cost_metrics(on_date: Date) -> dict:
     from cognition.utils.cache import make_cache
     cache = make_cache()
-    model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-7")
+    model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
     calls = int(cache.get(f"llm:count:{on_date.isoformat()}:{model}") or 0)
     cap = int(os.environ.get("LLM_DAILY_CAP", "200"))
     return {

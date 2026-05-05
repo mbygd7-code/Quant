@@ -230,7 +230,7 @@ KinderBoard에서 검증된 패턴. 각 단계 사이에 사용자 승인 없이
 | DB Client (Python) | `supabase-py` v2 + `psycopg[binary]` |
 | DB Client (TS) | `@supabase/supabase-js` v2 + `@supabase/ssr` |
 | Cache | Redis 7 (Upstash 권장) |
-| AI (Sentiment, Report) | Claude Sonnet 4.7 |
+| AI (Sentiment, Report) | Claude Sonnet 4.6 (`claude-sonnet-4-6`) |
 | AI (Embedding) | OpenAI `text-embedding-3-small` |
 | AI (Prediction) | scikit-learn GradientBoostingClassifier |
 | Schedule | **GitHub Actions Cron** (06:00 KST, 무료) |
