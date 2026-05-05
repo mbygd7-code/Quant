@@ -23,7 +23,7 @@ INSERT INTO stocks (ticker, name, market, sector, industry, is_watchlist) VALUES
   ('003670', '포스코퓨처엠',     'KOSPI',  '2차전지',    'Cathode Material',      TRUE),
   ('247540', '에코프로비엠',     'KOSDAQ', '2차전지',    'Cathode Material',      TRUE),
   ('086520', '에코프로',         'KOSDAQ', '2차전지',    'Holding Company',       TRUE),
-  ('066970', '엘앤에프',         'KOSDAQ', '2차전지',    'Cathode Material',      TRUE),
+  ('066970', '엘앤에프',         'KOSPI',  '2차전지',    'Cathode Material',      TRUE),    -- 2024년 KOSDAQ→KOSPI 이전
   ('096770', 'SK이노베이션',     'KOSPI',  '2차전지',    'Cell + Energy',         TRUE),
   ('005070', '코스모신소재',     'KOSPI',  '2차전지',    'Cathode Precursor',     TRUE),
   ('278280', '천보',             'KOSDAQ', '2차전지',    'Electrolyte Additive',  TRUE),
