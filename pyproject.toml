@@ -26,7 +26,8 @@ dependencies = [
     "openai>=1.40,<2",
 
     # Data sources (heavy — never importable from apps/api)
-    "pykrx>=1.0.45",
+    "pykrx>=1.0.45",         # KR fallback (KRX scraping unstable in CI)
+    "yfinance>=0.2",         # primary KR OHLCV source (Yahoo Finance .KS / .KQ)
     "finnhub-python>=2.4",
     "edgartools>=2.0",
     "pandas-market-calendars>=4.4",  # KRX/NYSE/NASDAQ business-day calendars
