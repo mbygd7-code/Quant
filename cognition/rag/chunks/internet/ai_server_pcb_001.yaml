@@ -1,0 +1,20 @@
+id: ai_server_pcb_001
+topic: "AI 서버 다층 PCB 수요 → 이수페타시스 수혜"
+markets: [US, KR]
+sectors: [internet, semiconductor]
+related_tickers: ["NVDA", "007660"]
+trigger_conditions:
+  - "Nvidia AI GPU 신모델 출시 (B100, B200, GB200 등)"
+  - "AI 데이터센터 capex 확대 보도"
+  - "이수페타시스 분기 수주 공시"
+positive_signal: "강한 관심"
+risk_warning: "AI 서버 수요는 Nvidia GPU 출하에 직결되어 변동성 큼. 한 분기 부진에도 -10% 가능"
+body: |
+  이수페타시스는 AI 서버용 고다층(20층 이상) PCB를 공급하며, Nvidia AI 가속기
+  출하에 직접 연동된다. AI 서버는 일반 서버 대비 PCB 단가가 5~10배 높아 단위
+  매출 기여도가 매우 크다. Nvidia GB200(블랙웰) 양산 본격화 → 이수페타시스 매출
+  분기마다 단계적 증가. 단, Nvidia 가이던스 미스 또는 AI capex 둔화 신호가 나오면
+  큰 폭의 조정 가능.
+historical_examples:
+  - "2024-09-25: Nvidia 분기 매출 +94% → 이수페타시스 +9.5%"
+  - "2025-02-26: Blackwell 양산 보도 → 이수페타시스 +12.3%"

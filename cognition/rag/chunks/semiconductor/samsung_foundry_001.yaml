@@ -1,0 +1,21 @@
+id: samsung_foundry_001
+topic: "삼성 파운드리 vs TSMC — 점유율·수율 뉴스"
+markets: [US, KR]
+sectors: [semiconductor]
+related_tickers: ["TSM", "005930"]
+trigger_conditions:
+  - "TSMC 분기 매출 또는 가이던스 발표"
+  - "삼성 파운드리 2nm/3nm 수율 관련 보도"
+  - "주요 팹리스(Apple, Qualcomm, Nvidia) 파운드리 선택 뉴스"
+positive_signal: "관심"
+risk_warning: "삼성 파운드리는 삼성전자 매출의 ~5%로 비중이 작아, 메모리 사이클이 더 큰 변수"
+body: |
+  TSMC의 분기 실적·가이던스는 삼성 파운드리의 경쟁 환경을 가늠하는 지표다.
+  TSMC 매출 호조는 첨단 공정 수요가 견조함을 시사하지만, 동시에 삼성과의 격차가
+  벌어진다는 의미이기도 하다. 반면 주요 고객(Qualcomm, Nvidia)이 삼성 파운드리에
+  주문을 확대한다는 뉴스는 직접적 호재. 삼성전자 주가 영향은 메모리 사이클 대비
+  부수적이지만, 시장이 파운드리 턴어라운드를 가격에 반영하기 시작하면 큰 폭의
+  멀티플 재평가가 가능하다.
+historical_examples:
+  - "2024-12-10: 삼성 2nm 수율 30% 도달 보도 → 삼성전자 +2.1%"
+  - "2025-04-17: TSMC AI 매출 가이던스 상향 → 삼성전자는 -0.8%로 차별화"

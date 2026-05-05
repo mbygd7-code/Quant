@@ -1,0 +1,20 @@
+id: micron_guidance_001
+topic: "Micron 가이던스 → 한국 메모리 사이클 선행 신호"
+markets: [US, KR]
+sectors: [semiconductor]
+related_tickers: ["MU", "000660", "005930"]
+trigger_conditions:
+  - "Micron 분기 가이던스 컨센서스 대비 ±5% 이상 격차"
+  - "DRAM/NAND 가격 동향 코멘트"
+positive_signal: "관심"
+risk_warning: "Micron은 한국과 직접 경쟁자라 점유율 변화에 따라 단기적으론 역방향 움직임 가능"
+body: |
+  Micron은 SK하이닉스·삼성전자와 글로벌 메모리 시장을 3분할하는 직접 경쟁자다.
+  실적 발표 시점이 한국보다 약 1주 빠르기 때문에 Micron 가이던스는 한국 메모리
+  사이클의 선행 지표로 기능한다. 가이던스 상회 + 가격 인상 코멘트가 동시에 나오면
+  공급자 우위 시장(seller's market) 진입 신호로, SK하이닉스·삼성전자 동반 강세가
+  높은 확률로 따른다. 반대로 가이던스 미스 + 재고 코멘트는 사이클 후반부 우려로
+  두 종목 모두 약세 압력을 받는다.
+historical_examples:
+  - "2024-09-25: Micron 가이던스 상회 → SK하이닉스 +3.7%, 삼성전자 +1.9%"
+  - "2025-03-20: Micron 가이던스 미스 → SK하이닉스 -2.3%, 삼성전자 -1.4%"

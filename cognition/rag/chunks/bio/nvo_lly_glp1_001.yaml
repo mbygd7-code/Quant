@@ -1,0 +1,19 @@
+id: nvo_lly_glp1_001
+topic: "GLP-1 비만 치료제 (NVO/LLY) → 알테오젠 라이선스 연동"
+markets: [US, KR]
+sectors: [bio]
+related_tickers: ["NVO", "LLY", "196170"]
+trigger_conditions:
+  - "Novo Nordisk(NVO) 또는 Eli Lilly(LLY) 분기 실적·매출 발표"
+  - "GLP-1 신약 적응증 확대(심혈관, 알츠하이머) 임상 데이터"
+  - "GLP-1 공급 부족·재고 관련 보도"
+positive_signal: "강한 관심"
+risk_warning: "알테오젠은 라이선스 계약 1건에 의존도가 높아 계약 변경·해지 시 단일 이벤트로 큰 변동"
+body: |
+  알테오젠은 NVO·LLY와 GLP-1 적응증 확대 관련 라이선스 협력 중이다. NVO/LLY
+  매출 호조는 GLP-1 시장 확대 시그널로 알테오젠에 직접 모멘텀. 특히 심혈관 보호
+  효과, 알츠하이머 적응증 등 새로운 임상 데이터가 긍정적이면 GLP-1 시장 규모
+  자체가 재평가되어 큰 폭 강세. 반대로 공급 부족 해소·경쟁 심화는 단기 매출 우려.
+historical_examples:
+  - "2024-08-08: LLY 분기 매출 +30% YoY → 알테오젠 +8.5%"
+  - "2025-03-05: NVO 알츠하이머 적응증 임상 실패 → 알테오젠 -6.2%"

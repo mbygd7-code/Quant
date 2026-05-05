@@ -1,0 +1,20 @@
+id: hi_ni_cathode_001
+topic: "하이니켈 양극재(NCA/NCM 9-시리즈) 수요 증가"
+markets: [Global, KR]
+sectors: [battery]
+related_tickers: ["247540", "086520", "066970", "003670"]
+trigger_conditions:
+  - "글로벌 OEM 신규 EV 모델 발표 — 700km 이상 주행거리"
+  - "주요 양극재사 NCM 9-시리즈 수주 공시"
+  - "Tesla 4680 셀 양산 확대 보도"
+positive_signal: "관심"
+risk_warning: "LFP(중국식 인산철) 채택 확대 시 하이니켈 수요 둔화 위험. Tesla Model 2/3 일부 LFP 전환 중"
+body: |
+  주행거리 600~700km급 EV는 하이니켈 양극재(NCM 8-/9-시리즈, NCA) 채택이 필수다.
+  에코프로비엠(NCA), 엘앤에프(NCM 9), 포스코퓨처엠(NCM 8/9)이 글로벌 점유율을
+  나누어 가지며, 신규 EV 모델 발표마다 양극재 수주 공시가 따른다. 다만 보급형
+  모델에서 LFP(중국 CATL/BYD가 선두) 채택이 확대되면 하이니켈 비중이 정체될 수
+  있어, 프리미엄 EV 시장 성장세가 핵심 변수.
+historical_examples:
+  - "2025-01-08: 현대차 EV9 600km 모델 발표 → 에코프로비엠 +5.2%, 엘앤에프 +4.7%"
+  - "2024-09-12: Tesla LFP 비중 확대 보도 → 에코프로비엠 -3.8%"

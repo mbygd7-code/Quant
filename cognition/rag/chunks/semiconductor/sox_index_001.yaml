@@ -1,0 +1,19 @@
+id: sox_index_001
+topic: "필라델피아 반도체 지수(SOX) → 한국 반도체 섹터 동조"
+markets: [US, KR]
+sectors: [semiconductor]
+related_tickers: ["^SOX", "SOXX", "000660", "005930", "042700", "240810", "005290"]
+trigger_conditions:
+  - "SOX 종가 ±2% 이상 변동"
+  - "SOXX ETF 거래량 평균 대비 2배 이상"
+positive_signal: "관심"
+risk_warning: "SOX는 메모리·로직·장비·EDA 종합 지수라 한국 메모리 비중과 다를 수 있음. 개별 종목 영향 차등"
+body: |
+  필라델피아 반도체 지수(SOX/SOXX)는 한국 반도체 섹터와 약 0.7 상관관계를 보이는
+  대표적 선행 지표다. SOX 상승 시 한국 반도체 ETF, SK하이닉스, 삼성전자가 동반
+  상승하는 경향이 있으며 폭은 SOX 변동의 약 0.5~0.7배. 단, SOX 구성에는
+  Nvidia·AMD·TSM 등 로직 비중이 높아 메모리 사이클과 다를 수 있어 개별 펀더멘털과
+  교차 검증 필요.
+historical_examples:
+  - "2024-07-11: SOX -6.8% → 한국 반도체 ETF -3.5%, SK하이닉스 -3.2%"
+  - "2024-11-15: SOX +3.1% → SK하이닉스 +2.5%, 삼성전자 +1.4%"

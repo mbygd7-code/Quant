@@ -1,0 +1,21 @@
+id: tsla_delivery_001
+topic: "Tesla 분기 인도량 → 한국 배터리 셀 공급사 수혜"
+markets: [US, KR]
+sectors: [battery]
+related_tickers: ["TSLA", "373220", "006400", "247540"]
+trigger_conditions:
+  - "Tesla 분기 인도량 컨센서스 ±5% 격차"
+  - "Tesla 차종별 믹스(Model Y / 사이버트럭) 변화"
+  - "에너지 저장 솔루션(Megapack) 매출 동향"
+positive_signal: "관심"
+risk_warning: "Tesla 차주(Elon) 코멘트 변동성에 주의. 4680 셀 자체 생산 확대 시 LG에너지솔루션 점유율 잠식 가능"
+body: |
+  Tesla는 LG에너지솔루션·삼성SDI의 핵심 고객으로, 분기 인도량 확대는 두 업체 셀
+  매출에 직결된다. 특히 모델별 믹스가 중요한데, Model Y/3는 LG에너지솔루션
+  (원형/파우치) 비중이 높고 사이버트럭은 4680 신규 라인 적용. 에코프로비엠은
+  양극재(NCA, 하이니켈)를 LG에너지솔루션 통해 간접 공급하므로 Tesla 인도량 → LG엔솔
+  → 에코프로비엠 순으로 영향이 전파된다. 인도량 미스 + 가이던스 하향이 동시에
+  나오면 약세 기간 길어질 위험.
+historical_examples:
+  - "2024-10-02: Tesla Q3 인도량 +6% YoY → LG에너지솔루션 +4.8%, 에코프로비엠 +6.1%"
+  - "2025-04-02: Q1 인도량 -13% YoY → LG에너지솔루션 -5.7%, 삼성SDI -3.2%"

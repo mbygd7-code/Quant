@@ -1,0 +1,20 @@
+id: ev_transition_001
+topic: "EV 전환 속도 — Tesla·중국 EV 대비 현대차그룹 포지션"
+markets: [Global, KR]
+sectors: [auto]
+related_tickers: ["TSLA", "RIVN", "005380", "000270"]
+trigger_conditions:
+  - "Tesla 분기 인도량 발표"
+  - "유럽 EV 판매 점유율 변화"
+  - "현대차그룹 EV 신차 (아이오닉, EV9) 판매 데이터"
+positive_signal: "관심"
+risk_warning: "EV 시장 둔화기에는 EV 비중 큰 OEM이 더 큰 타격. 현대차는 ICE/HEV 균형 잡힌 편"
+body: |
+  현대차그룹의 EV 전략은 E-GMP 플랫폼 기반으로 아이오닉5/6/9, EV6/EV9 등 다양한
+  라인업을 갖췄다. 글로벌 EV 시장의 성장률이 둔화될 때(2024 후반~2025 상반기처럼)
+  EV 비중 100%인 Tesla·Rivian이 큰 타격을 받지만, 현대차는 HEV·하이브리드 라인업
+  덕에 충격이 분산된다. 반대로 EV 가속 국면에서는 Tesla 강세가 현대차에 일부
+  부담. EV 시장 사이클 국면 인지가 중요.
+historical_examples:
+  - "2024-11-15: Tesla 인도량 호조 → 현대차 +0.5%로 차별화 (EV 모멘텀 약함)"
+  - "2025-02-20: 글로벌 EV 둔화 보도 → Tesla -8%, 현대차 -1.2%로 방어적"

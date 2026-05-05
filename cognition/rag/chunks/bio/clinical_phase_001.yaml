@@ -1,0 +1,20 @@
+id: clinical_phase_001
+topic: "임상 단계 진행 — Phase 2/3 데이터 발표 변동성"
+markets: [Global, KR]
+sectors: [bio]
+related_tickers: ["028300", "141080", "326030", "196170"]
+trigger_conditions:
+  - "Phase 2/3 임상 데이터 발표 (학회/공시)"
+  - "ASCO/AHA 등 주요 학회 시즌 (5~6월, 9~10월)"
+  - "FDA 자문위원회(AdCom) 일정"
+positive_signal: "강한 관심"
+risk_warning: "임상 결과는 binary event. 실패 시 -30~50% 갭 다운 가능. 결과 직전 포지션 위험 매우 높음"
+body: |
+  바이오 종목의 가장 큰 변동성 이벤트는 임상 데이터 발표다. Phase 2/3 성공은
+  +30~100% 급등을, 실패는 -30~50% 갭다운을 일으킬 수 있어 binary risk가 매우
+  크다. HLB·리가켐바이오는 항암제 개발 진행 중, SK바이오팜은 CNS(중추신경계),
+  알테오젠은 고형암·면역항암제. 학회 시즌(5~6월 ASCO, 9월 ESMO) 직전 거래량 급증
+  및 변동성 확대. 결과 발표 직전 포지션은 매우 위험.
+historical_examples:
+  - "2024-06-02: HLB 간암 임상 3상 성공 발표 → +21% (3일 누적)"
+  - "2025-01-10: 리가켐바이오 ADC 데이터 학회 발표 → +15%"

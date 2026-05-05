@@ -8,6 +8,7 @@ Public surface:
 """
 from cognition.__schemas__.sentiment import SentimentLabel, SentimentResult
 from cognition.embedder import EMBEDDING_DIM, EMBEDDING_MODEL, Embedder
+from cognition.mapper import calculate_related_us_score
 from cognition.sentiment import SentimentEngine
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     "Embedder",
     "EMBEDDING_MODEL",
     "EMBEDDING_DIM",
+    "calculate_related_us_score",
 ]

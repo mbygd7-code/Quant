@@ -1,0 +1,19 @@
+id: ad_revenue_001
+topic: "Google·Meta 광고 매출 → NAVER·카카오 광고 시장 동조"
+markets: [US, KR]
+sectors: [internet]
+related_tickers: ["GOOGL", "META", "035420", "035720"]
+trigger_conditions:
+  - "Alphabet(GOOGL) 또는 Meta(META) 분기 광고 매출 컨센서스 ±5% 격차"
+  - "글로벌 광고 시장 성장률 보고서 (Magna, GroupM)"
+positive_signal: "관심"
+risk_warning: "한국 광고 시장은 NAVER 검색·카카오 디스플레이가 주를 이뤄 글로벌과 다소 디커플링. 영향 약화 가능"
+body: |
+  Google·Meta의 분기 광고 매출은 글로벌 디지털 광고 사이클의 대표 지표. 호조는
+  NAVER 검색 광고, 카카오 톡채널·디스플레이 광고 매출 기대로 이어져 두 종목
+  강세가 따른다. 단, 한국 광고 시장은 내수 중심이라 글로벌 사이클과 100% 동조하진
+  않는다. 또한 양사가 AI(Gemini, Llama) 투자 코멘트를 강화하면 그 자체로 NAVER
+  HyperClova·카카오 KoGPT 가치 재평가 가능.
+historical_examples:
+  - "2024-10-29: GOOGL Q3 광고 +12% YoY → NAVER +3.8%, 카카오 +2.5%"
+  - "2025-04-24: META 광고 매출 미스 → NAVER -1.5%, 카카오 -2.1%"

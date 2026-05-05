@@ -1,0 +1,19 @@
+id: asml_equipment_001
+topic: "ASML 수주·실적 → 한국 반도체 장비·소재 수요"
+markets: [US, KR]
+sectors: [semiconductor]
+related_tickers: ["ASML", "240810", "005290", "357780", "039030"]
+trigger_conditions:
+  - "ASML 분기 신규 수주(Bookings) 컨센서스 ±10% 격차"
+  - "EUV 장비 출하 가이던스 변경"
+positive_signal: "관심"
+risk_warning: "ASML 수주는 18~24개월 lag으로 매출에 반영. 단기 변동성 한정적"
+body: |
+  ASML의 EUV·DUV 장비 수주는 글로벌 반도체 capex의 선행 지표다. ASML 수주 호조는
+  TSMC·삼성·SK하이닉스의 capex 확대를 의미하며, 이는 국내 장비 협력사
+  (원익IPS, 이오테크닉스)와 소재 업체(동진쎄미켐, 솔브레인)의 수주 증가로 이어진다.
+  특히 EUV 도입이 가속화되면 국산 EUV 부속 장비·포토레지스트 수요가 동반 증가한다.
+  단, 매출 반영까지 시차가 있어 단기 주가 반응은 제한적인 편이다.
+historical_examples:
+  - "2024-10-15: ASML 수주 컨센서스 -50% → 원익IPS -7%, 동진쎄미켐 -5%"
+  - "2025-01-22: ASML 가이던스 상향 → 원익IPS +4.2%, 솔브레인 +3.5%"

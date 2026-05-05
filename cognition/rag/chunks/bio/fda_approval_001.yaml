@@ -1,0 +1,20 @@
+id: fda_approval_001
+topic: "美 FDA 승인·CRL → 한국 바이오 라이선스 후속주"
+markets: [US, KR]
+sectors: [bio]
+related_tickers: ["LLY", "MRK", "PFE", "BIIB", "196170", "068270", "028300"]
+trigger_conditions:
+  - "美 빅파마(LLY/MRK/PFE) 신약 FDA 승인 발표"
+  - "FDA Complete Response Letter(CRL) 발급"
+  - "PDUFA 일정 임박 (2주 이내)"
+positive_signal: "관심"
+risk_warning: "한국 바이오 후속주는 라이선스 계약 여부에 따라 영향 차등. 무관한 종목 동반 상승은 단기 노이즈"
+body: |
+  美 FDA 승인은 글로벌 빅파마뿐 아니라 라이선스 계약을 맺은 한국 바이오 후속주에도
+  영향을 준다. 알테오젠은 LLY·NVO와 GLP-1 관련 라이선스로 직접 연동, 셀트리온은
+  바이오시밀러로 BIIB와 경쟁/협력 관계. 단, '바이오 = 한국 후속주 동반 상승'은
+  단기 노이즈일 가능성이 높으므로 라이선스 계약 또는 임상 단계 직접 연관성 확인이
+  필수. CRL 발급 시 그 종목 + 같은 적응증 후속주 동반 약세.
+historical_examples:
+  - "2024-11-08: LLY 알츠하이머 신약 승인 → 알테오젠 +5.5% (라이선스 후속)"
+  - "2025-02-28: BIIB 신약 CRL → 셀트리온 +1.2% (경쟁 호재)"

@@ -1,0 +1,20 @@
+id: cloud_demand_001
+topic: "MSFT/AWS/GCP 클라우드 → 한국 SaaS·IDC 수요"
+markets: [US, KR]
+sectors: [internet]
+related_tickers: ["MSFT", "GOOGL", "012510", "042000", "093320"]
+trigger_conditions:
+  - "MSFT Azure 분기 매출 성장률 발표 (>25% 호조 신호)"
+  - "Alphabet GCP 매출 발표"
+  - "글로벌 AI 투자(capex) 가이던스 동향"
+positive_signal: "관심"
+risk_warning: "한국 SaaS는 내수 비중이 커서 영향 한정적. IDC는 capex 사이클에 후행"
+body: |
+  MSFT Azure·AWS·GCP의 매출 성장은 글로벌 클라우드·AI capex 사이클을 보여준다.
+  국내에서는 더존비즈온(ERP SaaS), 카페24(이커머스 SaaS), 케이아이엔엑스(IDC)가
+  간접 수혜. 특히 IDC는 AI 학습용 GPU 서버 수요로 capacity 부족 상황이 이어지며
+  케이아이엔엑스 가동률·임대료 상승 모멘텀. MSFT가 분기 capex 가이던스를 대폭
+  상향하면 글로벌 IDC·반도체 종목 동반 강세, 케이아이엔엑스도 동조.
+historical_examples:
+  - "2024-10-30: MSFT Azure +33% → 케이아이엔엑스 +5.8%, 더존비즈온 +2.5%"
+  - "2025-04-25: GCP 매출 +35% → 케이아이엔엑스 +4.2%"
