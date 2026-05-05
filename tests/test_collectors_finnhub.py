@@ -127,3 +127,21 @@ class TestFinnhubCollector:
         monkeypatch.delenv("FINNHUB_API_KEY", raising=False)
         with pytest.raises(RuntimeError, match="FINNHUB_API_KEY"):
             FinnhubCollector()
+
+    def test_fetch_works_inside_running_event_loop(self, patched_finnhub, mock_storage):
+        """Regression: orchestrator.pipeline runs inside asyncio.run, and the
+        sync collectors are called from there. Naive `asyncio.run()` inside
+        FinnhubCollector.fetch raises 'cannot be called from a running event
+        loop' — the fix is to detect a live loop and dispatch to a worker
+        thread that owns its own loop.
+        """
+        import asyncio as _asyncio
+
+        async def driver():
+            # Just calling fetch from inside `await` proves we are inside a
+            # running loop — exactly the orchestrator scenario.
+            coll = FinnhubCollector()
+            return coll.fetch(Date(2026, 5, 5))
+
+        result = _asyncio.run(driver())
+        assert result.success_count > 0   # not aborted by RuntimeError

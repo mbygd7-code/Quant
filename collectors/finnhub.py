@@ -61,10 +61,21 @@ class FinnhubCollector(BaseCollector):
     # Public
     # ──────────────────────────────────────────────────────
     def fetch(self, on_date: Date) -> CollectorResult:
+        """Sync facade. Internally async — works whether or not the caller is
+        already inside a running event loop (orchestrator pipeline is)."""
         target = prev_us_business_day(on_date)
         log.info("Finnhub collecting for US trading day %s (run-date %s KST)",
                  target.isoformat(), on_date.isoformat())
-        return asyncio.run(self._fetch_all(target))
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop → safe to use asyncio.run directly.
+            return asyncio.run(self._fetch_all(target))
+        # Already inside an event loop (e.g. orchestrator.pipeline). asyncio.run()
+        # cannot nest, so dispatch onto a worker thread that owns its own loop.
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, self._fetch_all(target)).result()
 
     # ──────────────────────────────────────────────────────
     # Async core
