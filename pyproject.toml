@@ -67,7 +67,7 @@ include = [
     "collectors*",
     "refinery*",
     "cognition*",
-    "signal*",
+    "signals*",
     "executor*",
     "orchestrator*",
     "notifier*",

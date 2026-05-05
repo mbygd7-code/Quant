@@ -152,7 +152,7 @@ curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
 | `collectors/`        | GitHub Actions  | 외부 API 호출 (KRX, Finnhub, EDGAR, DART) |
 | `refinery/`          | GitHub Actions  | Pydantic 검증·정제 (14.45% 폐기율 가정) |
 | `cognition/`         | GitHub Actions  | LLM·임베딩·매핑·점수 산출 |
-| `signal/`            | GitHub Actions  | ML 모델·백테스트·리포트 생성 |
+| `signals/`            | GitHub Actions  | ML 모델·백테스트·리포트 생성 |
 | `executor/`          | GitHub Actions  | PaperBroker (실거래는 Phase 3 승인 후) |
 | `orchestrator/`      | GitHub Actions  | 파이프라인 조립·진입점 |
 | `notifier/`          | 공유            | Telegram 메시지 포맷터 |
@@ -183,7 +183,7 @@ curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
 
 ## 안전 장치 (CLAUDE.md §3)
 
-- **금지어** ("매수", "확정", "보장", "100%" 등)는 `signal/report.py`에서 자동 검증, 발견 시 ValueError raise
+- **금지어** ("매수", "확정", "보장", "100%" 등)는 `signals/report.py`에서 자동 검증, 발견 시 ValueError raise
 - **모든 LLM 호출**: ① system prompt ② few-shot 3개 이상 ③ structured output (Pydantic) 강제
 - **EXECUTION_MODE**가 `report_only` 또는 `paper`가 아니면 파이프라인 시작 거부 (`orchestrator/pipeline.py`)
 - **Service Role Key**는 백엔드(GitHub Actions / FastAPI Server-side) 전용. 클라이언트 노출 절대 금지

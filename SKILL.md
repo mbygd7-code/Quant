@@ -12,7 +12,7 @@
 06:00~06:15 ─► [2] Acquisition      collectors/* 병렬 실행
 06:15~06:30 ─► [3] Refinement       refinery/*
 06:30~07:00 ─► [4] Cognitive Integ. cognition/*
-07:00~07:30 ─► [5] Predictive Out.  signal/*
+07:00~07:30 ─► [5] Predictive Out.  signals/*
 07:30       ──► [6] Notify          notifier/telegram.py (Beta) → notifier/kakao.py (Phase 2)
 09:00~15:30 ─► [7] Live Monitor     (Phase 2)
 15:30+     ──► [8] Result Capture  predictions vs actual 저장
@@ -420,7 +420,7 @@ final_score =
 | Alpha Vantage MCP | admin ad-hoc 분석 | API key 기준 | **MCP 클라이언트** | `cognition/mcp_clients/alpha_vantage.py` |
 | DART OpenAPI | 한국 공시 | 일 20,000 | Python SDK | `collectors/dart.py` |
 | OpenAI Embeddings | RAG 임베딩 | 토큰 기준 과금 | Python SDK | `cognition/rag/embedder.py` |
-| Anthropic Claude | 감성·리포트 | 토큰 기준 과금 | Python SDK | `cognition/sentiment.py`, `signal/report.py` |
+| Anthropic Claude | 감성·리포트 | 토큰 기준 과금 | Python SDK | `cognition/sentiment.py`, `signals/report.py` |
 | Telegram Bot API | 알림 발송 | 30 msg/sec | Python SDK | `notifier/telegram.py` |
 | Kakao Biz Message | 알림 발송 (Phase 2) | 계약 기준 | Python SDK | `notifier/kakao.py` (stub) |
 
@@ -1162,7 +1162,7 @@ jobs:
 
       - name: Update job status to running
         run: |
-          python -m signal.backtest_status \
+          python -m signals.backtest_status \
             --job-id="${{ github.event.inputs.job_id }}" \
             --status=running \
             --run-url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -1172,7 +1172,7 @@ jobs:
 
       - name: Run backtest
         run: |
-          python -m signal.backtest \
+          python -m signals.backtest \
             --job-id="${{ github.event.inputs.job_id }}" \
             --start="${{ github.event.inputs.start_date }}" \
             --end="${{ github.event.inputs.end_date }}" \
@@ -1187,7 +1187,7 @@ jobs:
         if: always()
         run: |
           STATUS="${{ job.status }}"
-          python -m signal.backtest_status \
+          python -m signals.backtest_status \
             --job-id="${{ github.event.inputs.job_id }}" \
             --status="$STATUS"
         env:
@@ -1559,7 +1559,7 @@ logs/
 실행 흐름:
 1. 웹 → `apps/api/backtest/start` POST → backtest_jobs 테이블에 'queued' INSERT
 2. apps/api가 GitHub workflow_dispatch API 호출 → backtest.yml 트리거
-3. GitHub Actions Runner가 signal/backtest.py 실행 → 진행률 backtest_jobs.progress 업데이트
+3. GitHub Actions Runner가 signals/backtest.py 실행 → 진행률 backtest_jobs.progress 업데이트
 4. 웹은 폴링 또는 Supabase Realtime으로 backtest_jobs 추적
 5. 완료 시 결과 PNG/HTML이 Storage에 업로드 → 결과 페이지로 자동 이동
 

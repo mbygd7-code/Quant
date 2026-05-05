@@ -66,7 +66,7 @@ def run_once(target: Date) -> int:
     log.info("[3/5] Cognition — pending Prompt 04 (cognition/)")
 
     # ── Step 4: Signal (Prompt 05) ─────────────────────────
-    log.info("[4/5] Signal — pending Prompt 05 (signal/)")
+    log.info("[4/5] Signal — pending Prompt 05 (signals/)")
 
     # ── Step 5: Notify (Prompt 06) ─────────────────────────
     log.info("[5/5] Notify — pending Prompt 06 (notifier/)")

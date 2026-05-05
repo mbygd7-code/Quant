@@ -23,7 +23,7 @@ on:
 
 jobs:
   run-backtest:
-    name: signal/backtest
+    name: signals/backtest
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -36,10 +36,10 @@ jobs:
       - run: pip install -e .
 
       - name: Mark job running
-        # signal.backtest_status will be implemented in Prompt 09.
+        # signals.backtest_status will be implemented in Prompt 09.
         continue-on-error: true
         run: |
-          python -m signal.backtest_status \
+          python -m signals.backtest_status \
             --job-id="${{ github.event.inputs.job_id }}" \
             --status=running \
             --run-url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -48,10 +48,10 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
       - name: Run backtest
-        # signal.backtest will be implemented in Prompt 09.
+        # signals.backtest will be implemented in Prompt 09.
         continue-on-error: true
         run: |
-          python -m signal.backtest \
+          python -m signals.backtest \
             --job-id="${{ github.event.inputs.job_id }}" \
             --start="${{ github.event.inputs.start_date }}" \
             --end="${{ github.event.inputs.end_date }}" \
@@ -66,7 +66,7 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          python -m signal.backtest_status \
+          python -m signals.backtest_status \
             --job-id="${{ github.event.inputs.job_id }}" \
             --status="${{ job.status }}"
         env:

@@ -97,7 +97,7 @@
 - **허용어**: "관심 신호", "긍정 요인 우세", "리스크 확인 필요", "관망 권장", "변동성 주의"
 - 모든 신호에는 반드시 **(1) 근거 3개 + (2) 리스크 2개**를 함께 표시
 - 리포트 하단에 고정 면책 문구: *"본 정보는 투자 판단 보조 자료이며 매매 권유가 아닙니다."*
-- 금지어 자동 검증 hook을 `signal/report.py`에 포함 — 금지어 발견 시 ValueError raise
+- 금지어 자동 검증 hook을 `signals/report.py`에 포함 — 금지어 발견 시 ValueError raise
 
 ### B. 데이터 규칙
 - Raw API 응답을 절대 직접 사용하지 않는다. 반드시 `refinery/` 통과
@@ -190,7 +190,7 @@
 ### I. MCP vs SDK 사용 원칙
 - **배치 파이프라인은 SDK만 사용** — 매일 06:00 KST 자동 수집은 결정론적이어야 하므로 LLM 추론 비용을 발생시키는 MCP 부적합
   - `collectors/` 모듈은 모두 Python SDK 직접 호출 (`finnhub-python`, `pykrx`, `edgartools` 등)
-  - `cognition/sentiment.py`, `signal/report.py`도 Anthropic SDK 직접 호출
+  - `cognition/sentiment.py`, `signals/report.py`도 Anthropic SDK 직접 호출
 - **MCP는 대화형·ad-hoc 분석에만 사용**:
   - Alpha Vantage 공식 원격 MCP 서버 (`https://mcp.alphavantage.co/`) 활용
   - 용도: admin 웹앱의 ad-hoc 분석 페이지, Claude Code 개발 시 데이터 탐색
@@ -290,7 +290,7 @@ Supabase: DB + Auth + Storage + pgvector
 collectors/        ─ 외부 API 호출만. 비즈니스 로직 금지         [GitHub Actions]
 refinery/          ─ 데이터 검증·정제만. 외부 API 호출 금지       [GitHub Actions]
 cognition/         ─ LLM·임베딩·매핑·점수 산출                    [GitHub Actions]
-signal/            ─ ML 모델·백테스트·리포트 생성                 [GitHub Actions]
+signals/           ─ ML 모델·백테스트·리포트 생성 (※ Python stdlib `signal` 충돌 방지를 위해 복수형) [GitHub Actions]
 executor/          ─ 거래 실행 인터페이스 (PaperBroker만)         [GitHub Actions]
 orchestrator/      ─ 파이프라인 조립·스케줄링                     [GitHub Actions]
 notifier/          ─ Telegram 메시지 포맷터                      [공유]
