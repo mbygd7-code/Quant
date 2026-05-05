@@ -34,11 +34,12 @@ jobs:
 
       - name: Run pipeline
         run: |
+          set -o pipefail
           DATE="${{ github.event.inputs.date }}"
           if [ -z "$DATE" ]; then
-            python -m orchestrator.pipeline --mode=once --date=today
+            python -m orchestrator.pipeline --mode=once --date=today 2>&1 | tee pipeline-stdout.log
           else
-            python -m orchestrator.pipeline --mode=once --date="$DATE"
+            python -m orchestrator.pipeline --mode=once --date="$DATE" 2>&1 | tee pipeline-stdout.log
           fi
         env:
           SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
@@ -54,6 +55,22 @@ jobs:
           TELEGRAM_ADMIN_CHAT_ID:    ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
           EXECUTION_MODE:            report_only
           TIMEZONE:                  Asia/Seoul
+
+      - name: Show notify section (always)
+        if: always()
+        run: |
+          echo "================ NOTIFY SECTION ================"
+          grep -E "Notify|notifier|telegram" pipeline-stdout.log | tail -n 50 || echo "(no notify lines found)"
+          echo "================ LAST 30 LINES ================="
+          tail -n 30 pipeline-stdout.log
+
+      - name: Upload pipeline log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-stdout
+          path: pipeline-stdout.log
+          retention-days: 7
 
       - name: Notify on failure
         if: failure() && env.ADMIN_CHAT_ID != ''
