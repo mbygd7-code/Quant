@@ -82,11 +82,11 @@ CREATE TABLE news_items (
     sentiment_score  FLOAT       CHECK (sentiment_score BETWEEN 0 AND 1),
     sentiment_label  VARCHAR(20),                  -- very_negative | negative | neutral | positive | very_positive
     importance       VARCHAR(10),                  -- low | medium | high
-    embedding        vector(1536),
+    embedding        extensions.vector(1536),
     created_at       TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX news_items_date_idx       ON news_items (date DESC);
-CREATE INDEX news_items_embedding_idx  ON news_items USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX news_items_embedding_idx  ON news_items USING ivfflat (embedding extensions.vector_cosine_ops) WITH (lists = 100);
 
 -- ─────────────────────────────────────────────────────────
 -- 공시 (DART + SEC)
@@ -170,10 +170,10 @@ CREATE TABLE rag_chunks (
     positive_signal     VARCHAR(20),
     risk_warning        TEXT,
     body                TEXT        NOT NULL,
-    embedding           vector(1536),
+    embedding           extensions.vector(1536),
     created_at          TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX rag_chunks_embedding_idx ON rag_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX rag_chunks_embedding_idx ON rag_chunks USING ivfflat (embedding extensions.vector_cosine_ops) WITH (lists = 100);
 CREATE INDEX rag_chunks_sectors_idx   ON rag_chunks USING gin (sectors);
 CREATE INDEX rag_chunks_tickers_idx   ON rag_chunks USING gin (related_tickers);
 

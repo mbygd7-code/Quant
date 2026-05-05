@@ -5,7 +5,7 @@
 -- match_rag_chunks — RAG 청크 코사인 유사도 검색
 -- ─────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION match_rag_chunks(
-    query_embedding   vector(1536),
+    query_embedding   extensions.vector(1536),
     match_count       INT,
     filter_tickers    TEXT[] DEFAULT NULL,
     filter_sectors    TEXT[] DEFAULT NULL
@@ -42,7 +42,7 @@ $$;
 -- match_news_embeddings — 뉴스 유사도 검색 (날짜 필터 포함)
 -- ─────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION match_news_embeddings(
-    query_embedding   vector(1536),
+    query_embedding   extensions.vector(1536),
     match_count       INT,
     since_date        DATE DEFAULT NULL,
     filter_symbols    TEXT[] DEFAULT NULL
