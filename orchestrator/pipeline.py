@@ -57,10 +57,25 @@ def run_once(target: Date) -> int:
     log.info("Supabase connection OK")
 
     # ── Step 1: Acquisition (Prompt 02) ────────────────────
-    log.info("[1/5] Acquisition — pending Prompt 02 (collectors/)")
+    log.info("[1/5] Acquisition — collectors/")
+    from collectors import FinnhubCollector, KrxCollector
+    krx_result  = KrxCollector().fetch(target)
+    finn_result = FinnhubCollector().fetch(target)
+    log.info("Acquisition done — krx items=%d (success=%.1f%%), finnhub items=%d (success=%.1f%%)",
+             krx_result.success_count, krx_result.success_rate * 100,
+             finn_result.success_count, finn_result.success_rate * 100)
 
     # ── Step 2: Refinement (Prompt 03) ─────────────────────
-    log.info("[2/5] Refinement — pending Prompt 03 (refinery/)")
+    log.info("[2/5] Refinement — refinery/")
+    from refinery import refine_all
+    krx_report  = refine_all(krx_result,  source="krx",     on_date=target)
+    finn_report = refine_all(finn_result, source="finnhub", on_date=target)
+    if not krx_report.is_within_expected_range:
+        log.warning("KRX discard rate %.1f%% out of [10%%, 20%%] band",
+                    krx_report.discard_rate * 100)
+    if not finn_report.is_within_expected_range:
+        log.warning("Finnhub discard rate %.1f%% out of [10%%, 20%%] band",
+                    finn_report.discard_rate * 100)
 
     # ── Step 3: Cognition (Prompt 04) ──────────────────────
     log.info("[3/5] Cognition — pending Prompt 04 (cognition/)")
