@@ -19,11 +19,16 @@ import uuid
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from mangum import Mangum
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="QuantSignal API", version="0.1.0")
+
+# Telegram webhook router — Prompt 08 wires real command handlers.
+from apps.api.routes.telegram_webhook import router as telegram_router  # noqa: E402
+
+app.include_router(telegram_router)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -32,28 +37,6 @@ app = FastAPI(title="QuantSignal API", version="0.1.0")
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": "quant-signal-api"}
-
-
-# ─────────────────────────────────────────────────────────────
-# Telegram Webhook
-# Secret-token header verifies authenticity (Telegram → us).
-# Heavy command handling will be wired up in Prompt 05.
-# ─────────────────────────────────────────────────────────────
-@app.post("/api/telegram/webhook")
-async def telegram_webhook(
-    request: Request,
-    x_telegram_bot_api_secret_token: str | None = Header(default=None),
-) -> dict[str, Any]:
-    expected = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
-    if not expected:
-        raise HTTPException(500, "TELEGRAM_WEBHOOK_SECRET not configured on server")
-    if x_telegram_bot_api_secret_token != expected:
-        raise HTTPException(403, "Invalid webhook secret")
-
-    update = await request.json()
-    # Prompt 05 will wire up command routing:
-    #   /start, /link <code>, /today, /stock <ticker>, /sector, /top, /risk, /feedback, /help
-    return {"ok": True, "update_id": update.get("update_id")}
 
 
 # ─────────────────────────────────────────────────────────────
