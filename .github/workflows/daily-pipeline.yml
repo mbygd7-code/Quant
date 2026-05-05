@@ -1,0 +1,68 @@
+name: Daily Pipeline
+
+on:
+  schedule:
+    # 06:00 KST = 21:00 UTC (전날). 한국 영업일 월~금 = UTC 일~목.
+    - cron: "0 21 * * 0-4"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Run for specific KST date (YYYY-MM-DD). Empty = today."
+        required: false
+        default: ""
+
+concurrency:
+  group: daily-pipeline
+  cancel-in-progress: false
+
+jobs:
+  run-pipeline:
+    name: collectors → refinery → cognition → signal → notify
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Run pipeline
+        run: |
+          DATE="${{ github.event.inputs.date }}"
+          if [ -z "$DATE" ]; then
+            python -m orchestrator.pipeline --mode=once --date=today
+          else
+            python -m orchestrator.pipeline --mode=once --date="$DATE"
+          fi
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_BUCKET_RAW:       raw-api-backups
+          SUPABASE_BUCKET_BACKTEST:  backtest-reports
+          SUPABASE_BUCKET_REPORTS:   daily-reports
+          ANTHROPIC_API_KEY:         ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY:            ${{ secrets.OPENAI_API_KEY }}
+          FINNHUB_API_KEY:           ${{ secrets.FINNHUB_API_KEY }}
+          DART_API_KEY:              ${{ secrets.DART_API_KEY }}
+          TELEGRAM_BOT_TOKEN:        ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID:    ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          EXECUTION_MODE:            report_only
+          TIMEZONE:                  Asia/Seoul
+
+      - name: Notify on failure
+        if: failure() && env.ADMIN_CHAT_ID != ''
+        env:
+          BOT_TOKEN:      ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ADMIN_CHAT_ID:  ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          RUN_URL:        ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -sS -X POST \
+            "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${ADMIN_CHAT_ID}" \
+            --data-urlencode "text=🚨 Daily Pipeline 실패 — ${RUN_URL}"

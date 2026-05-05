@@ -1,0 +1,12 @@
+# Vercel serverless — keep < 250 MB unzipped.
+# Heavy libs (scikit-learn, pykrx, edgartools, finnhub-python, pandas) are
+# FORBIDDEN here per SKILL.md §11-2. They live in pyproject.toml for the
+# GitHub Actions runner only.
+fastapi==0.115.0
+pydantic==2.9.0
+supabase==2.7.0
+mangum==0.17.0
+httpx==0.27.0
+python-telegram-bot[ext]==21.6
+redis==5.0.0
+pyjwt==2.9.0

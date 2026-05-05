@@ -1,0 +1,57 @@
+# ── Secrets ────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+secrets.kr.local
+*.pem
+*.key
+
+# ── Python ─────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+build/
+dist/
+
+# ── Node / Next.js (apps/web, apps/api fixtures) ──────────
+node_modules/
+apps/web/.next/
+apps/web/out/
+apps/web/build/
+apps/web/.turbo/
+apps/web/next-env.d.ts
+*.tsbuildinfo
+
+# ── Vercel ─────────────────────────────────────────────────
+.vercel/
+
+# ── Supabase CLI ───────────────────────────────────────────
+.supabase/
+
+# ── Logs / collector raw dumps ─────────────────────────────
+*.log
+logs/*
+!logs/.gitkeep
+collectors/_raw/*
+!collectors/_raw/.gitkeep
+
+# ── IDE / OS ───────────────────────────────────────────────
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ── Claude Code session-local ──────────────────────────────
+.claude/settings.local.json
+.claude/launch.json
+
+# ── Coverage / test artifacts ──────────────────────────────
+.coverage
+coverage.xml
+htmlcov/

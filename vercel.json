@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "framework": "nextjs",
+  "buildCommand": "cd apps/web && npm install && npm run build",
+  "installCommand": "cd apps/web && npm install",
+  "outputDirectory": "apps/web/.next",
+  "functions": {
+    "apps/api/**/*.py": {
+      "runtime": "python3.11",
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/apps/api/index.py" }
+  ]
+}

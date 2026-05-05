@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python-lint-test:
+    name: Python (lint + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Pytest
+        run: pytest -v
+        env:
+          # Test instance — separate Supabase project (optional, can be the same).
+          SUPABASE_URL:               ${{ secrets.SUPABASE_URL_TEST || secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_TEST || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+  web-lint-typecheck:
+    name: Web (lint + typecheck)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      # apps/web/ is empty until Prompt 13 — skip gracefully.
+      - name: Skip if package.json absent
+        id: check
+        run: |
+          if [ ! -f package.json ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::apps/web has no package.json yet — skipping web checks (will be added in Prompt 13)."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.skip == 'false'
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - if: steps.check.outputs.skip == 'false'
+        run: npm ci
+      - if: steps.check.outputs.skip == 'false'
+        run: npm run lint
+      - if: steps.check.outputs.skip == 'false'
+        run: npm run typecheck
