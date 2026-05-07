@@ -20,10 +20,10 @@ re-train weekly via GitHub Actions.
 from __future__ import annotations
 
 import logging
-import math
 import pickle
 from dataclasses import dataclass
-from datetime import date as Date, timedelta
+from datetime import date as Date
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 

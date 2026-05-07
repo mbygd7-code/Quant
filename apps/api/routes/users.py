@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import secrets
 import string
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -33,7 +33,7 @@ class InviteRequest(BaseModel):
 async def invite_user(req: InviteRequest) -> dict[str, Any]:
     sb = _admin()
     code = _generate_invite_code()
-    expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+    expires_at = (datetime.now(UTC) + timedelta(days=7)).isoformat()
 
     sb.table("invite_codes").insert({
         "code":       code,
@@ -154,7 +154,7 @@ async def user_stats() -> dict[str, Any]:
     for r in rows:
         by_role[r["role"]] = by_role.get(r["role"], 0) + 1
 
-    seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    seven_days_ago = (datetime.now(UTC) - timedelta(days=7)).isoformat()
     recent = sum(1 for r in rows if r["created_at"] >= seven_days_ago)
 
     return {"total": len(rows), "by_role": by_role, "recent_7d": recent}

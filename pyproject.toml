@@ -90,9 +90,14 @@ ignore = [
     "RUF001", # ambiguous unicode in identifiers (false positive on Korean strings)
     "RUF002", # ambiguous unicode in docstrings (Korean docstrings everywhere)
     "RUF003", # ambiguous unicode in comments (× and Korean punctuation)
+    "RUF005", # iterable unpacking vs list-concat — concat is clearer in our DSL builders
     "RUF022", # __all__ ordering — semantic order > alphabetical for our re-exports
     "N818",   # exception names — DailyCapExceeded reads better than DailyCapExceededError
     "N806",   # uppercase X/y in ML code follows scikit-learn convention
+    "B904",   # raise … from … — pedantic; Python preserves __context__ either way
+    "B905",   # zip(strict=…) — too noisy on intentional same-length pairings
+    "E701",   # multiple statements on one line — used for compact branch tables
+    "E731",   # lambda assigned to name — used for tiny picker functions in ML feature code
 ]
 
 [tool.ruff.lint.per-file-ignores]

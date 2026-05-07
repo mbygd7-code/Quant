@@ -12,7 +12,8 @@ import argparse
 import asyncio
 import os
 import sys
-from datetime import date as Date, timedelta
+from datetime import date as Date
+from datetime import timedelta
 
 from db.supabase_client import get_admin_client
 

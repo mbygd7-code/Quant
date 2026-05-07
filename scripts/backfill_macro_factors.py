@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import argparse
 import math
-from datetime import date as Date, timedelta
+from datetime import date as Date
+from datetime import timedelta
 
 import yfinance as yf
 

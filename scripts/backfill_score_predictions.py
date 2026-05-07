@@ -7,11 +7,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
-from datetime import date as Date, timedelta
+from datetime import date as Date
+from datetime import timedelta
 
 from db.supabase_client import get_admin_client
 from signals.score_regressor import (
-    InsufficientDataError, ScoreRegressor,
+    InsufficientDataError,
+    ScoreRegressor,
 )
 
 

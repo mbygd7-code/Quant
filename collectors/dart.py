@@ -86,9 +86,8 @@ def parse_corp_codes(zip_bytes: bytes) -> dict[str, tuple[str, str]]:
     Skips entries without stock_code (delisted / private companies).
     """
     out: dict[str, tuple[str, str]] = {}
-    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-        with zf.open("CORPCODE.xml") as f:
-            tree = ET.parse(f)
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf, zf.open("CORPCODE.xml") as f:
+        tree = ET.parse(f)
     for entry in tree.getroot().findall("list"):
         stock_code = (entry.findtext("stock_code") or "").strip()
         if not stock_code or stock_code == " ":

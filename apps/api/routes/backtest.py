@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -63,8 +63,8 @@ async def start_backtest(req: BacktestRequest) -> dict[str, str]:
             "progress": 100,
             "result_url": None,
             "error": None,
-            "started_at":   datetime.now(timezone.utc).isoformat(),
-            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "started_at":   datetime.now(UTC).isoformat(),
+            "completed_at": datetime.now(UTC).isoformat(),
         }).eq("id", job_id).execute()
         return {"job_id": job_id, "status": "completed", "mode": "mock"}
 
@@ -93,7 +93,7 @@ async def start_backtest(req: BacktestRequest) -> dict[str, str]:
             sb.table("backtest_jobs").update({
                 "status": "failed",
                 "error": f"dispatch HTTP {r.status_code}: {r.text[:500]}",
-                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "completed_at": datetime.now(UTC).isoformat(),
             }).eq("id", job_id).execute()
             raise HTTPException(502, f"GitHub dispatch failed: {r.status_code}")
 

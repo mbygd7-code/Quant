@@ -112,6 +112,7 @@ async def step_intelligence(target: Date) -> dict:
     """
     log.info("[5/6] Intelligence — ML predictions + AI commentary")
     from datetime import timedelta as _td
+
     from db.supabase_client import get_admin_client
     sb = get_admin_client()
     watchlist = (
@@ -126,10 +127,10 @@ async def step_intelligence(target: Date) -> dict:
     if target.weekday() == 6:
         log.info("Sunday refresh — recomputing sector ETF + macro betas")
         try:
-            from scripts.backfill_sector_etfs import main as etfs_main
-            from scripts.compute_sector_betas import main as sector_main
             from scripts.backfill_macro_factors import main as macro_main
+            from scripts.backfill_sector_etfs import main as etfs_main
             from scripts.compute_macro_betas import main as macrobeta_main
+            from scripts.compute_sector_betas import main as sector_main
             etfs_main(days=90)
             sector_main(window=60)
             macro_main(days=90)
@@ -143,7 +144,8 @@ async def step_intelligence(target: Date) -> dict:
     pred_rows = 0
     try:
         from signals.score_regressor import (
-            InsufficientDataError, ScoreRegressor,
+            InsufficientDataError,
+            ScoreRegressor,
         )
         reg = ScoreRegressor()
         train_end = target - _td(days=1)
@@ -181,6 +183,7 @@ async def step_intelligence(target: Date) -> dict:
     failed = 0
     try:
         import asyncio as _asyncio
+
         from cognition.commentary import CommentaryEngine
         engine = CommentaryEngine()
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import UTC
 from typing import TYPE_CHECKING
 
 from db.supabase_client import get_admin_client
@@ -301,8 +302,8 @@ async def cmd_feedback_note(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         )
         return
 
-    from datetime import datetime, timedelta, timezone
-    one_hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    from datetime import datetime, timedelta
+    one_hour_ago = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
     recent = (
         sb.table("user_feedback")
           .select("id, created_at, comment")

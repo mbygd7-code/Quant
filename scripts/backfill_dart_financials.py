@@ -10,8 +10,8 @@ Usage:
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 from datetime import date as Date
-from typing import Iterator
 
 from collectors.dart import (
     REPORT_CODES,
