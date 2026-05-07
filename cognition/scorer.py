@@ -233,8 +233,76 @@ class StockScorer:
         return (weighted / denom) if denom else NEUTRAL
 
     def _fundamental(self, ticker: str, on_date: Date) -> float:
-        # Phase 2 placeholder per PROMPTS.md.
-        return NEUTRAL
+        """Sector-relative percentile of forwardPE (lower = better) + ROE
+        (higher = better) from kr_fundamentals.
+
+        yfinance .info gives forwardPE + ROE + marketCap for KR tickers
+        reliably (trailingPE/PB are often None). Percentile-rank within the
+        same sector and combine 50/50. NEUTRAL when fewer than 3 sector
+        peers have data (statistical floor) or kr_fundamentals is empty.
+        """
+        sector = self._lookup_sector(ticker)
+        if sector is None:
+            return NEUTRAL
+
+        sb = get_admin_client()
+        peers_rows = (
+            sb.table("stocks").select("ticker")
+              .eq("sector", sector).eq("is_watchlist", True)
+              .execute().data
+        ) or []
+        peer_tickers = [r["ticker"] for r in peers_rows]
+        if len(peer_tickers) < 3:
+            return NEUTRAL
+
+        since = (on_date - timedelta(days=21)).isoformat()
+        rows = (
+            sb.table("kr_fundamentals")
+              .select("date, ticker, forward_pe, roe")
+              .gte("date", since)
+              .lte("date", on_date.isoformat())
+              .in_("ticker", peer_tickers)
+              .order("date", desc=True)
+              .execute()
+              .data
+        ) or []
+        latest_per: dict[str, dict] = {}
+        for r in rows:
+            if r["ticker"] not in latest_per:
+                latest_per[r["ticker"]] = r
+        if ticker not in latest_per:
+            return NEUTRAL
+
+        pe_rank: float | None = None
+        roe_rank: float | None = None
+        my = latest_per[ticker]
+
+        pe_values = sorted(
+            [(r["ticker"], r["forward_pe"]) for r in latest_per.values()
+             if r.get("forward_pe") is not None and float(r["forward_pe"]) > 0],
+            key=lambda x: x[1],
+        )
+        if my.get("forward_pe") is not None and float(my["forward_pe"]) > 0 and len(pe_values) >= 3:
+            for i, (tkr, _) in enumerate(pe_values):
+                if tkr == ticker:
+                    pe_rank = 1.0 - (i / max(len(pe_values) - 1, 1))
+                    break
+
+        roe_values = sorted(
+            [(r["ticker"], r["roe"]) for r in latest_per.values()
+             if r.get("roe") is not None],
+            key=lambda x: x[1], reverse=True,
+        )
+        if my.get("roe") is not None and len(roe_values) >= 3:
+            for i, (tkr, _) in enumerate(roe_values):
+                if tkr == ticker:
+                    roe_rank = 1.0 - (i / max(len(roe_values) - 1, 1))
+                    break
+
+        ranks = [r for r in (pe_rank, roe_rank) if r is not None]
+        if not ranks:
+            return NEUTRAL
+        return sum(ranks) / len(ranks)
 
     def _volume_flow(self, ticker: str, on_date: Date) -> float:
         """Net-buy or volume z-score on the most recent trading day at-or-
