@@ -168,12 +168,18 @@ class StockScorer:
         return sigmoid(avg * SUBSCORE_SCALE)
 
     def _news(self, ticker: str, on_date: Date) -> float:
-        """Mean sentiment of news_items mentioning `ticker` within the last 3
-        days at-or-before `on_date`. Strict equality dropped to NEUTRAL on any
-        day with no news collection.
+        """Mean news sentiment over the last 3 days at-or-before `on_date`.
+
+        For KR tickers, we don't have a KR-news collector yet — Finnhub covers
+        only US sources. Fall back to the sentiment of mapped US symbols
+        (us_kr_mapping) weighted by impact_strength: this reuses the same
+        signal that drives related_us_stock_score, but on the *narrative*
+        axis instead of the price axis.
         """
         sb = get_admin_client()
         since = (on_date - timedelta(days=3)).isoformat()
+
+        # 1) Direct: any news_items already tagged with this ticker.
         rows = (
             sb.table("news_items")
               .select("sentiment_score, related_symbols, date")
@@ -184,25 +190,66 @@ class StockScorer:
               .execute()
               .data
         ) or []
-        scores = [float(r["sentiment_score"]) for r in rows if r.get("sentiment_score") is not None]
-        if not scores:
+        direct = [float(r["sentiment_score"]) for r in rows if r.get("sentiment_score") is not None]
+        if direct:
+            return sum(direct) / len(direct)
+
+        # 2) Fallback for KR tickers: weighted sentiment of mapped US symbols.
+        if not (ticker.isdigit() and len(ticker) == 6):
+            return NEUTRAL                                      # not a KR ticker
+        mappings = (
+            sb.table("us_kr_mapping")
+              .select("us_symbol, impact_strength")
+              .eq("kr_ticker", ticker)
+              .execute()
+              .data
+        ) or []
+        if not mappings:
             return NEUTRAL
-        return sum(scores) / len(scores)
+        us_syms = [m["us_symbol"] for m in mappings]
+        rows = (
+            sb.table("news_items")
+              .select("sentiment_score, related_symbols, date")
+              .gte("date", since)
+              .lte("date", on_date.isoformat())
+              .overlaps("related_symbols", us_syms)
+              .not_.is_("sentiment_score", "null")
+              .execute()
+              .data
+        ) or []
+        if not rows:
+            return NEUTRAL
+        weight_by_sym = {m["us_symbol"]: float(m["impact_strength"]) for m in mappings}
+        weighted = 0.0
+        denom = 0.0
+        for r in rows:
+            score = float(r["sentiment_score"])
+            for sym in (r.get("related_symbols") or []):
+                if sym in weight_by_sym:
+                    w = weight_by_sym[sym]
+                    weighted += score * w
+                    denom += w
+                    break
+        return (weighted / denom) if denom else NEUTRAL
 
     def _fundamental(self, ticker: str, on_date: Date) -> float:
         # Phase 2 placeholder per PROMPTS.md.
         return NEUTRAL
 
     def _volume_flow(self, ticker: str, on_date: Date) -> float:
-        """Foreign + institution net buy on the most recent trading day at-or-
-        before `on_date`, normalized by 20-day rolling stddev. Lookback window
-        is widened to 45 days so the 20-sample baseline holds even after a
-        few-day gap (holiday, missed collection)."""
+        """Net-buy or volume z-score on the most recent trading day at-or-
+        before `on_date`, normalized by rolling stddev over the 45-day window.
+
+        Preferred metric: foreign + institution net buy (KRX-specific signal).
+        Fallback: total volume — when foreign/institution columns are NULL
+        (e.g. yfinance backfill, pykrx unavailable). Lookback is wide enough
+        to keep the 5-sample baseline after a few-day gap.
+        """
         sb = get_admin_client()
         since = (on_date - timedelta(days=45)).isoformat()
         rows = (
             sb.table("korea_market")
-              .select("date, foreign_net_buy, institution_net_buy")
+              .select("date, volume, foreign_net_buy, institution_net_buy")
               .eq("ticker", ticker)
               .gte("date", since)
               .lte("date", on_date.isoformat())
@@ -214,18 +261,25 @@ class StockScorer:
         # Latest = max date in the window (rows ordered ascending below).
         rows_sorted = sorted(rows, key=lambda r: r["date"])
         latest = rows_sorted[-1]
-        latest_total = (latest.get("foreign_net_buy") or 0) + (latest.get("institution_net_buy") or 0)
 
-        history = [
-            (r.get("foreign_net_buy") or 0) + (r.get("institution_net_buy") or 0)
-            for r in rows_sorted[:-1]
-        ]
+        # Choose metric: net-buy if any sample has it, else fall back to volume.
+        has_netbuy = any(
+            r.get("foreign_net_buy") is not None or r.get("institution_net_buy") is not None
+            for r in rows_sorted
+        )
+        if has_netbuy:
+            extract = lambda r: (r.get("foreign_net_buy") or 0) + (r.get("institution_net_buy") or 0)
+        else:
+            extract = lambda r: (r.get("volume") or 0)
+
+        latest_value = extract(latest)
+        history = [extract(r) for r in rows_sorted[:-1]]
         if len(history) < 5:
             return NEUTRAL
         mean = sum(history) / len(history)
         variance = sum((v - mean) ** 2 for v in history) / len(history)
         stddev = math.sqrt(variance) or 1.0
-        z = (latest_total - mean) / stddev
+        z = (latest_value - mean) / stddev
         # z = +2 → 0.88, -2 → 0.12. Clip via sigmoid.
         return sigmoid(z)
 
