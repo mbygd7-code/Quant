@@ -87,7 +87,7 @@ class StockScorer:
     # ──────────────────────────────────────────────────────
     def _compute_sub_scores(self, ticker: str, on_date: Date) -> SubScores:
         return SubScores(
-            global_market=self._global_market(on_date),
+            global_market=self._global_market(ticker, on_date),
             sector=self._sector(ticker, on_date),
             related_us_stock=calculate_related_us_score(ticker, on_date),
             news_sentiment=self._news(ticker, on_date),
@@ -96,11 +96,16 @@ class StockScorer:
             risk_penalty=self._risk(ticker, on_date),
         )
 
-    def _global_market(self, on_date: Date) -> float:
-        """Weighted % change of major US indices on the most recent trading
-        day at-or-before `on_date`. The 06:00 KST pipeline scoring 'today'
-        sees yesterday's US close — strict equality returned 0 rows whenever
-        US/KR calendars diverged, collapsing the score to NEUTRAL.
+    def _global_market(self, ticker: str, on_date: Date) -> float:
+        """Combined global signal:
+            (a) Weighted % change of major US indices (NDX/SPX/SOX/VIX/DJI/RUT)
+            (b) Layer-3 macro contribution: ticker-specific β × today's
+                macro factor change (USDKRW, ^TNX, ^VIX, DXY, WTI), pulled
+                from kr_macro_betas. β captures whether this stock benefits
+                from KRW weakness, suffers from rising yields, etc.
+
+        Both signals enter the same sigmoid so the result still maps to
+        [0, 1]. `ticker=""` (legacy callers) bypasses the macro term.
         """
         sb = get_admin_client()
         since = (on_date - timedelta(days=10)).isoformat()
@@ -130,7 +135,67 @@ class StockScorer:
             w = GLOBAL_INDEX_WEIGHTS.get(sym, 0.0)
             weighted += float(chg) * w
             denom += w
-        return sigmoid((weighted / denom) * SUBSCORE_SCALE) if denom else NEUTRAL
+        index_avg = (weighted / denom) if denom else 0.0
+
+        # Layer-3 macro contribution (per-ticker)
+        macro_contribution = self._macro_contribution(ticker, on_date) if ticker else 0.0
+
+        if denom == 0 and macro_contribution == 0.0:
+            return NEUTRAL
+        # Both terms are already in "% change" scale; sum then sigmoid.
+        return sigmoid((index_avg + macro_contribution) * SUBSCORE_SCALE)
+
+    def _macro_contribution(self, ticker: str, on_date: Date) -> float:
+        """Per-ticker macro factor contribution for the global signal.
+
+        Σ β_i × Δfactor_i, capped at ±0.05 (=5%) to keep one runaway
+        macro variable from dominating the entire signal. Ignores betas
+        with R² < 0.05 (statistical noise floor).
+        """
+        sb = get_admin_client()
+        beta_rows = (
+            sb.table("kr_macro_betas")
+              .select("macro_factor, beta, r_squared")
+              .eq("kr_ticker", ticker)
+              .execute()
+              .data
+        ) or []
+        if not beta_rows:
+            return 0.0
+        factors = [r["macro_factor"] for r in beta_rows
+                   if (r.get("r_squared") or 0) >= 0.05]
+        if not factors:
+            return 0.0
+
+        # Latest macro change at-or-before on_date
+        since = (on_date - timedelta(days=10)).isoformat()
+        macro_rows = (
+            sb.table("global_market")
+              .select("date, symbol, change_rate")
+              .gte("date", since).lte("date", on_date.isoformat())
+              .in_("symbol", factors)
+              .not_.is_("change_rate", "null")
+              .order("date", desc=True)
+              .execute()
+              .data
+        ) or []
+        latest_macro: dict[str, float] = {}
+        for r in macro_rows:
+            sym = r["symbol"]
+            if sym not in latest_macro:
+                latest_macro[sym] = float(r["change_rate"])
+
+        contribution = 0.0
+        for r in beta_rows:
+            factor = r["macro_factor"]
+            if (r.get("r_squared") or 0) < 0.05:
+                continue
+            chg = latest_macro.get(factor)
+            if chg is None:
+                continue
+            contribution += float(r["beta"]) * chg
+
+        return max(-0.05, min(0.05, contribution))
 
     def _sector(self, ticker: str, on_date: Date) -> float:
         """Sector signal blending two sources (Layer-2 of mapping system):
