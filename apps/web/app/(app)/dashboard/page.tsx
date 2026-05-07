@@ -41,6 +41,70 @@ export default async function DashboardPage() {
         </p>
       </div>
 
+      {data.brief && (
+        <Card className="border-brand-purple/30 bg-gradient-to-br from-brand-purple/5 via-transparent to-transparent">
+          <CardHeader className="pb-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <CardTitle className="text-base font-heading flex items-center gap-2">
+                <span className="inline-block h-6 w-6 rounded-full bg-gradient-brand" />
+                AI 시장 전략가 브리핑
+              </CardTitle>
+              <span className="text-[10px] text-txt-muted font-mono">{data.brief.model}</span>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm font-medium text-brand-purple">{data.brief.headline}</p>
+            <p className="text-sm leading-relaxed text-txt-primary whitespace-pre-line">
+              {data.brief.body}
+            </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              {data.brief.sector_view && (
+                <div className="rounded-md border border-border bg-bg-secondary/60 p-3">
+                  <div className="text-[11px] uppercase tracking-wider text-txt-muted mb-1">섹터 흐름</div>
+                  <p className="text-sm text-txt-primary">{data.brief.sector_view}</p>
+                </div>
+              )}
+              {data.brief.macro_summary && (
+                <div className="rounded-md border border-border bg-bg-secondary/60 p-3">
+                  <div className="text-[11px] uppercase tracking-wider text-txt-muted mb-1">매크로</div>
+                  <p className="text-sm text-txt-primary">{data.brief.macro_summary}</p>
+                </div>
+              )}
+            </div>
+            {(data.brief.top_picks.length > 0 || data.brief.risk_watch.length > 0) && (
+              <div className="grid gap-3 md:grid-cols-2">
+                {data.brief.top_picks.length > 0 && (
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-status-success mb-2">관심 신호</div>
+                    <ul className="space-y-1.5">
+                      {data.brief.top_picks.map((p, i) => (
+                        <li key={i} className="flex gap-2 text-sm text-txt-primary">
+                          <span className="text-status-success shrink-0">•</span>
+                          <span>{p}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {data.brief.risk_watch.length > 0 && (
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-status-warning mb-2">리스크 워치</div>
+                    <ul className="space-y-1.5">
+                      {data.brief.risk_watch.map((r, i) => (
+                        <li key={i} className="flex gap-2 text-sm text-txt-primary">
+                          <span className="text-status-warning shrink-0">⚠</span>
+                          <span>{r}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <section>
         <h2 className="mb-2 text-xs uppercase tracking-wider text-txt-muted">글로벌 온도</h2>
         <div className="grid gap-3 grid-cols-2 md:grid-cols-4">

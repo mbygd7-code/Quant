@@ -3,11 +3,23 @@ import type { AiScore, GlobalMarket, Stock } from '@/lib/types';
 
 const GLOBAL_SYMBOLS = ['^IXIC', '^GSPC', '^SOX', '^VIX'] as const;
 
+export interface MarketBrief {
+  headline: string;
+  body: string;
+  sector_view: string | null;
+  top_picks: string[];
+  risk_watch: string[];
+  macro_summary: string | null;
+  model: string;
+  created_at: string;
+}
+
 export interface DashboardData {
   date: string;
   global: GlobalMarket[];
   topScores: (AiScore & { stocks: Pick<Stock, 'name' | 'sector'> | null })[];
   sectorBuckets: Array<{ sector: string; counts: Record<string, number>; avgScore: number }>;
+  brief: MarketBrief | null;
 }
 
 async function getLatestAiScoreDate(): Promise<string | null> {
@@ -31,7 +43,7 @@ export async function getDashboardData(): Promise<DashboardData | null> {
   // Fetch a 10-day window per symbol and pick the latest at-or-before `date`.
   const sinceIso = new Date(new Date(date).getTime() - 10 * 86400_000)
     .toISOString().slice(0, 10);
-  const [globalWindowRes, topRes, sectorRes] = await Promise.all([
+  const [globalWindowRes, topRes, sectorRes, briefRes] = await Promise.all([
     sb.from('global_market')
       .select('*')
       .gte('date', sinceIso)
@@ -47,6 +59,12 @@ export async function getDashboardData(): Promise<DashboardData | null> {
       .select('signal, final_score, stocks!inner(sector, is_watchlist)')
       .eq('date', date)
       .eq('stocks.is_watchlist', true),
+    sb.from('market_briefs')
+      .select('headline, body, sector_view, top_picks, risk_watch, macro_summary, model, created_at')
+      .lte('date', date)
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   // Pick latest row per symbol from the windowed result.
@@ -64,6 +82,7 @@ export async function getDashboardData(): Promise<DashboardData | null> {
     global: Array.from(latestPerSymbol.values()),
     topScores: (topRes.data ?? []) as DashboardData['topScores'],
     sectorBuckets,
+    brief: (briefRes.data ?? null) as MarketBrief | null,
   };
 }
 

@@ -300,6 +300,91 @@ async def step_intelligence(target: Date) -> dict:
         log.warning("Commentary step failed (non-fatal): %s", exc)
     metrics["commentary"] = completed
     metrics["commentary_failed"] = failed
+
+    # ── (c) Daily market brief ──
+    try:
+        from cognition.market_brief import MarketBriefEngine
+        existing_brief = (
+            sb.table("market_briefs").select("date")
+              .eq("date", target.isoformat()).limit(1).execute().data
+        )
+        if not existing_brief:
+            since_brief = (target - _td(days=10)).isoformat()
+            global_b = (
+                sb.table("global_market").select("date, symbol, close, change_rate")
+                  .gte("date", since_brief).lte("date", target.isoformat())
+                  .in_("symbol", ["^IXIC", "^GSPC", "^SOX", "^VIX"])
+                  .order("date", desc=True).execute().data
+            ) or []
+            latest_global: dict = {}
+            for r in global_b:
+                latest_global.setdefault(r["symbol"], r)
+            macro_b = (
+                sb.table("global_market").select("date, symbol, change_rate")
+                  .gte("date", since_brief).lte("date", target.isoformat())
+                  .in_("symbol", ["USDKRW", "^TNX", "DXY", "WTI"])
+                  .order("date", desc=True).execute().data
+            ) or []
+            latest_macro: dict[str, float] = {}
+            for r in macro_b:
+                if r["symbol"] not in latest_macro and r.get("change_rate") is not None:
+                    latest_macro[r["symbol"]] = float(r["change_rate"])
+            score_rows_b = (
+                sb.table("ai_scores")
+                  .select("ticker, signal, final_score, stocks(name, sector)")
+                  .eq("date", target.isoformat())
+                  .order("final_score", desc=True).execute().data
+            ) or []
+            buckets_b: dict[str, list[float]] = {}
+            for r in score_rows_b:
+                sec = (r.get("stocks") or {}).get("sector")
+                if sec:
+                    buckets_b.setdefault(sec, []).append(float(r["final_score"]))
+            sectors_b = [{"name": s, "avg_score": sum(v) / len(v)}
+                         for s, v in buckets_b.items()]
+            sectors_b.sort(key=lambda x: -x["avg_score"])
+
+            payload = {
+                "date":         target.isoformat(),
+                "global":       [{"symbol": s, **latest_global[s]} for s in latest_global],
+                "sectors":      sectors_b,
+                "macro":        latest_macro,
+                "top_signals":  [
+                    {"ticker": r["ticker"], "signal": r["signal"],
+                     "final_score": r["final_score"],
+                     "name":   (r.get("stocks") or {}).get("name"),
+                     "sector": (r.get("stocks") or {}).get("sector")}
+                    for r in score_rows_b[:8]
+                ],
+                "risk_signals": [
+                    {"ticker": r["ticker"], "signal": r["signal"],
+                     "final_score": r["final_score"],
+                     "name":   (r.get("stocks") or {}).get("name"),
+                     "sector": (r.get("stocks") or {}).get("sector")}
+                    for r in score_rows_b
+                    if r["signal"] in ("위험", "주의") or r["final_score"] < 0.5
+                ][:6],
+            }
+            brief = await MarketBriefEngine().generate(payload)
+            sb.table("market_briefs").upsert({
+                "date":          target.isoformat(),
+                "headline":      brief.headline,
+                "body":          brief.body,
+                "sector_view":   brief.sector_view,
+                "top_picks":     brief.top_picks,
+                "risk_watch":    brief.risk_watch,
+                "macro_summary": brief.macro_summary,
+                "model":         "claude-haiku-4-5",
+                "cost_estimate": 0.005,
+            }, on_conflict="date").execute()
+            metrics["market_brief"] = "ok"
+            log.info("Market brief generated for %s", target)
+        else:
+            metrics["market_brief"] = "skipped"
+    except Exception as exc:
+        log.warning("Market brief step failed (non-fatal): %s", exc)
+        metrics["market_brief"] = f"failed: {exc}"
+
     return metrics
 
 
@@ -407,7 +492,7 @@ def _summarize_metrics(m: dict) -> dict:
         out["finn_ref"] = {"accepted": r.accepted, "discarded": r.discarded}
     for k in ("sentiment", "scoring_success", "scoring_failed",
               "report_stats", "beta_refresh", "predictions", "commentary",
-              "commentary_failed", "notify"):
+              "commentary_failed", "market_brief", "notify"):
         if k in m:
             out[k] = m[k]
     return out
