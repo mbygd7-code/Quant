@@ -233,13 +233,16 @@ class StockScorer:
         return (weighted / denom) if denom else NEUTRAL
 
     def _fundamental(self, ticker: str, on_date: Date) -> float:
-        """Sector-relative percentile of forwardPE (lower = better) + ROE
-        (higher = better) from kr_fundamentals.
+        """Sector-relative percentile blend of 4 metrics:
+          1. forwardPE     (lower = better)  — kr_fundamentals (yfinance)
+          2. ROE           (higher = better) — kr_fundamentals (yfinance)
+          3. revenue YoY   (higher = better) — kr_financials (DART)
+          4. op_income YoY (higher = better) — kr_financials (DART)
 
-        yfinance .info gives forwardPE + ROE + marketCap for KR tickers
-        reliably (trailingPE/PB are often None). Percentile-rank within the
-        same sector and combine 50/50. NEUTRAL when fewer than 3 sector
-        peers have data (statistical floor) or kr_fundamentals is empty.
+        Each metric is percentile-ranked within the same sector. Final
+        score = mean of available ranks (a ticker missing some metrics
+        still gets fair points from the rest). NEUTRAL when fewer than 3
+        sector peers have any data.
         """
         sector = self._lookup_sector(ticker)
         if sector is None:
@@ -255,8 +258,9 @@ class StockScorer:
         if len(peer_tickers) < 3:
             return NEUTRAL
 
+        # 1) yfinance daily fundamentals (forward_pe, roe)
         since = (on_date - timedelta(days=21)).isoformat()
-        rows = (
+        fund_rows = (
             sb.table("kr_fundamentals")
               .select("date, ticker, forward_pe, roe")
               .gte("date", since)
@@ -266,40 +270,51 @@ class StockScorer:
               .execute()
               .data
         ) or []
-        latest_per: dict[str, dict] = {}
-        for r in rows:
-            if r["ticker"] not in latest_per:
-                latest_per[r["ticker"]] = r
-        if ticker not in latest_per:
-            return NEUTRAL
+        fund_latest: dict[str, dict] = {}
+        for r in fund_rows:
+            fund_latest.setdefault(r["ticker"], r)
 
-        pe_rank: float | None = None
-        roe_rank: float | None = None
-        my = latest_per[ticker]
+        # 2) DART quarterly financials (revenue_yoy, op_income_yoy)
+        fin_rows = (
+            sb.table("kr_financials")
+              .select("ticker, period_end, revenue_yoy, op_income_yoy")
+              .in_("ticker", peer_tickers)
+              .order("period_end", desc=True)
+              .execute()
+              .data
+        ) or []
+        fin_latest: dict[str, dict] = {}
+        for r in fin_rows:
+            fin_latest.setdefault(r["ticker"], r)
 
-        pe_values = sorted(
-            [(r["ticker"], r["forward_pe"]) for r in latest_per.values()
-             if r.get("forward_pe") is not None and float(r["forward_pe"]) > 0],
-            key=lambda x: x[1],
-        )
-        if my.get("forward_pe") is not None and float(my["forward_pe"]) > 0 and len(pe_values) >= 3:
-            for i, (tkr, _) in enumerate(pe_values):
+        ranks: list[float] = []
+        for source, key, lower_better in (
+            (fund_latest, "forward_pe",     True),
+            (fund_latest, "roe",            False),
+            (fin_latest,  "revenue_yoy",    False),
+            (fin_latest,  "op_income_yoy",  False),
+        ):
+            my_row = source.get(ticker)
+            if my_row is None or my_row.get(key) is None:
+                continue
+            my_value = float(my_row[key])
+            if key == "forward_pe" and my_value <= 0:
+                continue                                       # loss-making, meaningless P/E
+            peers_with_data = [
+                (t, float(r[key])) for t, r in source.items()
+                if r.get(key) is not None
+                and (key != "forward_pe" or float(r[key]) > 0)
+            ]
+            if len(peers_with_data) < 3:
+                continue
+            sorted_pairs = sorted(
+                peers_with_data, key=lambda x: x[1], reverse=not lower_better,
+            )
+            for i, (tkr, _) in enumerate(sorted_pairs):
                 if tkr == ticker:
-                    pe_rank = 1.0 - (i / max(len(pe_values) - 1, 1))
+                    ranks.append(1.0 - (i / max(len(sorted_pairs) - 1, 1)))
                     break
 
-        roe_values = sorted(
-            [(r["ticker"], r["roe"]) for r in latest_per.values()
-             if r.get("roe") is not None],
-            key=lambda x: x[1], reverse=True,
-        )
-        if my.get("roe") is not None and len(roe_values) >= 3:
-            for i, (tkr, _) in enumerate(roe_values):
-                if tkr == ticker:
-                    roe_rank = 1.0 - (i / max(len(roe_values) - 1, 1))
-                    break
-
-        ranks = [r for r in (pe_rank, roe_rank) if r is not None]
         if not ranks:
             return NEUTRAL
         return sum(ranks) / len(ranks)
