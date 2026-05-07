@@ -95,15 +95,216 @@ async def step_cognition(target: Date) -> dict:
 
 async def step_signal(target: Date) -> dict:
     """Generate LLM reports for each ai_score, replacing the stub rationale_json."""
-    log.info("[4/5] Signal — LLM reports")
+    log.info("[4/6] Signal — LLM reports")
     from signals.report import generate_batch
     stats = await generate_batch(target)
     log.info("Report batch: %s", stats)
     return {"report_stats": stats}
 
 
+async def step_intelligence(target: Date) -> dict:
+    """Layer-2/3 intelligence outputs:
+       (a) ML score predictions (5-day forecast curve via ScoreRegressor)
+       (b) AI Quant Expert commentary (per-stock Korean note via Claude)
+
+    Both are best-effort and non-fatal — pipeline still reaches Notify
+    even if the ML retrain fails or Anthropic is throttling.
+    """
+    log.info("[5/6] Intelligence — ML predictions + AI commentary")
+    from datetime import timedelta as _td
+    from db.supabase_client import get_admin_client
+    sb = get_admin_client()
+    watchlist = (
+        sb.table("stocks").select("ticker").eq("is_watchlist", True).execute().data
+    ) or []
+    tickers = [r["ticker"] for r in watchlist]
+
+    metrics: dict = {}
+
+    # ── (0) Sunday-only: refresh sector/macro ETF betas. They drift
+    # slowly; daily recompute is wasted work. KST-Sunday is target.weekday()==6.
+    if target.weekday() == 6:
+        log.info("Sunday refresh — recomputing sector ETF + macro betas")
+        try:
+            from scripts.backfill_sector_etfs import main as etfs_main
+            from scripts.compute_sector_betas import main as sector_main
+            from scripts.backfill_macro_factors import main as macro_main
+            from scripts.compute_macro_betas import main as macrobeta_main
+            etfs_main(days=90)
+            sector_main(window=60)
+            macro_main(days=90)
+            macrobeta_main(window=60)
+            metrics["beta_refresh"] = "ok"
+        except Exception as exc:
+            log.warning("Beta refresh failed (non-fatal): %s", exc)
+            metrics["beta_refresh"] = f"failed: {exc}"
+
+    # ── (a) ML score predictions ──
+    pred_rows = 0
+    try:
+        from signals.score_regressor import (
+            InsufficientDataError, ScoreRegressor,
+        )
+        reg = ScoreRegressor()
+        train_end = target - _td(days=1)
+        train_start = train_end - _td(days=60)
+        train_info = reg.train(train_start, train_end)
+        log.info("ScoreRegressor: %s", train_info)
+        upserts: list[dict] = []
+        for ticker in tickers:
+            preds = reg.predict_horizon(ticker, target, horizon_days=5)
+            for p in preds:
+                upserts.append({
+                    "date":            p.date.isoformat(),
+                    "ticker":          p.ticker,
+                    "horizon_day":     p.horizon_day,
+                    "target_date":     p.target_date.isoformat(),
+                    "predicted_score": p.predicted_score,
+                    "lower_95":        p.lower_95,
+                    "upper_95":        p.upper_95,
+                    "model_version":   p.model_version,
+                })
+        if upserts:
+            sb.table("score_predictions").upsert(
+                upserts, on_conflict="date,ticker,horizon_day",
+            ).execute()
+            pred_rows = len(upserts)
+        log.info("score_predictions upserted: %d", pred_rows)
+    except InsufficientDataError as exc:
+        log.warning("ScoreRegressor needs more history: %s", exc)
+    except Exception as exc:
+        log.warning("ML predictions step failed (non-fatal): %s", exc)
+    metrics["predictions"] = pred_rows
+
+    # ── (b) AI commentary (Haiku 4-5) ──
+    completed = 0
+    failed = 0
+    try:
+        import asyncio as _asyncio
+        from cognition.commentary import CommentaryEngine
+        engine = CommentaryEngine()
+
+        # Pre-fetch context (scores + quote + fundamental + news)
+        score_rows = (
+            sb.table("ai_scores").select("*, stocks(name, sector)")
+              .eq("date", target.isoformat()).execute().data
+        ) or []
+        existing = {
+            r["ticker"] for r in (
+                sb.table("ai_commentary").select("ticker")
+                  .eq("date", target.isoformat()).execute().data or []
+            )
+        }
+        todo = [r for r in score_rows if r["ticker"] not in existing]
+        if not todo:
+            log.info("ai_commentary already complete for %s", target)
+            metrics["commentary"] = 0
+            return metrics
+
+        quote_rows = (
+            sb.table("korea_market").select("ticker, close, change_rate, volume")
+              .eq("date", target.isoformat())
+              .in_("ticker", [r["ticker"] for r in todo])
+              .execute().data
+        ) or []
+        quote_by_ticker = {r["ticker"]: r for r in quote_rows}
+
+        fund_rows = (
+            sb.table("kr_financials")
+              .select("ticker, revenue_yoy, op_income_yoy")
+              .in_("ticker", [r["ticker"] for r in todo])
+              .order("period_end", desc=True).execute().data
+        ) or []
+        fund_by_ticker: dict = {}
+        for r in fund_rows:
+            fund_by_ticker.setdefault(r["ticker"], r)
+        fpe_rows = (
+            sb.table("kr_fundamentals").select("ticker, forward_pe, roe")
+              .in_("ticker", [r["ticker"] for r in todo])
+              .order("date", desc=True).execute().data
+        ) or []
+        fpe_by_ticker: dict = {}
+        for r in fpe_rows:
+            fpe_by_ticker.setdefault(r["ticker"], r)
+
+        since3 = (target - _td(days=3)).isoformat()
+        news_rows = (
+            sb.table("news_items").select("title, related_symbols")
+              .gte("date", since3).lte("date", target.isoformat())
+              .not_.is_("title", "null").execute().data
+        ) or []
+        news_by_ticker: dict[str, list[str]] = {}
+        for r in news_rows:
+            for sym in (r.get("related_symbols") or []):
+                lst = news_by_ticker.setdefault(sym, [])
+                if len(lst) < 5:
+                    lst.append(r["title"])
+
+        sem = _asyncio.Semaphore(4)
+
+        async def process(score_row: dict) -> None:
+            nonlocal completed, failed
+            ticker = score_row["ticker"]
+            meta = score_row.get("stocks") or {}
+            sub = {
+                "global_market":     score_row.get("global_market_score"),
+                "sector":            score_row.get("sector_score"),
+                "related_us_stock":  score_row.get("related_us_stock_score"),
+                "news_sentiment":    score_row.get("news_sentiment_score"),
+                "fundamental":       score_row.get("fundamental_score"),
+                "volume_flow":       score_row.get("volume_flow_score"),
+                "risk_penalty":      score_row.get("risk_penalty"),
+            }
+            fund_data: dict = {}
+            if ticker in fund_by_ticker:
+                fund_data.update(fund_by_ticker[ticker])
+            if ticker in fpe_by_ticker:
+                fund_data["forward_pe"] = fpe_by_ticker[ticker].get("forward_pe")
+                fund_data["roe"] = fpe_by_ticker[ticker].get("roe")
+            payload = {
+                "ticker": ticker, "name": meta.get("name"),
+                "sector": meta.get("sector"),
+                "score": {
+                    "signal":      score_row.get("signal"),
+                    "final_score": score_row.get("final_score"),
+                    "sub_scores":  sub,
+                },
+                "quote":       quote_by_ticker.get(ticker),
+                "fundamental": fund_data,
+                "recent_news": news_by_ticker.get(ticker, []),
+            }
+            async with sem:
+                try:
+                    c = await engine.generate(payload)
+                except Exception as e:
+                    log.warning("commentary[%s] failed: %s", ticker, e)
+                    failed += 1
+                    return
+                sb.table("ai_commentary").upsert({
+                    "date":          target.isoformat(),
+                    "ticker":        ticker,
+                    "headline":      c.headline,
+                    "body":          c.body,
+                    "short_term":    c.short_term,
+                    "mid_term":      c.mid_term,
+                    "catalysts":     c.catalysts,
+                    "risks":         c.risks,
+                    "model":         "claude-haiku-4-5",
+                    "cost_estimate": 0.005,
+                }, on_conflict="date,ticker").execute()
+                completed += 1
+
+        await _asyncio.gather(*(process(r) for r in todo))
+        log.info("ai_commentary: completed=%d failed=%d", completed, failed)
+    except Exception as exc:
+        log.warning("Commentary step failed (non-fatal): %s", exc)
+    metrics["commentary"] = completed
+    metrics["commentary_failed"] = failed
+    return metrics
+
+
 async def step_notify(target: Date) -> dict:
-    log.info("[5/5] Notify — telegram dispatcher + preview upload")
+    log.info("[6/6] Notify — telegram dispatcher + preview upload")
     from notifier.dispatcher import NotificationDispatcher
     from signals.preview_report import upload_preview
 
@@ -173,10 +374,16 @@ async def _run_once_async(target: Date) -> int:
         log.exception("Step 4 failed: %s", exc)
 
     try:
+        intel = await step_intelligence(target)
+        metrics.update(intel)
+    except Exception as exc:
+        log.exception("Step 5 (intelligence) failed (non-fatal): %s", exc)
+
+    try:
         ntf = await step_notify(target)
         metrics.update(ntf)
     except Exception as exc:
-        log.exception("Step 5 failed: %s", exc)
+        log.exception("Step 6 failed: %s", exc)
 
     log.info("=== Pipeline finished | metrics=%s", _summarize_metrics(metrics))
     return 0
@@ -199,7 +406,8 @@ def _summarize_metrics(m: dict) -> dict:
         r = m["finn_report"]
         out["finn_ref"] = {"accepted": r.accepted, "discarded": r.discarded}
     for k in ("sentiment", "scoring_success", "scoring_failed",
-              "report_stats", "notify"):
+              "report_stats", "beta_refresh", "predictions", "commentary",
+              "commentary_failed", "notify"):
         if k in m:
             out[k] = m[k]
     return out
