@@ -87,28 +87,31 @@ class FinnhubCollector(BaseCollector):
 
         raw: dict[str, Any] = {"date": target.isoformat(), "quotes": [], "news": [], "fx": []}
 
-        # 1) Equities + indices via /quote
+        # 1) Equities via Finnhub /quote
         equity_tasks = [
             self._fetch_quote(client, sem, sym, "equity", target, raw, result)
             for sym in EQUITIES
         ]
-        index_tasks = [
-            self._fetch_quote(client, sem, sym, "index", target, raw, result)
-            for sym in INDICES
-        ]
-        # 2) FX rates
+        # 2) FX rates via Finnhub
         fx_tasks = [
             self._fetch_fx(client, sem, finnhub_sym, our_sym, target, raw, result)
             for finnhub_sym, our_sym in FX_PAIRS
         ]
-        # 3) News (per-equity, last 24h)
+        # 3) News (per-equity, last 24h) via Finnhub
         news_window_start = target - timedelta(days=1)
         news_tasks = [
             self._fetch_news(client, sem, sym, news_window_start, target, raw, result)
             for sym in EQUITIES
         ]
 
-        await asyncio.gather(*equity_tasks, *index_tasks, *fx_tasks, *news_tasks)
+        await asyncio.gather(*equity_tasks, *fx_tasks, *news_tasks)
+
+        # 4) Indices via yfinance — Finnhub free tier doesn't expose ^IXIC etc.
+        # Run after Finnhub gather so we don't compete for asyncio thread budget.
+        try:
+            await asyncio.to_thread(self._fetch_indices_yfinance, target, raw, result)
+        except Exception as exc:
+            log.warning("[finnhub] yfinance indices fetch failed: %s", exc)
 
         # Backup raw
         try:
@@ -197,6 +200,77 @@ class FinnhubCollector(BaseCollector):
                         self._record_failure(result, f"{symbol}/news#{item.get('id')}", exc)
             except Exception as exc:
                 self._record_failure(result, f"{symbol}/news", exc)
+
+    # ──────────────────────────────────────────────────────
+    # yfinance indices — Finnhub free tier doesn't quote ^IXIC etc.
+    # Runs in a worker thread (sync yfinance call).
+    # ──────────────────────────────────────────────────────
+    def _fetch_indices_yfinance(
+        self, target: Date, raw: dict, result: CollectorResult,
+    ) -> None:
+        import yfinance as yf
+
+        # Pull a small window so we have a previous close even after long weekends.
+        start = (target - timedelta(days=10)).isoformat()
+        end = (target + timedelta(days=2)).isoformat()      # exclusive
+
+        df = yf.download(
+            tickers=INDICES,
+            start=start, end=end,
+            group_by="ticker", progress=False, threads=True, auto_adjust=False,
+        )
+        if df is None or df.empty:
+            log.warning("[finnhub] yfinance returned empty for indices")
+            for sym in INDICES:
+                self._record_failure(result, sym, RuntimeError("yfinance empty"))
+            return
+
+        for sym in INDICES:
+            try:
+                # Multi-symbol → MultiIndex columns; single-symbol → flat.
+                ticker_df = df[sym] if len(INDICES) > 1 else df
+                ticker_df = ticker_df.dropna(subset=["Close"])
+                if ticker_df.empty:
+                    self._record_failure(result, sym, RuntimeError("no close in window"))
+                    continue
+
+                # Find row at-or-before target (Yahoo can lag a day on indices).
+                target_mask = ticker_df.index.date == target
+                if target_mask.any():
+                    target_row = ticker_df[target_mask].iloc[0]
+                else:
+                    candidates = ticker_df[ticker_df.index.date <= target]
+                    if candidates.empty:
+                        self._record_failure(result, sym, RuntimeError("no row at-or-before target"))
+                        continue
+                    target_row = candidates.iloc[-1]
+
+                target_idx = ticker_df.index.get_loc(target_row.name)
+                prev_close = (
+                    float(ticker_df["Close"].iloc[target_idx - 1])
+                    if target_idx > 0 else None
+                )
+                close = float(target_row["Close"])
+                change_rate = (close - prev_close) / prev_close if prev_close else None
+
+                quote = GlobalQuote(
+                    date=target,
+                    symbol=sym,
+                    close=close,
+                    change_rate=change_rate,
+                    volume=None,
+                    asset_class="index",                          # type: ignore[arg-type]
+                )
+                result.items.append(quote)
+                raw["quotes"].append({
+                    "symbol": sym, "asset_class": "index",
+                    "data": {"c": close, "dp": (change_rate or 0) * 100, "source": "yfinance"},
+                })
+            except ValidationError as exc:
+                self._record_failure(result, sym, exc)
+            except Exception as exc:
+                log.warning("[yfinance] %s parse failed: %s", sym, exc)
+                self._record_failure(result, sym, exc)
 
     # ──────────────────────────────────────────────────────
     # Sync SDK wrappers (run via asyncio.to_thread)
