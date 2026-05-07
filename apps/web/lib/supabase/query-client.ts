@@ -20,6 +20,13 @@ function getAdminClient(): SupabaseClient {
   }
   _adminSingleton = createSupabaseClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      // Bypass Next.js fetch cache so Server Components always read fresh
+      // data from Supabase. Without this, scorer reruns or pipeline updates
+      // don't show up until the next dev-server restart.
+      fetch: (input, init) =>
+        fetch(input as RequestInfo, { ...init, cache: 'no-store' }),
+    },
   });
   return _adminSingleton;
 }

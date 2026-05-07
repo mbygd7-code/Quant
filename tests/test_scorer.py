@@ -138,7 +138,8 @@ class TestNewsSubScore:
 
     def test_average_of_sentiments(self, monkeypatch):
         sb = MagicMock()
-        sb.table().select().eq().contains().not_.is_().execute.return_value.data = [
+        # Scorer now uses a 3-day window (.gte().lte()) instead of strict .eq()
+        sb.table().select().gte().lte().contains().not_.is_().execute.return_value.data = [
             {"sentiment_score": 0.8}, {"sentiment_score": 0.6}, {"sentiment_score": 0.7},
         ]
         monkeypatch.setattr("cognition.scorer.get_admin_client", lambda: sb)

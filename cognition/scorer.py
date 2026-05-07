@@ -97,24 +97,37 @@ class StockScorer:
         )
 
     def _global_market(self, on_date: Date) -> float:
+        """Weighted % change of major US indices on the most recent trading
+        day at-or-before `on_date`. The 06:00 KST pipeline scoring 'today'
+        sees yesterday's US close — strict equality returned 0 rows whenever
+        US/KR calendars diverged, collapsing the score to NEUTRAL.
+        """
         sb = get_admin_client()
+        since = (on_date - timedelta(days=10)).isoformat()
         rows = (
             sb.table("global_market")
-              .select("symbol, change_rate")
-              .eq("date", on_date.isoformat())
+              .select("date, symbol, change_rate")
+              .gte("date", since)
+              .lte("date", on_date.isoformat())
               .in_("symbol", GLOBAL_INDICES)
+              .order("date", desc=True)
               .execute()
               .data
         ) or []
-        if not rows:
+        # Pick the latest row per index symbol from the window.
+        latest_per: dict[str, dict] = {}
+        for r in rows:
+            if r["symbol"] not in latest_per:
+                latest_per[r["symbol"]] = r
+        if not latest_per:
             return NEUTRAL
         weighted = 0.0
         denom = 0.0
-        for row in rows:
+        for sym, row in latest_per.items():
             chg = row.get("change_rate")
             if chg is None:
                 continue
-            w = GLOBAL_INDEX_WEIGHTS.get(row["symbol"], 0.0)
+            w = GLOBAL_INDEX_WEIGHTS.get(sym, 0.0)
             weighted += float(chg) * w
             denom += w
         return sigmoid((weighted / denom) * SUBSCORE_SCALE) if denom else NEUTRAL
@@ -127,26 +140,45 @@ class StockScorer:
         if not proxies:
             return NEUTRAL
         sb = get_admin_client()
+        since = (on_date - timedelta(days=10)).isoformat()
         rows = (
             sb.table("global_market")
-              .select("symbol, change_rate")
-              .eq("date", on_date.isoformat())
+              .select("date, symbol, change_rate")
+              .gte("date", since)
+              .lte("date", on_date.isoformat())
               .in_("symbol", proxies)
+              .order("date", desc=True)
               .execute()
               .data
         ) or []
-        if not rows:
+        # Latest row per proxy symbol.
+        latest_per: dict[str, dict] = {}
+        for r in rows:
+            if r["symbol"] not in latest_per:
+                latest_per[r["symbol"]] = r
+        if not latest_per:
             return NEUTRAL
-        avg = sum(float(r["change_rate"]) for r in rows if r.get("change_rate") is not None) / len(rows)
+        changes = [
+            float(r["change_rate"]) for r in latest_per.values()
+            if r.get("change_rate") is not None
+        ]
+        if not changes:
+            return NEUTRAL
+        avg = sum(changes) / len(changes)
         return sigmoid(avg * SUBSCORE_SCALE)
 
     def _news(self, ticker: str, on_date: Date) -> float:
-        """Mean sentiment of news_items mentioning `ticker` on `on_date`."""
+        """Mean sentiment of news_items mentioning `ticker` within the last 3
+        days at-or-before `on_date`. Strict equality dropped to NEUTRAL on any
+        day with no news collection.
+        """
         sb = get_admin_client()
+        since = (on_date - timedelta(days=3)).isoformat()
         rows = (
             sb.table("news_items")
-              .select("sentiment_score, related_symbols")
-              .eq("date", on_date.isoformat())
+              .select("sentiment_score, related_symbols, date")
+              .gte("date", since)
+              .lte("date", on_date.isoformat())
               .contains("related_symbols", [ticker])
               .not_.is_("sentiment_score", "null")
               .execute()
@@ -162,10 +194,12 @@ class StockScorer:
         return NEUTRAL
 
     def _volume_flow(self, ticker: str, on_date: Date) -> float:
-        """Foreign + institution net buy normalized by 20-day rolling stddev."""
+        """Foreign + institution net buy on the most recent trading day at-or-
+        before `on_date`, normalized by 20-day rolling stddev. Lookback window
+        is widened to 45 days so the 20-sample baseline holds even after a
+        few-day gap (holiday, missed collection)."""
         sb = get_admin_client()
-        # Look back 20 trading days for stddev baseline.
-        since = (on_date - timedelta(days=30)).isoformat()
+        since = (on_date - timedelta(days=45)).isoformat()
         rows = (
             sb.table("korea_market")
               .select("date, foreign_net_buy, institution_net_buy")
@@ -177,14 +211,14 @@ class StockScorer:
         ) or []
         if not rows:
             return NEUTRAL
-        latest = next((r for r in rows if r["date"] == on_date.isoformat()), None)
-        if not latest:
-            return NEUTRAL
+        # Latest = max date in the window (rows ordered ascending below).
+        rows_sorted = sorted(rows, key=lambda r: r["date"])
+        latest = rows_sorted[-1]
         latest_total = (latest.get("foreign_net_buy") or 0) + (latest.get("institution_net_buy") or 0)
 
         history = [
             (r.get("foreign_net_buy") or 0) + (r.get("institution_net_buy") or 0)
-            for r in rows if r["date"] != on_date.isoformat()
+            for r in rows_sorted[:-1]
         ]
         if len(history) < 5:
             return NEUTRAL
@@ -196,10 +230,10 @@ class StockScorer:
         return sigmoid(z)
 
     def _risk(self, ticker: str, on_date: Date) -> float:
-        """Higher = more risk. Combines (a) recent change_rate magnitude
-        and (b) 5-day rolling stddev of close. Returns [0, 1]."""
+        """Higher = more risk. Combines (a) most recent change_rate magnitude
+        within the window and (b) 5-day rolling stddev of close. Returns [0, 1]."""
         sb = get_admin_client()
-        since = (on_date - timedelta(days=14)).isoformat()
+        since = (on_date - timedelta(days=21)).isoformat()
         rows = (
             sb.table("korea_market")
               .select("date, close, change_rate")

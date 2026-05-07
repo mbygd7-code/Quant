@@ -86,15 +86,30 @@ def _fetch_mappings(kr_ticker: str) -> list[dict]:
 
 
 def _fetch_us_changes(symbols: list[str], on_date: Date) -> dict[str, float]:
+    """Latest change_rate per US symbol within a 10-day window at-or-before
+    `on_date`. The 06:00 KST pipeline scoring 'today' has US-side data only
+    up to yesterday; strict equality returned 0 rows on every KR/US calendar
+    mismatch."""
     if not symbols:
         return {}
+    from datetime import timedelta
     sb = get_admin_client()
+    since = (on_date - timedelta(days=10)).isoformat()
     rows = (
         sb.table("global_market")
-          .select("symbol, change_rate")
-          .eq("date", on_date.isoformat())
+          .select("date, symbol, change_rate")
+          .gte("date", since)
+          .lte("date", on_date.isoformat())
           .in_("symbol", symbols)
+          .order("date", desc=True)
           .execute()
           .data
     ) or []
-    return {r["symbol"]: float(r["change_rate"]) for r in rows if r.get("change_rate") is not None}
+    out: dict[str, float] = {}
+    for r in rows:
+        sym = r["symbol"]
+        if sym in out:
+            continue                                       # already have latest
+        if r.get("change_rate") is not None:
+            out[sym] = float(r["change_rate"])
+    return out
