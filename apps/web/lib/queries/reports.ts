@@ -61,17 +61,31 @@ export interface ReportByDateData {
 
 export async function getReportByDate(date: string): Promise<ReportByDateData | null> {
   const sb = await getQueryClient();
-  const [globalRes, scoresRes] = await Promise.all([
-    sb.from('global_market').select('*').eq('date', date),
+  // Indices may have a different latest date than KR ai_scores (US holiday,
+  // time-zone offset). Fetch a 10-day window per symbol up to `date` and
+  // pick the most recent at-or-before per symbol.
+  const sinceIso = new Date(new Date(date).getTime() - 10 * 86400_000)
+    .toISOString().slice(0, 10);
+  const [globalWindowRes, scoresRes] = await Promise.all([
+    sb.from('global_market')
+      .select('*')
+      .gte('date', sinceIso)
+      .lte('date', date)
+      .order('date', { ascending: false }),
     sb.from('ai_scores')
       .select('*, stocks(name, sector)')
       .eq('date', date)
       .order('final_score', { ascending: false }),
   ]);
   if (!scoresRes.data || scoresRes.data.length === 0) return null;
+
+  const latestPerSymbol = new Map<string, GlobalMarket>();
+  for (const r of (globalWindowRes.data ?? []) as GlobalMarket[]) {
+    if (!latestPerSymbol.has(r.symbol)) latestPerSymbol.set(r.symbol, r);
+  }
   return {
     date,
-    global: (globalRes.data ?? []) as GlobalMarket[],
+    global: Array.from(latestPerSymbol.values()),
     scores: scoresRes.data as ReportByDateData['scores'],
   };
 }

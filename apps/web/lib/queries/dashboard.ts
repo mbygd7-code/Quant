@@ -26,11 +26,18 @@ export async function getDashboardData(): Promise<DashboardData | null> {
   if (!date) return null;
 
   const sb = await getQueryClient();
-  const [globalRes, topRes, sectorRes] = await Promise.all([
+  // US indices have calendar mismatch with KR ai_scores (US holiday vs KR
+  // trading day, time-zone offset) — strict equality often returns 0 rows.
+  // Fetch a 10-day window per symbol and pick the latest at-or-before `date`.
+  const sinceIso = new Date(new Date(date).getTime() - 10 * 86400_000)
+    .toISOString().slice(0, 10);
+  const [globalWindowRes, topRes, sectorRes] = await Promise.all([
     sb.from('global_market')
       .select('*')
-      .eq('date', date)
-      .in('symbol', GLOBAL_SYMBOLS as unknown as string[]),
+      .gte('date', sinceIso)
+      .lte('date', date)
+      .in('symbol', GLOBAL_SYMBOLS as unknown as string[])
+      .order('date', { ascending: false }),
     sb.from('ai_scores')
       .select('*, stocks(name, sector)')
       .eq('date', date)
@@ -42,13 +49,19 @@ export async function getDashboardData(): Promise<DashboardData | null> {
       .eq('stocks.is_watchlist', true),
   ]);
 
+  // Pick latest row per symbol from the windowed result.
+  const latestPerSymbol = new Map<string, GlobalMarket>();
+  for (const r of (globalWindowRes.data ?? []) as GlobalMarket[]) {
+    if (!latestPerSymbol.has(r.symbol)) latestPerSymbol.set(r.symbol, r);
+  }
+
   const sectorBuckets = aggregateSectors(
     (sectorRes.data ?? []) as unknown as SectorJoinRow[],
   );
 
   return {
     date,
-    global: (globalRes.data ?? []) as GlobalMarket[],
+    global: Array.from(latestPerSymbol.values()),
     topScores: (topRes.data ?? []) as DashboardData['topScores'],
     sectorBuckets,
   };
