@@ -90,6 +90,17 @@ export async function getReportByDate(date: string): Promise<ReportByDateData | 
   };
 }
 
+export interface ExpertCommentary {
+  headline: string;
+  body: string;
+  short_term: string | null;
+  mid_term: string | null;
+  catalysts: string[];
+  risks: string[];
+  model: string;
+  created_at: string;
+}
+
 export interface StockDetailData {
   date: string;
   ticker: string;
@@ -98,11 +109,12 @@ export interface StockDetailData {
   quote: KoreaQuote | null;
   scoreHistory: { date: string; final_score: number; signal: Signal }[];
   ragChunks: RagChunk[];
+  commentary: ExpertCommentary | null;
 }
 
 export async function getStockDetail(date: string, ticker: string): Promise<StockDetailData | null> {
   const sb = await getQueryClient();
-  const [stockRes, scoreRes, quoteRes, historyRes] = await Promise.all([
+  const [stockRes, scoreRes, quoteRes, historyRes, commentaryRes] = await Promise.all([
     sb.from('stocks').select('*').eq('ticker', ticker).maybeSingle(),
     sb.from('ai_scores').select('*').eq('date', date).eq('ticker', ticker).maybeSingle(),
     sb.from('korea_market').select('*').eq('date', date).eq('ticker', ticker).maybeSingle(),
@@ -111,6 +123,13 @@ export async function getStockDetail(date: string, ticker: string): Promise<Stoc
       .eq('ticker', ticker)
       .order('date', { ascending: false })
       .limit(30),
+    sb.from('ai_commentary')
+      .select('headline, body, short_term, mid_term, catalysts, risks, model, created_at')
+      .eq('ticker', ticker)
+      .lte('date', date)
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   if (!stockRes.data || !scoreRes.data) return null;
@@ -132,5 +151,6 @@ export async function getStockDetail(date: string, ticker: string): Promise<Stoc
     quote: (quoteRes.data ?? null) as KoreaQuote | null,
     scoreHistory: (historyRes.data ?? []).reverse() as StockDetailData['scoreHistory'],
     ragChunks: (chunks ?? []) as RagChunk[],
+    commentary: (commentaryRes.data ?? null) as ExpertCommentary | null,
   };
 }

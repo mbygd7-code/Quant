@@ -133,39 +133,83 @@ class StockScorer:
         return sigmoid((weighted / denom) * SUBSCORE_SCALE) if denom else NEUTRAL
 
     def _sector(self, ticker: str, on_date: Date) -> float:
+        """Sector signal blending two sources (Layer-2 of mapping system):
+          (1) SECTOR_PROXIES — average change_rate of US peer-stocks
+          (2) Sector ETF — β-weighted change_rate of best-fitting ETF
+              (kr_sector_betas, computed via 60-day rolling OLS)
+
+        ETF β captures sector-wide flows that individual peer-stocks miss
+        (e.g., a SOXX rally on China-easing news lifts every KR semi
+        even when NVDA is flat). When both signals are available, blend
+        them 50/50; otherwise fall back to whichever is present.
+        """
         sector = self._lookup_sector(ticker)
         if sector is None:
             return NEUTRAL
-        proxies = SECTOR_PROXIES.get(sector, [])
-        if not proxies:
-            return NEUTRAL
         sb = get_admin_client()
         since = (on_date - timedelta(days=10)).isoformat()
-        rows = (
-            sb.table("global_market")
-              .select("date, symbol, change_rate")
-              .gte("date", since)
-              .lte("date", on_date.isoformat())
-              .in_("symbol", proxies)
-              .order("date", desc=True)
+
+        # ── (1) US peer-stock proxies ──────────────────────────
+        proxies = SECTOR_PROXIES.get(sector, [])
+        proxy_signal: float | None = None
+        if proxies:
+            rows = (
+                sb.table("global_market")
+                  .select("date, symbol, change_rate")
+                  .gte("date", since)
+                  .lte("date", on_date.isoformat())
+                  .in_("symbol", proxies)
+                  .order("date", desc=True)
+                  .execute()
+                  .data
+            ) or []
+            latest_per: dict[str, dict] = {}
+            for r in rows:
+                latest_per.setdefault(r["symbol"], r)
+            changes = [
+                float(r["change_rate"]) for r in latest_per.values()
+                if r.get("change_rate") is not None
+            ]
+            if changes:
+                avg = sum(changes) / len(changes)
+                proxy_signal = sigmoid(avg * SUBSCORE_SCALE)
+
+        # ── (2) Sector ETF β-weighted prediction ───────────────
+        etf_signal: float | None = None
+        beta_rows = (
+            sb.table("kr_sector_betas")
+              .select("etf_symbol, beta, r_squared")
+              .eq("kr_ticker", ticker)
+              .order("r_squared", desc=True)
+              .limit(1)
               .execute()
               .data
         ) or []
-        # Latest row per proxy symbol.
-        latest_per: dict[str, dict] = {}
-        for r in rows:
-            if r["symbol"] not in latest_per:
-                latest_per[r["symbol"]] = r
-        if not latest_per:
+        if beta_rows and beta_rows[0].get("r_squared") is not None and beta_rows[0]["r_squared"] >= 0.05:
+            best = beta_rows[0]
+            etf_sym = best["etf_symbol"]
+            etf_recent = (
+                sb.table("global_market")
+                  .select("date, change_rate")
+                  .gte("date", since)
+                  .lte("date", on_date.isoformat())
+                  .eq("symbol", etf_sym)
+                  .order("date", desc=True)
+                  .limit(1)
+                  .execute()
+                  .data
+            ) or []
+            if etf_recent and etf_recent[0].get("change_rate") is not None:
+                etf_change = float(etf_recent[0]["change_rate"])
+                # predicted KR return = β × ETF return
+                predicted = float(best["beta"]) * etf_change
+                etf_signal = sigmoid(predicted * SUBSCORE_SCALE)
+
+        # ── Blend ───────────────────────────────────────────────
+        signals = [s for s in (proxy_signal, etf_signal) if s is not None]
+        if not signals:
             return NEUTRAL
-        changes = [
-            float(r["change_rate"]) for r in latest_per.values()
-            if r.get("change_rate") is not None
-        ]
-        if not changes:
-            return NEUTRAL
-        avg = sum(changes) / len(changes)
-        return sigmoid(avg * SUBSCORE_SCALE)
+        return sum(signals) / len(signals)
 
     def _news(self, ticker: str, on_date: Date) -> float:
         """Mean news sentiment over the last 3 days at-or-before `on_date`.
