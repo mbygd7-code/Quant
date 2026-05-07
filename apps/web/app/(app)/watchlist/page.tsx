@@ -10,6 +10,7 @@ import { getWatchlistForUser } from '@/lib/queries/watchlist';
 import { ROLE_WATCHLIST_LIMIT, SIGNAL_ORDER, type Role, type Signal } from '@/lib/types';
 import { WatchlistTable } from '@/components/watchlist/watchlist-table';
 import { AddStockDialog } from '@/components/watchlist/add-stock-dialog';
+import { AdminAddStockDialog } from '@/components/watchlist/admin-add-stock-dialog';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,7 +60,14 @@ export default async function WatchlistPage() {
             <Badge variant="outline" className="ml-1 align-middle">{role}</Badge>
           </div>
         </div>
-        {role !== 'admin' && (
+        {role === 'admin' ? (
+          <AdminAddStockDialog>
+            <Button className="bg-gradient-brand text-white hover:opacity-90">
+              <Plus className="h-4 w-4 mr-1" />
+              종목 추가
+            </Button>
+          </AdminAddStockDialog>
+        ) : (
           <AddStockDialog currentCount={sorted.length} limit={limit}>
             <Button className="bg-gradient-brand text-white hover:opacity-90">
               <Plus className="h-4 w-4 mr-1" />
@@ -78,7 +86,7 @@ export default async function WatchlistPage() {
           </CardContent>
         </Card>
       ) : (
-        <WatchlistTable rows={sorted} date={linkDate} />
+        <WatchlistTable rows={sorted} date={linkDate} role={role} />
       )}
 
       <p className="text-xs text-txt-muted">

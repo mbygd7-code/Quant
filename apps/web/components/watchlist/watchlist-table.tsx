@@ -1,7 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import {
   Table,
@@ -13,18 +16,38 @@ import {
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { SignalBadge } from '@/components/signals/signal-badge';
 import { changeColor, formatPercent, formatPrice, formatScore } from '@/lib/format';
 import type { WatchlistRow } from '@/lib/queries/watchlist';
+import {
+  adminRemoveFromWatchlist,
+  removeStockFromWatchlist,
+} from '@/app/actions/watchlist';
+import type { Role } from '@/lib/types';
 
 interface Props {
   rows: WatchlistRow[];
   date: string;
+  role: Role;
 }
 
-export function WatchlistTable({ rows, date }: Props) {
+export function WatchlistTable({ rows, date, role }: Props) {
+  const router = useRouter();
   const [query, setQuery] = useState('');
   const [sector, setSector] = useState<string>('all');
+  const [confirmRemove, setConfirmRemove] = useState<WatchlistRow | null>(null);
+  const [pending, startTransition] = useTransition();
+  const canEdit = role === 'admin' || role === 'beta' || role === 'user';
+  const isAdmin = role === 'admin';
 
   const sectors = useMemo(() => {
     const set = new Set<string>();
@@ -72,12 +95,13 @@ export function WatchlistTable({ rows, date }: Props) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[28%]">종목</TableHead>
-              <TableHead className="w-[12%]">섹터</TableHead>
-              <TableHead className="w-[14%]">신호</TableHead>
-              <TableHead className="w-[10%] text-right">점수</TableHead>
-              <TableHead className="w-[18%] text-right">종가 / 등락</TableHead>
-              <TableHead className="w-[18%] text-right">상세</TableHead>
+              <TableHead className="w-[26%]">종목</TableHead>
+              <TableHead className="w-[10%]">섹터</TableHead>
+              <TableHead className="w-[12%]">신호</TableHead>
+              <TableHead className="w-[8%] text-right">점수</TableHead>
+              <TableHead className="w-[16%] text-right">종가 / 등락</TableHead>
+              <TableHead className="w-[14%] text-right">상세</TableHead>
+              {canEdit && <TableHead className="w-[8%] text-right">액션</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -110,11 +134,67 @@ export function WatchlistTable({ rows, date }: Props) {
                     <span className="text-xs text-txt-muted">—</span>
                   )}
                 </TableCell>
+                {canEdit && (
+                  <TableCell className="text-right">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      title="관심 종목에서 제거"
+                      onClick={() => setConfirmRemove(r)}
+                      disabled={pending}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-status-error" />
+                    </Button>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={!!confirmRemove} onOpenChange={(o) => !o && setConfirmRemove(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>관심 종목에서 제거</DialogTitle>
+            <DialogDescription>
+              {confirmRemove && (
+                <>
+                  <strong>{confirmRemove.name}</strong> ({confirmRemove.ticker})
+                  {isAdmin
+                    ? '를 시스템 관심 종목 마스터에서 제거합니다. 종목 마스터 자체는 유지되며 is_watchlist=false로 변경됩니다.'
+                    : '를 본인 관심 종목 목록에서 제거합니다.'}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmRemove(null)}>취소</Button>
+            <Button
+              variant="destructive"
+              disabled={pending}
+              onClick={() => {
+                if (!confirmRemove) return;
+                const ticker = confirmRemove.ticker;
+                const name = confirmRemove.name;
+                startTransition(async () => {
+                  const res = isAdmin
+                    ? await adminRemoveFromWatchlist(ticker)
+                    : await removeStockFromWatchlist(ticker);
+                  if (res.error) toast.error(`제거 실패: ${res.error}`);
+                  else {
+                    toast.success(`${name} 제거됨`);
+                    router.refresh();
+                  }
+                  setConfirmRemove(null);
+                });
+              }}
+            >
+              {pending ? '제거 중...' : '제거'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
