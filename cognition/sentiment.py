@@ -41,7 +41,14 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("cognition.sentiment")
 
-DEFAULT_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+# Sentiment uses Haiku 4-5 by default — KR news classification is well within
+# Haiku's range and the model is ~70% cheaper than Sonnet 4-6 (CLAUDE.md §8
+# cost discipline). Override with ANTHROPIC_SENTIMENT_MODEL or ANTHROPIC_MODEL
+# env var to use Sonnet for higher precision.
+DEFAULT_MODEL = (
+    os.environ.get("ANTHROPIC_SENTIMENT_MODEL")
+    or os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5")
+)
 SENTIMENT_CONCURRENCY = 5
 CACHE_TTL_SECONDS = 7 * 24 * 3600       # 7 days
 MAX_INPUT_TOKENS = 4000
@@ -197,16 +204,44 @@ class SentimentEngine:
     async def _call_llm(
         self, title: str, body: str, related: list[str],
     ) -> SentimentResult:
+        """Anthropic call with prompt caching enabled.
+
+        The system prompt + record_sentiment tool definition + few-shot
+        messages are all stable across calls within a 5-minute window, so
+        we mark the last few-shot turn with cache_control to put the entire
+        prefix into Anthropic's prompt cache. Cached tokens cost ~10% of
+        normal input price → 90% saving on the ~1.2k token prefix.
+        """
+        few_shots = _build_few_shot_messages()
+        # Attach cache_control to the LAST few-shot message — this caches
+        # everything up to and including that turn.
+        if few_shots:
+            last = few_shots[-1]
+            content = last.get("content", "")
+            if isinstance(content, str):
+                last["content"] = [{
+                    "type": "text",
+                    "text": content,
+                    "cache_control": {"type": "ephemeral"},
+                }]
+            elif isinstance(content, list) and content:
+                # Clone last block + add cache_control marker.
+                last["content"] = content[:-1] + [{**content[-1], "cache_control": {"type": "ephemeral"}}]
+
         async with self._sem:
             client = self._ensure_client()
             response = await client.messages.create(
                 model=self._model,
                 max_tokens=MAX_OUTPUT_TOKENS,
-                system=SYSTEM_PROMPT,
+                system=[{
+                    "type": "text",
+                    "text": SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }],
                 tools=[self._tool],
                 tool_choice={"type": "tool", "name": "record_sentiment"},
                 messages=[
-                    *_build_few_shot_messages(),
+                    *few_shots,
                     {"role": "user", "content": _build_user_message(title, body, related)},
                 ],
             )
