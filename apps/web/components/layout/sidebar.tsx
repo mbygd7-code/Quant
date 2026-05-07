@@ -33,6 +33,7 @@ const NAV: Array<{ section: string; items: Item[] }> = [
     items: [
       { href: '/dashboard', label: 'Dashboard', icon: BarChart3, roles: ['user', 'beta', 'admin'] },
       { href: '/watchlist', label: 'Watchlist', icon: ListTodo, roles: ['user', 'beta', 'admin'] },
+      { href: '/stocks/kr', label: '국내주식', icon: LineChart, roles: ['admin'] },
       { href: '/reports', label: 'Reports', icon: ChartLine, roles: ['user', 'beta', 'admin'] },
       { href: '/settings', label: 'Settings', icon: Settings, roles: ['user', 'beta', 'admin'] },
     ],

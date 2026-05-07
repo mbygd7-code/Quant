@@ -1,5 +1,6 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import { Plus, LineChart } from 'lucide-react';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,6 @@ import { getWatchlistForUser } from '@/lib/queries/watchlist';
 import { ROLE_WATCHLIST_LIMIT, SIGNAL_ORDER, type Role, type Signal } from '@/lib/types';
 import { WatchlistTable } from '@/components/watchlist/watchlist-table';
 import { AddStockDialog } from '@/components/watchlist/add-stock-dialog';
-import { AdminAddStockDialog } from '@/components/watchlist/admin-add-stock-dialog';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,12 +61,12 @@ export default async function WatchlistPage() {
           </div>
         </div>
         {role === 'admin' ? (
-          <AdminAddStockDialog>
-            <Button className="bg-gradient-brand text-white hover:opacity-90">
-              <Plus className="h-4 w-4 mr-1" />
-              종목 추가
-            </Button>
-          </AdminAddStockDialog>
+          <Button asChild className="bg-gradient-brand text-white hover:opacity-90">
+            <Link href="/stocks/kr">
+              <LineChart className="h-4 w-4 mr-1" />
+              국내주식
+            </Link>
+          </Button>
         ) : (
           <AddStockDialog currentCount={sorted.length} limit={limit}>
             <Button className="bg-gradient-brand text-white hover:opacity-90">
