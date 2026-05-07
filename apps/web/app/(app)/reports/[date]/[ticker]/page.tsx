@@ -39,7 +39,7 @@ export default async function StockDetailPage({
   const data = await getStockDetail(date, ticker);
   if (!data) notFound();
 
-  const { stock, score, quote, scoreHistory, ragChunks, commentary } = data;
+  const { stock, score, quote, scoreHistory, ragChunks, commentary, predictions } = data;
   const reasons = score.rationale_json?.reasons ?? [];
   const risks = score.rationale_json?.risks ?? [];
   const news = score.rationale_json?.related_news ?? [];
@@ -250,7 +250,15 @@ export default async function StockDetailPage({
             <CardTitle className="text-base font-heading">최근 30일 점수 추이</CardTitle>
           </CardHeader>
           <CardContent>
-            <ScoreTrend data={scoreHistory.map((p) => ({ date: p.date, final_score: p.final_score }))} />
+            <ScoreTrend
+              data={scoreHistory.map((p) => ({ date: p.date, final_score: p.final_score }))}
+              mlPredictions={predictions.map((p) => ({
+                target_date:     p.target_date,
+                predicted_score: p.predicted_score,
+                lower_95:        p.lower_95,
+                upper_95:        p.upper_95,
+              }))}
+            />
           </CardContent>
         </Card>
       )}

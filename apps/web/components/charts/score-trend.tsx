@@ -19,6 +19,13 @@ interface Point {
   final_score: number;
 }
 
+interface MLPrediction {
+  target_date: string;
+  predicted_score: number;
+  lower_95: number | null;
+  upper_95: number | null;
+}
+
 interface ChartRow {
   date: string;
   actual: number | null;
@@ -94,10 +101,43 @@ function buildForecast(
   return { mean, lower, upper };
 }
 
-export function ScoreTrend({ data, showForecast = true }: { data: Point[]; showForecast?: boolean }) {
-  const { mean, lower, upper } = showForecast
-    ? buildForecast(data, 5)
-    : { mean: [], lower: [], upper: [] };
+export function ScoreTrend({
+  data,
+  showForecast = true,
+  mlPredictions,
+}: {
+  data: Point[];
+  showForecast?: boolean;
+  mlPredictions?: MLPrediction[];
+}) {
+  // Prefer ML-stored predictions if available; fall back to in-browser OLS.
+  let mean: Point[] = [];
+  let lower: Point[] = [];
+  let upper: Point[] = [];
+  let usingML = false;
+
+  if (showForecast) {
+    if (mlPredictions && mlPredictions.length > 0) {
+      usingML = true;
+      mean = mlPredictions.map((p) => ({
+        date: p.target_date,
+        final_score: p.predicted_score,
+      }));
+      lower = mlPredictions.map((p) => ({
+        date: p.target_date,
+        final_score: p.lower_95 ?? p.predicted_score,
+      }));
+      upper = mlPredictions.map((p) => ({
+        date: p.target_date,
+        final_score: p.upper_95 ?? p.predicted_score,
+      }));
+    } else {
+      const ols = buildForecast(data, 5);
+      mean = ols.mean;
+      lower = ols.lower;
+      upper = ols.upper;
+    }
+  }
 
   // Merge into one array per Recharts.
   // Last historical point gets predicted = its own value so the dashed
@@ -162,7 +202,7 @@ export function ScoreTrend({ data, showForecast = true }: { data: Point[]; showF
             iconType="plainline"
             formatter={(value) => {
               if (value === 'actual') return '실측 점수';
-              if (value === 'predicted') return '예측 추세';
+              if (value === 'predicted') return usingML ? '예측 (GBM ML)' : '예측 (OLS)';
               if (value === 'band_high') return '95% 신뢰구간';
               return String(value);
             }}

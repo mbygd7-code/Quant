@@ -101,6 +101,15 @@ export interface ExpertCommentary {
   created_at: string;
 }
 
+export interface ScorePrediction {
+  horizon_day: number;
+  target_date: string;
+  predicted_score: number;
+  lower_95: number | null;
+  upper_95: number | null;
+  model_version: string;
+}
+
 export interface StockDetailData {
   date: string;
   ticker: string;
@@ -110,11 +119,12 @@ export interface StockDetailData {
   scoreHistory: { date: string; final_score: number; signal: Signal }[];
   ragChunks: RagChunk[];
   commentary: ExpertCommentary | null;
+  predictions: ScorePrediction[];
 }
 
 export async function getStockDetail(date: string, ticker: string): Promise<StockDetailData | null> {
   const sb = await getQueryClient();
-  const [stockRes, scoreRes, quoteRes, historyRes, commentaryRes] = await Promise.all([
+  const [stockRes, scoreRes, quoteRes, historyRes, commentaryRes, predictionsRes] = await Promise.all([
     sb.from('stocks').select('*').eq('ticker', ticker).maybeSingle(),
     sb.from('ai_scores').select('*').eq('date', date).eq('ticker', ticker).maybeSingle(),
     sb.from('korea_market').select('*').eq('date', date).eq('ticker', ticker).maybeSingle(),
@@ -130,6 +140,11 @@ export async function getStockDetail(date: string, ticker: string): Promise<Stoc
       .order('date', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    sb.from('score_predictions')
+      .select('horizon_day, target_date, predicted_score, lower_95, upper_95, model_version')
+      .eq('ticker', ticker)
+      .eq('date', date)
+      .order('horizon_day', { ascending: true }),
   ]);
 
   if (!stockRes.data || !scoreRes.data) return null;
@@ -152,5 +167,6 @@ export async function getStockDetail(date: string, ticker: string): Promise<Stoc
     scoreHistory: (historyRes.data ?? []).reverse() as StockDetailData['scoreHistory'],
     ragChunks: (chunks ?? []) as RagChunk[],
     commentary: (commentaryRes.data ?? null) as ExpertCommentary | null,
+    predictions: (predictionsRes.data ?? []) as ScorePrediction[],
   };
 }
