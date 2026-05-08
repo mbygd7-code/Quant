@@ -27,6 +27,7 @@ import {
   type DiscoveryMode,
   type DiscoveryStock,
 } from '@/app/actions/watchlist';
+import { useKrQuotes, type KrLiveQuote } from '@/lib/use-kr-quotes';
 
 // Search result row from the full KRX catalog (Finnhub).
 type SearchResult = AllKrSearchResult;
@@ -101,12 +102,16 @@ function formatChange(v: number | null): string {
 interface DiscoveryRowProps {
   rank: number;
   stock: DiscoveryStock;
+  live?: KrLiveQuote;
   added: boolean;
   pending: boolean;
   onAdd: (ticker: string, name: string) => void;
 }
 
-function DiscoveryRow({ rank, stock, added, pending, onAdd }: DiscoveryRowProps) {
+function DiscoveryRow({ rank, stock, live, added, pending, onAdd }: DiscoveryRowProps) {
+  const price = live?.price ?? stock.close;
+  const changeRate = live?.changeRate ?? stock.change_rate;
+  const change = live?.change ?? null;
   return (
     <div
       className="group flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-bg-tertiary/40"
@@ -140,10 +145,15 @@ function DiscoveryRow({ rank, stock, added, pending, onAdd }: DiscoveryRowProps)
         </div>
       </div>
 
-      <div className="text-right shrink-0">
-        <div className="text-sm font-mono tabular-nums">{formatPrice(stock.close)}</div>
-        <div className={'text-[11px] font-mono tabular-nums ' + changeClass(stock.change_rate)}>
-          {formatChange(stock.change_rate)}
+      <div className="text-right shrink-0 min-w-[88px]">
+        <div className="text-sm font-mono tabular-nums">
+          {price != null ? `${formatPrice(price)}원` : '—'}
+        </div>
+        <div className={'text-[11px] font-mono tabular-nums ' + changeClass(changeRate)}>
+          {change != null && Math.abs(change) > 0
+            ? `${change > 0 ? '+' : ''}${formatPrice(change)} `
+            : ''}
+          {formatChange(changeRate)}
         </div>
       </div>
 
@@ -195,6 +205,8 @@ function SectionCard({ def, market, added, pendingTicker, onAdd }: SectionCardPr
   }, [def.id, market]);
 
   const visibleRows = expanded ? rows : rows.slice(0, 5);
+  const visibleTickers = useMemo(() => visibleRows.map((r) => r.ticker), [visibleRows]);
+  const { quotes: liveQuotes } = useKrQuotes(visibleTickers);
   const Icon = def.icon;
 
   return (
@@ -226,6 +238,7 @@ function SectionCard({ def, market, added, pendingTicker, onAdd }: SectionCardPr
                 key={s.ticker}
                 rank={i + 1}
                 stock={s}
+                live={liveQuotes.get(s.ticker)}
                 added={added.has(s.ticker)}
                 pending={pendingTicker === s.ticker}
                 onAdd={onAdd}
@@ -243,6 +256,73 @@ function SectionCard({ def, market, added, pendingTicker, onAdd }: SectionCardPr
             {expanded ? '접기' : `더보기 (+${rows.length - 5})`}
           </Button>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface SearchResultsProps {
+  query: string;
+  pending: boolean;
+  rows: SearchResult[];
+  added: Set<string>;
+  pendingTicker: string | null;
+  onAdd: (ticker: string, name: string) => void;
+}
+
+function SearchResults({
+  query,
+  pending,
+  rows,
+  added,
+  pendingTicker,
+  onAdd,
+}: SearchResultsProps) {
+  const tickers = useMemo(() => rows.map((r) => r.ticker), [rows]);
+  const { quotes: liveQuotes } = useKrQuotes(tickers);
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-1">
+        <div className="flex items-center gap-2 mb-2">
+          <Search className="h-4 w-4 text-brand-purple" />
+          <span className="text-sm font-semibold">"{query}" 검색 결과</span>
+        </div>
+        {pending && <p className="text-xs text-txt-muted px-2 py-3">검색 중...</p>}
+        {!pending && rows.length === 0 && (
+          <p className="text-xs text-txt-muted px-2 py-3">
+            결과가 없습니다. 종목명 일부 또는 6자리 티커로 다시 검색해 보세요.
+          </p>
+        )}
+        <div className="space-y-0.5">
+          {rows.map((r, i) => (
+            <DiscoveryRow
+              key={r.ticker}
+              rank={i + 1}
+              stock={{
+                ticker: r.ticker,
+                name: r.name,
+                sector: r.sector,
+                market: r.market,
+                close: null,
+                change_rate: null,
+                volume: null,
+                trading_value: null,
+                foreign_net_buy: null,
+                final_score: null,
+                signal: null,
+                highlight: r.inWatchlist
+                  ? '이미 워치리스트'
+                  : r.inMaster
+                    ? '마스터 등록됨'
+                    : '새 종목 (마스터 추가)',
+              }}
+              live={liveQuotes.get(r.ticker)}
+              added={added.has(r.ticker) || r.inWatchlist}
+              pending={pendingTicker === r.ticker}
+              onAdd={onAdd}
+            />
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
@@ -385,51 +465,14 @@ export function KrDiscovery({ initialWatchlistCount }: Props) {
 
       {/* Search results override */}
       {isSearching && (
-        <Card>
-          <CardContent className="p-4 space-y-1">
-            <div className="flex items-center gap-2 mb-2">
-              <Search className="h-4 w-4 text-brand-purple" />
-              <span className="text-sm font-semibold">"{query}" 검색 결과</span>
-            </div>
-            {searchPending && (
-              <p className="text-xs text-txt-muted px-2 py-3">검색 중...</p>
-            )}
-            {!searchPending && searchResults.length === 0 && (
-              <p className="text-xs text-txt-muted px-2 py-3">
-                결과가 없습니다. 종목명 일부 또는 6자리 티커로 다시 검색해 보세요.
-              </p>
-            )}
-            <div className="space-y-0.5">
-              {searchResults.map((r, i) => (
-                <DiscoveryRow
-                  key={r.ticker}
-                  rank={i + 1}
-                  stock={{
-                    ticker: r.ticker,
-                    name: r.name,
-                    sector: r.sector,
-                    market: r.market,
-                    close: null,
-                    change_rate: null,
-                    volume: null,
-                    trading_value: null,
-                    foreign_net_buy: null,
-                    final_score: null,
-                    signal: null,
-                    highlight: r.inWatchlist
-                      ? '이미 워치리스트'
-                      : r.inMaster
-                        ? '마스터 등록됨'
-                        : '새 종목 (마스터 추가)',
-                  }}
-                  added={added.has(r.ticker) || r.inWatchlist}
-                  pending={pendingTicker === r.ticker}
-                  onAdd={handleAdd}
-                />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <SearchResults
+          query={query}
+          pending={searchPending}
+          rows={searchResults}
+          added={added}
+          pendingTicker={pendingTicker}
+          onAdd={handleAdd}
+        />
       )}
 
       {/* 4-section grid */}

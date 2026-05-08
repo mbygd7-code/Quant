@@ -81,11 +81,12 @@ export function RealtimeMonitor({
     }
   }, [tracked]);
 
-  const filtered = useMemo(() => {
+  // Local list filter (curated + us_kr_mapping) — runs synchronously
+  const localMatches = useMemo(() => {
     const q = query.trim().toLowerCase();
     const trackedSet = new Set(tracked.map((c) => c.symbol));
     if (!q) return [];
-    const fromList = candidates
+    return candidates
       .filter((c) => !trackedSet.has(c.symbol))
       .filter(
         (c) =>
@@ -93,19 +94,58 @@ export function RealtimeMonitor({
           c.name.toLowerCase().includes(q) ||
           (c.sector ?? '').toLowerCase().includes(q),
       )
-      .slice(0, 8);
+      .slice(0, 6);
+  }, [query, candidates, tracked]);
 
-    // Allow free-form ticker entry (uppercase A-Z, dots) if not in list
+  // Finnhub global search (debounced) — anything not in our curated list
+  const [remoteHits, setRemoteHits] = useState<UsCandidate[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setRemoteHits([]);
+      return;
+    }
+    const trackedSet = new Set(tracked.map((c) => c.symbol));
+    const localSet = new Set(localMatches.map((c) => c.symbol));
+    const handle = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const res = await fetch(`/api/us-search?q=${encodeURIComponent(q)}`, {
+          cache: 'no-store',
+        });
+        const j = (await res.json()) as {
+          results?: Array<{ symbol: string; name: string; type: string }>;
+        };
+        const hits: UsCandidate[] = (j.results ?? [])
+          .filter((r) => !trackedSet.has(r.symbol) && !localSet.has(r.symbol))
+          .map((r) => ({ symbol: r.symbol, name: r.name, sector: r.type }));
+        setRemoteHits(hits);
+      } catch {
+        setRemoteHits([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 220);
+    return () => clearTimeout(handle);
+  }, [query, tracked, localMatches]);
+
+  const filtered = useMemo(() => {
+    const merged = [...localMatches, ...remoteHits];
+    if (merged.length > 0) return merged.slice(0, 12);
+    // Allow free-form ticker entry (uppercase A-Z) if neither local nor
+    // remote returned anything yet.
+    const trackedSet = new Set(tracked.map((c) => c.symbol));
     const looksLikeTicker = /^[A-Z]{1,6}(\.[A-Z])?$/.test(query.trim().toUpperCase());
     if (
-      fromList.length === 0 &&
+      query.trim().length > 0 &&
       looksLikeTicker &&
       !trackedSet.has(query.trim().toUpperCase())
     ) {
       return [{ symbol: query.trim().toUpperCase(), name: '직접 입력 종목', sector: null }];
     }
-    return fromList;
-  }, [query, candidates, tracked]);
+    return [];
+  }, [localMatches, remoteHits, query, tracked]);
 
   const addTicker = (c: UsCandidate) => {
     if (tracked.length >= MAX_TRACKED) return;
@@ -207,7 +247,7 @@ export function RealtimeMonitor({
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="티커·이름·섹터 검색 (예: NVDA, 반도체) — 또는 미국 티커 직접 입력"
+              placeholder="티커·회사명 검색 (예: NVDA, apple, berkshire) — Finnhub 글로벌 카탈로그"
               className="h-9"
               disabled={tracked.length >= MAX_TRACKED}
             />
@@ -215,8 +255,11 @@ export function RealtimeMonitor({
               {tracked.length}/{MAX_TRACKED}
             </Badge>
           </div>
+          {searchLoading && filtered.length === 0 && query.trim().length >= 2 && (
+            <p className="text-xs text-txt-muted px-3 py-2">Finnhub 검색 중…</p>
+          )}
           {filtered.length > 0 && (
-            <ul className="space-y-1">
+            <ul className="space-y-1 max-h-80 overflow-y-auto">
               {filtered.map((c) => (
                 <li key={c.symbol}>
                   <button
@@ -224,11 +267,15 @@ export function RealtimeMonitor({
                     onClick={() => addTicker(c)}
                     className="w-full flex items-center justify-between gap-3 px-3 py-2 rounded-sm text-sm hover:bg-[var(--sidebar-hover)] text-left"
                   >
-                    <span className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-txt-muted">{c.symbol}</span>
-                      <span>{c.name}</span>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="font-mono text-xs text-txt-muted shrink-0">
+                        {c.symbol}
+                      </span>
+                      <span className="truncate">{c.name}</span>
                     </span>
-                    <span className="text-xs text-txt-muted">{c.sector ?? '—'}</span>
+                    <span className="text-xs text-txt-muted shrink-0">
+                      {c.sector ?? '—'}
+                    </span>
                   </button>
                 </li>
               ))}
