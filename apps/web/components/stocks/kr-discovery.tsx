@@ -321,7 +321,7 @@ function SearchResults({
       <CardContent className="p-4 space-y-1">
         <div className="flex items-center gap-2 mb-2">
           <Search className="h-4 w-4 text-brand-purple" />
-          <span className="text-sm font-semibold">"{query}" 검색 결과</span>
+          <span className="text-sm font-semibold">&ldquo;{query}&rdquo; 검색 결과</span>
         </div>
         {pending && <p className="text-xs text-txt-muted px-2 py-3">검색 중...</p>}
         {!pending && rows.length === 0 && (
