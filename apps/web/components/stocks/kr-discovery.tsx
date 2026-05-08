@@ -156,7 +156,7 @@ function DiscoveryRow({ rank, stock, live, added, pending, onAdd }: DiscoveryRow
           className="shrink-0 hidden sm:block"
           aria-label="차트 보기"
         >
-          <Sparkline data={candles} loading={sparkLoading} width={70} height={22} convention="kr" />
+          <Sparkline data={candles} loading={sparkLoading} width={50} height={20} convention="kr" />
         </button>
 
         <div className="text-right shrink-0 min-w-[88px]">
