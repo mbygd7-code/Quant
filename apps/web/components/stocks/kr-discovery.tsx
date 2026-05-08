@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Flame,
@@ -123,9 +124,14 @@ function DiscoveryRow({ rank, stock, live, added, pending, onAdd }: DiscoveryRow
       <div className="flex items-center gap-3 px-2 py-2">
         <div className="w-5 text-center text-xs font-mono text-txt-muted shrink-0">{rank}</div>
 
-        <div className="flex-1 min-w-0">
+        <Link
+          href={`/stocks/kr/${stock.ticker}`}
+          className="flex-1 min-w-0 group/link"
+        >
           <div className="flex items-baseline gap-2">
-            <span className="font-medium truncate">{stock.name}</span>
+            <span className="font-medium truncate group-hover/link:text-brand-purple transition-colors">
+              {stock.name}
+            </span>
             <span className="text-[10px] font-mono text-txt-muted shrink-0">{stock.ticker}</span>
             <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-normal shrink-0">
               {stock.market}
@@ -148,7 +154,7 @@ function DiscoveryRow({ rank, stock, live, added, pending, onAdd }: DiscoveryRow
               </>
             )}
           </div>
-        </div>
+        </Link>
 
         <button
           type="button"

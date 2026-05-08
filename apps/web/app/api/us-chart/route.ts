@@ -29,16 +29,25 @@ interface YahooChart {
   };
 }
 
+type Period = '1d' | '1w' | '1m' | '3m' | '1y' | 'daily' | 'intraday';
+
+const RANGE_MAP: Record<Period, string> = {
+  '1d': 'range=1d&interval=5m',
+  '1w': 'range=5d&interval=15m',
+  '1m': 'range=1mo&interval=1d',
+  '3m': 'range=3mo&interval=1d',
+  '1y': 'range=1y&interval=1d',
+  daily: 'range=3mo&interval=1d',     // legacy
+  intraday: 'range=1d&interval=5m',   // legacy
+};
+
 export async function GET(req: NextRequest) {
   const symbol = (req.nextUrl.searchParams.get('symbol') ?? '').trim().toUpperCase();
-  const period = (req.nextUrl.searchParams.get('period') ?? 'daily') as 'daily' | 'intraday';
+  const period = (req.nextUrl.searchParams.get('period') ?? '3m') as Period;
   if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) {
     return NextResponse.json({ error: 'symbol= required' }, { status: 400 });
   }
-  const params =
-    period === 'intraday'
-      ? 'range=1d&interval=5m'
-      : 'range=3mo&interval=1d';
+  const params = RANGE_MAP[period] ?? RANGE_MAP['3m'];
   const url = `${ENDPOINT}/${encodeURIComponent(symbol)}?${params}`;
 
   try {
