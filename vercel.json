@@ -12,6 +12,11 @@
     }
   },
   "rewrites": [
-    { "source": "/api/:path*", "destination": "/apps/api/index.py" }
+    { "source": "/api/health", "destination": "/apps/api/index.py" },
+    { "source": "/api/telegram/:path*", "destination": "/apps/api/index.py" },
+    { "source": "/api/admin/:path*", "destination": "/apps/api/index.py" },
+    { "source": "/api/backtest/:path*", "destination": "/apps/api/index.py" },
+    { "source": "/api/notifications/:path*", "destination": "/apps/api/index.py" },
+    { "source": "/api/users/:path*", "destination": "/apps/api/index.py" }
   ]
 }

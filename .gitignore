@@ -56,3 +56,5 @@ Thumbs.db
 coverage.xml
 htmlcov/
 supabase/.temp/
+
+.vercel
