@@ -53,6 +53,112 @@ export async function searchUnaddedKrStocksAction(
   return data ?? [];
 }
 
+// ─── Full KRX search (NAVER autocomplete) ────────────────────────────
+// Finnhub gates KRX symbol catalog behind a paid plan and Yahoo's public
+// search rejects Korean characters with HTTP 400. NAVER's autocomplete
+// (the same endpoint that powers stock.naver.com's search bar) handles
+// Korean queries natively, returns 6-digit codes + market labels, and
+// requires no auth. It's an informal API but extremely stable since
+// NAVER's own mobile app depends on it.
+interface NaverAcItem {
+  code: string;       // 6-digit ticker for KR equities
+  name: string;       // Korean name (e.g. "삼성전자")
+  typeCode: string;   // "KOSPI" | "KOSDAQ" | "NYSE" | "HONG_KONG" | ...
+  category: string;   // "stock" | "etf" | ...
+  nationCode?: string;
+}
+
+async function naverKrSearch(query: string, limit: number): Promise<{
+  ticker: string;
+  name: string;
+  market: 'KOSPI' | 'KOSDAQ';
+}[]> {
+  const url = `https://ac.stock.naver.com/ac?q=${encodeURIComponent(query)}&target=stock`;
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+      Accept: 'application/json',
+    },
+    cache: 'no-store',
+  });
+  if (!res.ok) throw new Error(`NAVER ac ${res.status}`);
+  const j = (await res.json()) as { items?: NaverAcItem[] };
+  const items = j.items ?? [];
+  return items
+    .filter((it) => (it.typeCode === 'KOSPI' || it.typeCode === 'KOSDAQ') && /^\d{6}$/.test(it.code))
+    .slice(0, limit)
+    .map((it) => ({
+      ticker: it.code,
+      name: it.name,
+      market: it.typeCode as 'KOSPI' | 'KOSDAQ',
+    }));
+}
+
+export interface AllKrSearchResult {
+  ticker: string;
+  name: string;
+  market: 'KOSPI' | 'KOSDAQ';
+  sector: string | null;
+  inMaster: boolean;     // exists in stocks table
+  inWatchlist: boolean;  // stocks.is_watchlist = true
+}
+
+/**
+ * Admin-only: search the FULL KRX universe (KOSPI + KOSDAQ, ~2,500 names)
+ * via Yahoo Finance search, cross-referenced with our local stocks
+ * master so the UI knows which are already added.
+ *
+ * Returns up to `limit` matches; supports Korean (e.g. "삼성") and ticker
+ * prefix (e.g. "005930"). Results are ordered by Yahoo relevance.
+ */
+export async function searchAllKrStocksAction(
+  query: string,
+  market: DiscoveryMarket = 'ALL',
+  limit = 30,
+): Promise<AllKrSearchResult[]> {
+  const trimmed = query.trim();
+  if (trimmed.length === 0) return [];
+
+  let hits: { ticker: string; name: string; market: 'KOSPI' | 'KOSDAQ' }[];
+  try {
+    hits = await naverKrSearch(trimmed, limit);
+  } catch (e) {
+    console.error('[searchAllKrStocksAction] naver ac failed:', e);
+    return [];
+  }
+
+  const filtered = market === 'ALL' ? hits : hits.filter((r) => r.market === market);
+  if (filtered.length === 0) return [];
+
+  // Cross-reference with stocks master
+  const sb = getAdminWriteClient();
+  const tickers = filtered.map((r) => r.ticker);
+  const { data: existing } = await sb
+    .from('stocks')
+    .select('ticker, is_watchlist, sector')
+    .in('ticker', tickers);
+  const existingMap = new Map<string, { is_watchlist: boolean; sector: string | null }>();
+  for (const e of existing ?? []) {
+    existingMap.set(e.ticker as string, {
+      is_watchlist: Boolean(e.is_watchlist),
+      sector: (e.sector as string | null) ?? null,
+    });
+  }
+
+  return filtered.map((r) => {
+    const e = existingMap.get(r.ticker);
+    return {
+      ticker: r.ticker,
+      name: r.name,
+      market: r.market,
+      sector: e?.sector ?? null,
+      inMaster: e !== undefined,
+      inWatchlist: e?.is_watchlist ?? false,
+    };
+  });
+}
+
 /**
  * Admin-only: discover unadded KR stocks ranked by recent market signals.
  *  - 'popular'      → highest trading_value
@@ -253,6 +359,61 @@ export async function adminAddToWatchlist(
     resource_type: 'stocks',
     resource_id: ticker,
     changes: { before, after: { is_watchlist: true } },
+  });
+  return { ok: true };
+}
+
+/**
+ * Admin-only: add a stock to the master watchlist, inserting a new
+ * stocks row if the ticker isn't yet known. Used by the full-KRX
+ * search result rows (Finnhub catalog hits that aren't in our DB).
+ */
+export async function adminAddOrCreateStockAction(stock: {
+  ticker: string;
+  name: string;
+  market: 'KOSPI' | 'KOSDAQ';
+  sector?: string | null;
+}): Promise<{ ok?: true; error?: string }> {
+  if (!DEV_BYPASS_AUTH) {
+    const sb = await createClient();
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) return { error: '로그인이 필요합니다' };
+    const { data: profile } = await sb
+      .from('profiles').select('role').eq('id', user.id).maybeSingle();
+    if (profile?.role !== 'admin') return { error: 'admin 권한 필요' };
+  }
+  const sb = getAdminWriteClient();
+  const { data: before } = await sb
+    .from('stocks')
+    .select('ticker, name, is_watchlist')
+    .eq('ticker', stock.ticker)
+    .maybeSingle();
+
+  if (before) {
+    if (before.is_watchlist) return { ok: true }; // idempotent
+    const { error } = await sb
+      .from('stocks')
+      .update({ is_watchlist: true })
+      .eq('ticker', stock.ticker);
+    if (error) return { error: error.message };
+  } else {
+    const { error } = await sb.from('stocks').insert({
+      ticker: stock.ticker,
+      name: stock.name,
+      market: stock.market,
+      sector: stock.sector ?? null,
+      is_watchlist: true,
+    });
+    if (error) return { error: error.message };
+  }
+  await recordAudit({
+    action: 'watchlist.add',
+    resource_type: 'stocks',
+    resource_id: stock.ticker,
+    changes: {
+      before: before ?? null,
+      after: { is_watchlist: true, name: stock.name, market: stock.market },
+    },
   });
   return { ok: true };
 }

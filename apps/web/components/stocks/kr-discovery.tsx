@@ -18,20 +18,18 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
+  adminAddOrCreateStockAction,
   adminAddToWatchlist,
   discoverUnaddedStocksAction,
-  searchUnaddedKrStocksAction,
+  searchAllKrStocksAction,
+  type AllKrSearchResult,
   type DiscoveryMarket,
   type DiscoveryMode,
   type DiscoveryStock,
 } from '@/app/actions/watchlist';
 
-interface SearchResult {
-  ticker: string;
-  name: string;
-  sector: string | null;
-  market: string;
-}
+// Search result row from the full KRX catalog (Finnhub).
+type SearchResult = AllKrSearchResult;
 
 const MARKETS: { id: DiscoveryMarket; label: string }[] = [
   { id: 'ALL', label: '전체' },
@@ -275,7 +273,7 @@ export function KrDiscovery({ initialWatchlistCount }: Props) {
     }
     const handle = setTimeout(() => {
       startSearch(async () => {
-        const data = await searchUnaddedKrStocksAction(query, market);
+        const data = await searchAllKrStocksAction(query, market, 30);
         setSearchResults(data);
       });
     }, 220);
@@ -285,7 +283,19 @@ export function KrDiscovery({ initialWatchlistCount }: Props) {
   async function handleAdd(ticker: string, name: string) {
     setPendingTicker(ticker);
     try {
-      const res = await adminAddToWatchlist(ticker);
+      // If we have a search-result match (full KRX catalog), use the
+      // upsert action so previously-unknown tickers are inserted into
+      // stocks first. Discovery rows from local DB always exist in
+      // master, so the simple flag-flip works.
+      const fromCatalog = searchResults.find((r) => r.ticker === ticker);
+      const res = fromCatalog
+        ? await adminAddOrCreateStockAction({
+            ticker,
+            name,
+            market: fromCatalog.market,
+            sector: fromCatalog.sector,
+          })
+        : await adminAddToWatchlist(ticker);
       if (res.error) {
         toast.error(res.error);
         return;
@@ -332,7 +342,7 @@ export function KrDiscovery({ initialWatchlistCount }: Props) {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-txt-muted" />
             <Input
-              placeholder="종목명 또는 6자리 티커로 검색..."
+              placeholder="KOSPI/KOSDAQ 전체 종목 검색 (종목명 또는 6자리 티커)..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="pl-9 h-11 text-base"
@@ -386,7 +396,7 @@ export function KrDiscovery({ initialWatchlistCount }: Props) {
             )}
             {!searchPending && searchResults.length === 0 && (
               <p className="text-xs text-txt-muted px-2 py-3">
-                결과가 없습니다 (이미 모두 추가됐거나 stocks 마스터에 없음).
+                결과가 없습니다. 종목명 일부 또는 6자리 티커로 다시 검색해 보세요.
               </p>
             )}
             <div className="space-y-0.5">
@@ -406,9 +416,13 @@ export function KrDiscovery({ initialWatchlistCount }: Props) {
                     foreign_net_buy: null,
                     final_score: null,
                     signal: null,
-                    highlight: null,
+                    highlight: r.inWatchlist
+                      ? '이미 워치리스트'
+                      : r.inMaster
+                        ? '마스터 등록됨'
+                        : '새 종목 (마스터 추가)',
                   }}
-                  added={added.has(r.ticker)}
+                  added={added.has(r.ticker) || r.inWatchlist}
                   pending={pendingTicker === r.ticker}
                   onAdd={handleAdd}
                 />
