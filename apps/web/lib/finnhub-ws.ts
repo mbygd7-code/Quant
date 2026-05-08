@@ -110,7 +110,22 @@ export function useFinnhubTrades(symbols: string[]) {
       cancelled = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       const ws = wsRef.current;
-      if (ws && ws.readyState === WebSocket.OPEN) {
+      if (!ws) return;
+      if (ws.readyState === WebSocket.CONNECTING) {
+        // Still handshaking — calling .close() now would log
+        // "WebSocket is closed before the connection is established"
+        // (StrictMode double-mount triggers this every dev render).
+        // Defer the close until handshake completes.
+        ws.onopen = () => {
+          subscribedRef.current.clear();
+          ws.close();
+        };
+        // Suppress the no-op close warning on the now-orphaned socket
+        ws.onerror = null;
+        ws.onclose = null;
+        return;
+      }
+      if (ws.readyState === WebSocket.OPEN) {
         subscribedRef.current.forEach((s) => {
           try {
             ws.send(JSON.stringify({ type: 'unsubscribe', symbol: s }));
@@ -118,8 +133,8 @@ export function useFinnhubTrades(symbols: string[]) {
             /* ignore */
           }
         });
+        ws.close();
       }
-      ws?.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbolKey, token]);
