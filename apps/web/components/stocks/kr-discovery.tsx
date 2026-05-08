@@ -28,6 +28,9 @@ import {
   type DiscoveryStock,
 } from '@/app/actions/watchlist';
 import { useKrQuotes, type KrLiveQuote } from '@/lib/use-kr-quotes';
+import { Sparkline, useKrSparkline } from '@/components/charts/sparkline';
+import { StockChart } from '@/components/charts/stock-chart';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 // Search result row from the full KRX catalog (Finnhub).
 type SearchResult = AllKrSearchResult;
@@ -112,68 +115,95 @@ function DiscoveryRow({ rank, stock, live, added, pending, onAdd }: DiscoveryRow
   const price = live?.price ?? stock.close;
   const changeRate = live?.changeRate ?? stock.change_rate;
   const change = live?.change ?? null;
-  return (
-    <div
-      className="group flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-bg-tertiary/40"
-    >
-      <div className="w-5 text-center text-xs font-mono text-txt-muted shrink-0">{rank}</div>
+  const [expanded, setExpanded] = useState(false);
+  const { candles, loading: sparkLoading } = useKrSparkline(stock.ticker, true, 30);
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-2">
-          <span className="font-medium truncate">{stock.name}</span>
-          <span className="text-[10px] font-mono text-txt-muted shrink-0">{stock.ticker}</span>
-          <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-normal shrink-0">
-            {stock.market}
-          </Badge>
-          {stock.signal && (
-            <Badge
-              variant="outline"
-              className="h-4 px-1.5 text-[9px] font-normal border-brand-purple/40 text-brand-purple shrink-0"
-            >
-              {stock.signal}
+  return (
+    <div className="group rounded-md transition-colors hover:bg-bg-tertiary/40">
+      <div className="flex items-center gap-3 px-2 py-2">
+        <div className="w-5 text-center text-xs font-mono text-txt-muted shrink-0">{rank}</div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-2">
+            <span className="font-medium truncate">{stock.name}</span>
+            <span className="text-[10px] font-mono text-txt-muted shrink-0">{stock.ticker}</span>
+            <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-normal shrink-0">
+              {stock.market}
             </Badge>
-          )}
+            {stock.signal && (
+              <Badge
+                variant="outline"
+                className="h-4 px-1.5 text-[9px] font-normal border-brand-purple/40 text-brand-purple shrink-0"
+              >
+                {stock.signal}
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-txt-secondary mt-0.5">
+            <span className="truncate">{stock.sector ?? '—'}</span>
+            {stock.highlight && (
+              <>
+                <span className="text-txt-muted">·</span>
+                <span className="text-brand-purple font-medium">{stock.highlight}</span>
+              </>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-txt-secondary mt-0.5">
-          <span className="truncate">{stock.sector ?? '—'}</span>
-          {stock.highlight && (
+
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="shrink-0 hidden sm:block"
+          aria-label="차트 보기"
+        >
+          <Sparkline data={candles} loading={sparkLoading} width={70} height={22} convention="kr" />
+        </button>
+
+        <div className="text-right shrink-0 min-w-[88px]">
+          <div className="text-sm font-mono tabular-nums">
+            {price != null ? `${formatPrice(price)}원` : '—'}
+          </div>
+          <div className={'text-[11px] font-mono tabular-nums ' + changeClass(changeRate)}>
+            {change != null && Math.abs(change) > 0
+              ? `${change > 0 ? '+' : ''}${formatPrice(change)} `
+              : ''}
+            {formatChange(changeRate)}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="shrink-0 text-txt-muted hover:text-txt-primary p-1"
+          aria-label={expanded ? '차트 접기' : '차트 펼치기'}
+        >
+          {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+        </button>
+
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={added || pending}
+          onClick={() => onAdd(stock.ticker, stock.name)}
+          className="shrink-0 h-8 px-3 text-xs"
+        >
+          {added ? (
             <>
-              <span className="text-txt-muted">·</span>
-              <span className="text-brand-purple font-medium">{stock.highlight}</span>
+              <Check className="h-3 w-3 mr-1" />추가됨
+            </>
+          ) : (
+            <>
+              <Plus className="h-3 w-3 mr-1" />추가
             </>
           )}
-        </div>
+        </Button>
       </div>
 
-      <div className="text-right shrink-0 min-w-[88px]">
-        <div className="text-sm font-mono tabular-nums">
-          {price != null ? `${formatPrice(price)}원` : '—'}
+      {expanded && (
+        <div className="px-2 pb-3 pt-1">
+          <StockChart ticker={stock.ticker} variant="kr" height={180} />
         </div>
-        <div className={'text-[11px] font-mono tabular-nums ' + changeClass(changeRate)}>
-          {change != null && Math.abs(change) > 0
-            ? `${change > 0 ? '+' : ''}${formatPrice(change)} `
-            : ''}
-          {formatChange(changeRate)}
-        </div>
-      </div>
-
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={added || pending}
-        onClick={() => onAdd(stock.ticker, stock.name)}
-        className="shrink-0 h-8 px-3 text-xs"
-      >
-        {added ? (
-          <>
-            <Check className="h-3 w-3 mr-1" />추가됨
-          </>
-        ) : (
-          <>
-            <Plus className="h-3 w-3 mr-1" />추가
-          </>
-        )}
-      </Button>
+      )}
     </div>
   );
 }

@@ -19,6 +19,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { Sparkline, useUsSparkline } from '@/components/charts/sparkline';
+import { StockChart } from '@/components/charts/stock-chart';
 import {
   fetchFinnhubSnapshot,
   useFinnhubTrades,
@@ -367,6 +369,8 @@ function QuoteCard({
 
   // tick flash (US convention: green up, red down)
   const [flash, setFlash] = useState<'up' | 'down' | null>(null);
+  const [showChart, setShowChart] = useState(false);
+  const { candles: spark, loading: sparkLoading } = useUsSparkline(candidate.symbol, true);
   const lastPriceRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (tickPrice == null) return;
@@ -449,6 +453,23 @@ function QuoteCard({
                   : ''}
               </span>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setShowChart((v) => !v)}
+              className="w-full flex items-center justify-between rounded-sm py-1 hover:bg-bg-tertiary/40 -mx-1 px-1 transition-colors"
+              aria-label={showChart ? '차트 접기' : '차트 펼치기'}
+            >
+              <Sparkline data={spark} loading={sparkLoading} width={140} height={28} convention="us" />
+              <span className="text-[10px] text-txt-muted ml-2">
+                {showChart ? '접기' : '90일 차트'}
+              </span>
+            </button>
+            {showChart && (
+              <div className="pt-1">
+                <StockChart ticker={candidate.symbol} variant="us" symbol={candidate.symbol} height={170} />
+              </div>
+            )}
 
             <dl className="grid grid-cols-3 gap-2 text-xs text-txt-secondary">
               <Stat label="시가" value={snapshot?.open} />
