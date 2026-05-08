@@ -7,7 +7,6 @@
   "outputDirectory": "apps/web/.next",
   "functions": {
     "apps/api/**/*.py": {
-      "runtime": "python3.11",
       "maxDuration": 60
     }
   },
