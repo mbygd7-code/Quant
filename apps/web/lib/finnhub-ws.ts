@@ -27,8 +27,10 @@ const RECONNECT_MS = 3_000;
 const MAX_SYMBOLS = 12;
 
 export function useFinnhubTrades(symbols: string[]) {
-  const token =
-    typeof window !== 'undefined' ? process.env.NEXT_PUBLIC_FINNHUB_KEY : undefined;
+  // NEXT_PUBLIC_* is inlined at build time on both server and client, so
+  // no `typeof window` gate — gating caused a hydration mismatch (server
+  // saw undefined → 'no-key', client saw the key → 'idle').
+  const token = process.env.NEXT_PUBLIC_FINNHUB_KEY;
 
   const [state, setState] = useState<ConnState>(token ? 'idle' : 'no-key');
   const [ticks, setTicks] = useState<Record<string, Tick>>({});

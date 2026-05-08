@@ -56,29 +56,29 @@ export function RealtimeMonitor({
   const { state, ticks } = useFinnhubTrades(symbols);
 
   // Snapshot once per new symbol so cards show open/high/low/prevClose
-  // even before the first WS trade fires.
+  // even before the first WS trade fires. We rely on the ref to dedupe
+  // (StrictMode double-mounts effects) instead of a cancelled flag,
+  // because cancelled would drop the first mount's in-flight result on
+  // unmount while the ref-guard already prevents the second mount from
+  // re-fetching.
   const fetchedSnapshotRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    let cancelled = false;
     for (const c of tracked) {
       if (fetchedSnapshotRef.current.has(c.symbol)) continue;
       fetchedSnapshotRef.current.add(c.symbol);
       void fetchFinnhubSnapshot(c.symbol)
         .then((snap) => {
-          if (cancelled) return;
           setSnapshots((prev) => ({ ...prev, [c.symbol]: snap }));
         })
         .catch((e) => {
-          if (cancelled) return;
+          // Allow retry on next mount if the request errored
+          fetchedSnapshotRef.current.delete(c.symbol);
           setSnapshotErrs((prev) => ({
             ...prev,
             [c.symbol]: e instanceof Error ? e.message : 'snapshot error',
           }));
         });
     }
-    return () => {
-      cancelled = true;
-    };
   }, [tracked]);
 
   const filtered = useMemo(() => {

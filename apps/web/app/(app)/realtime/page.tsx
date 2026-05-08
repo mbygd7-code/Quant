@@ -68,11 +68,15 @@ export default async function RealtimePage() {
     .order('impact_strength', { ascending: false })
     .limit(60);
 
+  // Equity-only filter — exclude FX (USDKRW), indices (^GSPC), futures, etc.
+  // Finnhub WebSocket free tier streams US equities + select global names.
+  const EQUITY_RE = /^[A-Z]{1,5}$/;
   const mapped: UsCandidate[] = [];
   const seen = new Set<string>();
   for (const r of mappingRows ?? []) {
     const sym = String(r.us_symbol ?? '').toUpperCase().trim();
     if (!sym || seen.has(sym)) continue;
+    if (!EQUITY_RE.test(sym)) continue;
     seen.add(sym);
     mapped.push({ symbol: sym, name: sym, sector: '매핑 종목' });
   }
