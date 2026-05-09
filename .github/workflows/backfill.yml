@@ -1,0 +1,123 @@
+name: One-shot data backfill
+
+# Manual trigger only. Runs every backfill collector in sequence so the
+# DB has enough history for the 8-agent system to score every voter.
+#
+# Order matters:
+#   1. korea_market (OHLCV)         — Dow + Taleb need ≥200 trading days
+#   2. global_market (^KS11, etc.)  — Shiller needs ≥200 KOSPI quotes
+#   3. macro_factors (USDKRW, etc.) — Keynes
+#   4. dart_corpcodes               — pre-req for financials
+#   5. dart_financials              — Graham needs ≥2 quarters
+#   6. kr_fundamentals (PE/PBR/ROE) — Graham + Shiller
+#   7. sector_etfs                  — Keynes sector betas pre-req
+#   8. compute_macro_betas          — Keynes
+#   9. compute_sector_betas         — Keynes
+#
+# Costs: zero LLM. yfinance + DART + Supabase only. ~5-15 min total.
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Trading days of history to pull (300 = ~14 months calendar)'
+        required: true
+        default: '300'
+      skip_dart:
+        description: 'Skip DART steps (corpcodes + financials) if already done'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: pip install -e .
+
+      - name: 1) korea_market (pykrx + yfinance)
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python -m scripts.backfill_kr_market --days "${{ inputs.days }}"
+
+      - name: 2) global_market (^KS11 ^KS200 ^VIX ^IXIC ...)
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python -m scripts.backfill_indices --days "${{ inputs.days }}"
+
+      - name: 3) macro_factors (USDKRW ^TNX WTI DXY)
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python -m scripts.backfill_macro_factors --days "${{ inputs.days }}"
+
+      - name: 4) DART corp codes
+        if: ${{ inputs.skip_dart != 'true' }}
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DART_API_KEY:              ${{ secrets.DART_API_KEY }}
+        run: python -m scripts.backfill_dart_corpcodes
+
+      - name: 5) DART financials (last 8 quarters)
+        if: ${{ inputs.skip_dart != 'true' }}
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DART_API_KEY:              ${{ secrets.DART_API_KEY }}
+        run: python -m scripts.backfill_dart_financials
+
+      - name: 6) kr_fundamentals (PE/PBR/ROE snapshot)
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python -m scripts.backfill_kr_fundamentals
+
+      - name: 7) sector ETF history
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python -m scripts.backfill_sector_etfs --days "${{ inputs.days }}"
+
+      - name: 8) compute kr_macro_betas (rolling regression)
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python -m scripts.compute_macro_betas
+
+      - name: 9) compute kr_sector_betas (60-day OLS)
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python -m scripts.compute_sector_betas
+
+      - name: Verify counts
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python -c "
+          from db.supabase_client import get_admin_client
+          sb = get_admin_client()
+          for table, label in [
+              ('korea_market', 'KR OHLCV'),
+              ('global_market', 'global indices+macro'),
+              ('kr_financials', 'DART financials'),
+              ('kr_fundamentals', 'PE/PBR/ROE'),
+              ('kr_macro_betas', 'macro betas'),
+              ('kr_sector_betas', 'sector betas'),
+          ]:
+              n = sb.table(table).select('*', count='exact').limit(1).execute()
+              print(f'  {label:<25} {table:<20} rows: {n.count}')
+          "
