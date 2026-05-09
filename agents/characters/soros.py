@@ -52,7 +52,7 @@ from agents.db.models import (
     UserWeightSettings,
 )
 from agents.db.repository import AgentRepository, get_agent_repository
-from agents.grading import score_to_signal_grade
+from agents.grading import apply_taleb_constraint, score_to_signal_grade
 from agents.llm import (
     CacheBlock,
     ClaudeMessage,
@@ -67,6 +67,12 @@ M2_VOTERS: tuple[AgentName, ...] = ("graham", "dow")
 #: M3 voter set — Graham + Dow + Shiller + Keynes. M4 adds Taleb,
 #: M5 adds Simons, completing the six.
 M3_VOTERS: tuple[AgentName, ...] = ("graham", "dow", "shiller", "keynes")
+
+#: M4 voter set — adds Taleb. Taleb's risk_score participates in Q1
+#: and Taleb's severity drives the Q3 auto-constraint after Q2.
+M4_VOTERS: tuple[AgentName, ...] = (
+    "graham", "dow", "shiller", "keynes", "taleb",
+)
 
 #: Priced-in threshold above which we halve the weighted_score (per
 #: character-soros.md §3 Q2 — "이미 반영된 만큼 신호 약화").
@@ -259,6 +265,17 @@ _NARRATIVE_SYSTEM = (
     "동의 또는 견제 구도를 명확히 하고, 시장 반영도(priced_in)와 함께 "
     "자신의 판단을 제시하세요. 응답은 반드시 다음 JSON 스키마: "
     "{\"narrative\": \"<200자 이내 한국어 종합 평가>\"}"
+)
+
+_NARRATIVE_SYSTEM_M4 = (
+    "당신은 'Soros'입니다. 데스크 헤드로서 5명 분석가(Graham, Dow, "
+    "Shiller, Keynes, Taleb)의 의견을 종합합니다. 결정적 단어('매수', "
+    "'매도', '강력 추천', '확정', '보장', '오늘 오른다', '오늘 내린다', "
+    "'100%')를 절대 사용하지 마세요. 다섯 분석가 의견을 모두 인용하고 "
+    "(이름 명시), Taleb의 risk_score와 severity를 별도로 다루세요. "
+    "Taleb이 severity 4 이상을 발행했다면 자동 제약 적용 여부를 명시. "
+    "응답은 반드시 다음 JSON 스키마: "
+    "{\"narrative\": \"<300자 이내 한국어 종합 평가>\"}"
 )
 
 _NARRATIVE_SYSTEM_M3 = (
@@ -579,6 +596,188 @@ class Soros:
         )
         if parsed is None:
             raise RuntimeError("M3 narrative returned no parsed response")
+        narrative = sanitize_narrative(parsed.narrative.strip())
+        return narrative, result.cost_estimate_usd, result.model
+
+    # ── M4 synthesis (5 voters: + Taleb auto-constraint) ─────────
+
+    def synthesize_m4(
+        self,
+        ticker: str,
+        cycle_at: datetime,
+        voters: dict[AgentName, AgentOutput],
+        *,
+        user_id: UUID | None = None,
+        inputs: SorosInputsM3 | None = None,
+    ) -> SynthesisResult:
+        """Five-voter synthesis with Q3 Taleb auto-constraint.
+
+        Pipeline:
+          Q1   weighted sum across {graham, dow, shiller, keynes, taleb}
+          Q2   priced-in dampening (same as M2/M3)
+          Q3   if voters['taleb'].severity >= 4, apply_taleb_constraint
+               downgrades the baseline grade (severity 4 = -1 step;
+               severity 5 = STRONG_BUY/BUY → HOLD).
+
+        ``taleb_severity`` is recorded on the FinalSignal so the M1
+        grade-stamping UI can render the badge. ``taleb_override`` stays
+        False — the override flag is reserved for the case where the
+        user manually rejects Taleb's constraint (M5+ feature).
+        """
+        bundle = inputs or self.fetch_m3(ticker, voters, user_id=user_id)
+
+        present = tuple(a for a in M4_VOTERS if a in bundle.voters)
+        shares = voter_shares_for(bundle.weights, present)
+        scores = {a: bundle.voters[a].score for a in present}
+        q1 = weighted_q1_score_generic(scores, shares)
+
+        priced_in, q2_cost, _q2_model = self._priced_in_score_m3(
+            ticker, bundle
+        )
+        adjusted = apply_priced_in(q1, priced_in)
+
+        baseline_grade = score_to_signal_grade(adjusted)
+
+        # Q3 — Taleb auto-constraint on the baseline grade.
+        taleb_out = bundle.voters.get("taleb")
+        taleb_severity = taleb_out.severity if taleb_out is not None else None
+        signal_grade, constraint_applied = apply_taleb_constraint(
+            baseline_grade, taleb_severity
+        )
+        confidence = confidence_from_score(adjusted)
+
+        narrative, narr_cost, _narr_model = self._narrative_m4(
+            ticker,
+            bundle,
+            q1,
+            priced_in,
+            adjusted,
+            baseline_grade,
+            signal_grade,
+            taleb_severity,
+            constraint_applied,
+        )
+
+        weights_snapshot = {
+            "shares": {a: float(shares[a]) for a in present},
+            "raw_user_weights": {k: float(v) for k, v in bundle.weights.items()},
+            "voter_set": list(present),
+            "priced_in": float(priced_in),
+            "priced_in_dampen_applied": priced_in > PRICED_IN_DAMPEN_THRESHOLD,
+            "q1_score": float(q1),
+            "q2_adjusted_score": float(adjusted),
+            "baseline_grade": baseline_grade,
+            "taleb_severity": taleb_severity,
+            "taleb_constraint_applied": constraint_applied,
+            "milestone": "M4",
+        }
+
+        new_signal = FinalSignalNew(
+            ticker=ticker,
+            cycle_at=cycle_at,
+            signal_grade=signal_grade,
+            confidence=confidence,
+            weighted_score=adjusted,
+            weights_snapshot=weights_snapshot,
+            narrative=narrative,
+            taleb_severity=taleb_severity,
+            taleb_override=False,
+            cost_estimate=q2_cost + narr_cost,
+        )
+
+        from_grade, did_change = detect_grade_change(
+            bundle.previous_signal, signal_grade
+        )
+        change_event: SignalChangeEventNew | None = None
+        if did_change:
+            change_event = SignalChangeEventNew(
+                ticker=ticker,
+                from_grade=from_grade,
+                to_grade=signal_grade,
+                from_signal_id=(
+                    bundle.previous_signal.id if bundle.previous_signal else None
+                ),
+                to_signal_id=UUID("00000000-0000-0000-0000-000000000000"),
+                reason=(
+                    "taleb_auto_constraint"
+                    if constraint_applied
+                    else "agent_consensus_shift"
+                ),
+                taleb_override=False,
+            )
+
+        return SynthesisResult(
+            final_signal=new_signal,
+            change_event=change_event,
+            cost_estimate_usd=q2_cost + narr_cost,
+        )
+
+    def _narrative_m4(
+        self,
+        ticker: str,
+        bundle: SorosInputsM3,
+        q1: Decimal,
+        priced_in: Decimal,
+        adjusted: Decimal,
+        baseline: SignalGrade,
+        final_grade: SignalGrade,
+        taleb_severity: int | None,
+        constraint_applied: bool,
+    ) -> tuple[str, float, str]:
+        cache: list[CacheBlock] = []
+        for agent_name, output in bundle.voters.items():
+            severity_suffix = (
+                f" severity={output.severity}"
+                if output.severity is not None
+                else ""
+            )
+            cache.append(
+                CacheBlock(
+                    text=(
+                        f"{agent_name.capitalize()} 의견 "
+                        f"({output.score:+}점{severity_suffix}):\n"
+                        f"{output.narrative}"
+                    ),
+                    label=f"{agent_name}-narrative",
+                )
+            )
+        voter_lines = "\n".join(
+            f"- {a}: {bundle.voters[a].score}점"
+            + (
+                f" (severity {bundle.voters[a].severity})"
+                if bundle.voters[a].severity is not None
+                else ""
+            )
+            for a in bundle.voters
+        )
+        constraint_line = (
+            f"- Q3 Taleb 자동 제약: {baseline} → {final_grade} "
+            f"(severity {taleb_severity})"
+            if constraint_applied
+            else (
+                f"- Q3 Taleb 자동 제약: 미적용 (severity "
+                f"{taleb_severity if taleb_severity is not None else '없음'})"
+            )
+        )
+        user_text = (
+            f"{ticker} 종합 (M4 — 5명 투표):\n"
+            f"{voter_lines}\n"
+            f"- Q1 가중 합산 점수: {q1}\n"
+            f"- Q2 priced_in: {priced_in} → 적용 점수: {adjusted}\n"
+            f"- 산출 기본 시그널: {baseline}\n"
+            f"{constraint_line}\n"
+            f"- 최종 시그널: {final_grade}\n"
+            "다섯 분석가 의견을 모두 인용하며 결론을 작성하세요. "
+            "Taleb의 risk_score와 severity를 별도로 다루세요."
+        )
+        result, parsed = call_claude(
+            system=_NARRATIVE_SYSTEM_M4,
+            cache=cache,
+            messages=[ClaudeMessage(role="user", content=user_text)],
+            response_model=SorosNarrative,
+        )
+        if parsed is None:
+            raise RuntimeError("M4 narrative returned no parsed response")
         narrative = sanitize_narrative(parsed.narrative.strip())
         return narrative, result.cost_estimate_usd, result.model
 
