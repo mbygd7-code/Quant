@@ -17,7 +17,13 @@ import yfinance as yf
 
 from db.supabase_client import get_admin_client
 
-INDICES = ["^IXIC", "^GSPC", "^SOX", "^DJI", "^RUT", "^VIX"]
+INDICES = [
+    # US dashboard
+    "^IXIC", "^GSPC", "^SOX", "^DJI", "^RUT", "^VIX",
+    # KR market regime — required by Shiller (M3+) for momentum + breadth
+    "^KS11",   # KOSPI Composite
+    "^KS200",  # KOSPI 200
+]
 
 
 def main(days: int = 14) -> None:
