@@ -143,6 +143,60 @@ export function LoginForm() {
           초대 가입
         </Link>
       </p>
+      <DevQuickLogin />
     </form>
+  );
+}
+
+function DevQuickLogin() {
+  const router = useRouter();
+  const [busy, setBusy] = useState<number | null>(null);
+
+  if (process.env.NODE_ENV === 'production') return null;
+
+  async function quickLogin(idx: number) {
+    setBusy(idx);
+    try {
+      const res = await fetch('/api/dev-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index: idx }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(`Dev #${idx} 로그인 실패: ${data?.error ?? res.statusText}`);
+        return;
+      }
+      toast.success(`Dev #${idx} 로그인 (${data.email})`);
+      router.replace('/dashboard');
+      router.refresh();
+    } catch (err) {
+      toast.error(`Dev #${idx} 로그인 오류: ${(err as Error).message}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-md border border-dashed border-border bg-bg-tertiary/30 p-3">
+      <div className="mb-2 text-center text-[10px] uppercase tracking-wider text-txt-muted">
+        Dev Quick Login (개발 전용)
+      </div>
+      <div className="grid grid-cols-5 gap-2">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <Button
+            key={n}
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => quickLogin(n)}
+            disabled={busy !== null}
+            className="font-mono"
+          >
+            {busy === n ? '...' : n}
+          </Button>
+        ))}
+      </div>
+    </div>
   );
 }

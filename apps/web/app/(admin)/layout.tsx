@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { DevBypassBanner } from '@/components/layout/dev-bypass-banner';
@@ -19,7 +20,9 @@ export default async function AdminLayout({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) redirect('/login');
 
-    const { data: profile } = await supabase
+    // profiles RLS 재귀 회피 — service_role로 본인 row만 조회 (CLAUDE.md §G).
+    const admin = createAdminClient();
+    const { data: profile } = await admin
       .from('profiles')
       .select('role, email')
       .eq('id', user.id)
