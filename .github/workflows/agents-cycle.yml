@@ -1,4 +1,4 @@
-name: Agents M2 Cycle
+name: Agents Cycle (M3)
 
 # Daily 3x cycle: 07:00 / 12:00 / 16:00 KST.
 # UTC = KST - 9h, so:
@@ -55,7 +55,7 @@ jobs:
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             ARGS="$ARGS --dry-run"
           fi
-          python -m agents.cycle.run_m2_cycle $ARGS 2>&1 | tee cycle-stdout.log
+          python -m agents.cycle.run_m3_cycle $ARGS 2>&1 | tee cycle-stdout.log
         env:
           SUPABASE_URL:               ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

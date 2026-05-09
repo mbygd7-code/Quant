@@ -64,6 +64,10 @@ from agents.weights.constants import DEFAULT_WEIGHTS
 #: M2 weight set narrowed to two voting characters. M3 expands.
 M2_VOTERS: tuple[AgentName, ...] = ("graham", "dow")
 
+#: M3 voter set — Graham + Dow + Shiller + Keynes. M4 adds Taleb,
+#: M5 adds Simons, completing the six.
+M3_VOTERS: tuple[AgentName, ...] = ("graham", "dow", "shiller", "keynes")
+
 #: Priced-in threshold above which we halve the weighted_score (per
 #: character-soros.md §3 Q2 — "이미 반영된 만큼 신호 약화").
 PRICED_IN_DAMPEN_THRESHOLD = Decimal("0.70")
@@ -82,6 +86,16 @@ class SorosInputs:
     weights: dict[AgentName, Decimal]   # M2: only graham + dow consulted
     recent_quotes: list[KrQuoteRow]     # last ~30 days for priced-in eval
     previous_signal: FinalSignal | None  # for change-event detection
+
+
+@dataclass(frozen=True)
+class SorosInputsM3:
+    """Pre-fetched bundle for the M3 four-voter synthesis call."""
+
+    voters: dict[AgentName, AgentOutput]  # graham, dow, shiller, keynes
+    weights: dict[AgentName, Decimal]
+    recent_quotes: list[KrQuoteRow]
+    previous_signal: FinalSignal | None
 
 
 class SorosPricedIn(BaseModel):
@@ -125,6 +139,50 @@ def m2_voter_shares(weights: dict[AgentName, Decimal]) -> dict[AgentName, Decima
         "graham": (g / total).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
         "dow": (d / total).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
     }
+
+
+def voter_shares_for(
+    weights: dict[AgentName, Decimal],
+    voters: tuple[AgentName, ...],
+) -> dict[AgentName, Decimal]:
+    """Generic voter-share normaliser — works for any subset of the
+    six voting agents. Used by M3 (4 voters) and beyond.
+
+    Falls back to an even split if the requested voters all have zero
+    weight (defensive — shouldn't happen with the validator's 5%-40%
+    floor, but safer than div-by-zero).
+    """
+    if not voters:
+        return {}
+    raw = {v: weights.get(v, Decimal(0)) for v in voters}
+    total = sum(raw.values(), Decimal(0))
+    if total == 0:
+        share = (Decimal(1) / Decimal(len(voters))).quantize(
+            Decimal("0.0001"), rounding=ROUND_HALF_UP
+        )
+        return dict.fromkeys(voters, share)
+    return {
+        v: (raw[v] / total).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+        for v in voters
+    }
+
+
+def weighted_q1_score_generic(
+    scores: dict[AgentName, Decimal | None],
+    shares: dict[AgentName, Decimal],
+) -> Decimal:
+    """Generalised Q1: weighted sum across an arbitrary voter set.
+
+    Missing scores (None) contribute zero — same convention as the
+    M2 helper. The caller is responsible for matching keys.
+    """
+    total = Decimal(0)
+    for agent, share in shares.items():
+        s = scores.get(agent)
+        if s is None:
+            continue
+        total += share * s
+    return total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def weighted_q1_score(
@@ -201,6 +259,17 @@ _NARRATIVE_SYSTEM = (
     "동의 또는 견제 구도를 명확히 하고, 시장 반영도(priced_in)와 함께 "
     "자신의 판단을 제시하세요. 응답은 반드시 다음 JSON 스키마: "
     "{\"narrative\": \"<200자 이내 한국어 종합 평가>\"}"
+)
+
+_NARRATIVE_SYSTEM_M3 = (
+    "당신은 'Soros'입니다. 데스크 헤드로서 4명 분석가(Graham, Dow, "
+    "Shiller, Keynes)의 의견을 종합합니다. 결정적 단어('매수', '매도', "
+    "'강력 추천', '확정', '보장', '오늘 오른다', '오늘 내린다', '100%')를 "
+    "절대 사용하지 마세요. 네 분석가의 의견을 모두 인용하고 (이름 명시), "
+    "각 견제축(가치-추세, 시장사이클-매크로)에서 누가 동의하고 누가 반대하는지 "
+    "명확히 한 뒤 자신의 결론을 제시하세요. priced_in 영향도 함께 언급. "
+    "응답은 반드시 다음 JSON 스키마: "
+    "{\"narrative\": \"<250자 이내 한국어 종합 평가>\"}"
 )
 
 
@@ -341,6 +410,178 @@ class Soros:
             cost_estimate_usd=q2_cost + narr_cost,
         )
 
+    # ── M3 synthesis (4 voters: Graham, Dow, Shiller, Keynes) ─────
+
+    def fetch_m3(
+        self,
+        ticker: str,
+        voters: dict[AgentName, AgentOutput],
+        *,
+        user_id: UUID | None = None,
+    ) -> SorosInputsM3:
+        weights = self._user_weights(user_id)
+        recent = daily_quotes(ticker, days=30)
+        return SorosInputsM3(
+            voters=voters,
+            weights=weights,
+            recent_quotes=recent,
+            previous_signal=self._previous_signal(ticker),
+        )
+
+    def synthesize_m3(
+        self,
+        ticker: str,
+        cycle_at: datetime,
+        voters: dict[AgentName, AgentOutput],
+        *,
+        user_id: UUID | None = None,
+        inputs: SorosInputsM3 | None = None,
+    ) -> SynthesisResult:
+        """Generalised four-voter synthesis. ``voters`` keys must be
+        a subset of M3_VOTERS; missing voters drop out of the weighted
+        sum (their share is redistributed proportionally)."""
+        bundle = inputs or self.fetch_m3(ticker, voters, user_id=user_id)
+
+        present = tuple(a for a in M3_VOTERS if a in bundle.voters)
+        shares = voter_shares_for(bundle.weights, present)
+        scores = {a: bundle.voters[a].score for a in present}
+        q1 = weighted_q1_score_generic(scores, shares)
+
+        priced_in, q2_cost, _q2_model = self._priced_in_score_m3(
+            ticker, bundle
+        )
+        adjusted = apply_priced_in(q1, priced_in)
+
+        signal_grade = score_to_signal_grade(adjusted)
+        confidence = confidence_from_score(adjusted)
+
+        narrative, narr_cost, _narr_model = self._narrative_m3(
+            ticker, bundle, q1, priced_in, adjusted, signal_grade
+        )
+
+        weights_snapshot = {
+            "shares": {a: float(shares[a]) for a in present},
+            "raw_user_weights": {k: float(v) for k, v in bundle.weights.items()},
+            "voter_set": list(present),
+            "priced_in": float(priced_in),
+            "priced_in_dampen_applied": priced_in > PRICED_IN_DAMPEN_THRESHOLD,
+            "q1_score": float(q1),
+            "q2_adjusted_score": float(adjusted),
+            "milestone": "M3",
+        }
+
+        new_signal = FinalSignalNew(
+            ticker=ticker,
+            cycle_at=cycle_at,
+            signal_grade=signal_grade,
+            confidence=confidence,
+            weighted_score=adjusted,
+            weights_snapshot=weights_snapshot,
+            narrative=narrative,
+            taleb_severity=None,    # M4 wires Taleb
+            taleb_override=False,
+            cost_estimate=q2_cost + narr_cost,
+        )
+
+        from_grade, did_change = detect_grade_change(
+            bundle.previous_signal, signal_grade
+        )
+        change_event: SignalChangeEventNew | None = None
+        if did_change:
+            change_event = SignalChangeEventNew(
+                ticker=ticker,
+                from_grade=from_grade,
+                to_grade=signal_grade,
+                from_signal_id=(
+                    bundle.previous_signal.id if bundle.previous_signal else None
+                ),
+                to_signal_id=UUID("00000000-0000-0000-0000-000000000000"),
+                reason="agent_consensus_shift",
+                taleb_override=False,
+            )
+
+        return SynthesisResult(
+            final_signal=new_signal,
+            change_event=change_event,
+            cost_estimate_usd=q2_cost + narr_cost,
+        )
+
+    def _priced_in_score_m3(
+        self, ticker: str, bundle: SorosInputsM3
+    ) -> tuple[Decimal, float, str]:
+        cache = [
+            CacheBlock(
+                text=_priced_in_facts_m3(ticker, bundle),
+                label="soros-m3-priced-in",
+            ),
+        ]
+        result, parsed = call_claude(
+            system=_PRICED_IN_SYSTEM,
+            cache=cache,
+            messages=[
+                ClaudeMessage(
+                    role="user",
+                    content=(
+                        f"위 데이터로 {ticker}의 priced_in 점수를 계산하세요. "
+                        "최근 가격이 분석가들의 의견을 이미 반영했는지 평가합니다."
+                    ),
+                ),
+            ],
+            response_model=SorosPricedIn,
+        )
+        if parsed is None:
+            raise RuntimeError("priced-in call returned no parsed response")
+        return (
+            Decimal(str(parsed.priced_in)).quantize(Decimal("0.01")),
+            result.cost_estimate_usd,
+            result.model,
+        )
+
+    def _narrative_m3(
+        self,
+        ticker: str,
+        bundle: SorosInputsM3,
+        q1: Decimal,
+        priced_in: Decimal,
+        adjusted: Decimal,
+        grade: SignalGrade,
+    ) -> tuple[str, float, str]:
+        # One cache block per voter — Anthropic dedupes them per cycle.
+        cache: list[CacheBlock] = []
+        for agent_name, output in bundle.voters.items():
+            cache.append(
+                CacheBlock(
+                    text=(
+                        f"{agent_name.capitalize()} 의견 ({output.score:+}점):\n"
+                        f"{output.narrative}"
+                    ),
+                    label=f"{agent_name}-narrative",
+                )
+            )
+        voter_lines = "\n".join(
+            f"- {a}: {bundle.voters[a].score}점"
+            for a in bundle.voters
+        )
+        user_text = (
+            f"{ticker} 종합 (M3 — 4명 투표):\n"
+            f"{voter_lines}\n"
+            f"- Q1 가중 합산 점수: {q1}\n"
+            f"- Q2 priced_in: {priced_in}  → 적용된 점수: {adjusted}\n"
+            f"- 산출 시그널: {grade}\n"
+            "네 분석가 의견을 인용하며 결론을 작성하세요. "
+            "동의·견제 구도를 명확히 하세요."
+        )
+        result, parsed = call_claude(
+            system=_NARRATIVE_SYSTEM_M3,
+            cache=cache,
+            messages=[ClaudeMessage(role="user", content=user_text)],
+            response_model=SorosNarrative,
+        )
+        if parsed is None:
+            raise RuntimeError("M3 narrative returned no parsed response")
+        narrative = sanitize_narrative(parsed.narrative.strip())
+        return narrative, result.cost_estimate_usd, result.model
+
     # ── LLM calls ─────────────────────────────────────────────────
 
     def _priced_in_score(
@@ -419,6 +660,34 @@ class Soros:
             raise RuntimeError("narrative call returned no parsed response")
         narrative = sanitize_narrative(parsed.narrative.strip())
         return narrative, result.cost_estimate_usd, result.model
+
+
+def _priced_in_facts_m3(ticker: str, bundle: SorosInputsM3) -> str:
+    """Same shape as the M2 helper but reads from the M3 voter dict.
+
+    Lists every present voter's score + narrative so the priced-in
+    LLM can weigh consensus / dissent against recent price action.
+    """
+    closes = [q.close for q in bundle.recent_quotes[:30] if q.close is not None]
+    if len(closes) >= 2:
+        first = closes[-1]
+        last = closes[0]
+        change_pct = (last - first) / first * 100 if first else 0
+    else:
+        change_pct = 0
+    vols = [q.volume for q in bundle.recent_quotes[:20] if q.volume is not None]
+    avg_vol = sum(vols) / len(vols) if vols else 0
+    recent_vol = sum(vols[:5]) / 5 if len(vols) >= 5 else avg_vol
+    vol_ratio = recent_vol / avg_vol if avg_vol else 0
+    lines = [
+        f"종목: {ticker}",
+        f"최근 30일 가격 변동: {change_pct:+.2f}%",
+        f"최근 5일 거래량 / 20일 평균: {vol_ratio:.2f}",
+    ]
+    for agent_name, output in bundle.voters.items():
+        lines.append(f"{agent_name} 점수: {output.score}")
+        lines.append(f"{agent_name} narrative: {output.narrative}")
+    return "\n".join(lines)
 
 
 def _priced_in_facts(ticker: str, bundle: SorosInputs) -> str:
