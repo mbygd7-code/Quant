@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  Activity,
   BarChart3,
   Bell,
   ChartLine,
@@ -51,6 +52,7 @@ const NAV: Array<{ section: string; items: Item[] }> = [
       { href: '/backtest', label: 'Backtest', icon: FlaskConical, roles: ['admin'] },
       { href: '/admin/users', label: 'Users', icon: Users, roles: ['admin'] },
       { href: '/admin/data-quality', label: 'Data Quality', icon: LineChart, roles: ['admin'] },
+      { href: '/admin/agent-monitoring', label: 'AI 모니터링', icon: Activity, roles: ['admin'] },
       { href: '/admin/notifications', label: 'Notifications', icon: Bell, roles: ['admin'] },
     ],
   },
