@@ -68,3 +68,33 @@ def sanitize_narrative(narrative: str) -> str:
         word, pos = violations[0]
         raise ForbiddenWordError(word, pos, narrative)
     return narrative
+
+
+def sanitize_narrative_safe(
+    narrative: str, *, redaction_template: str | None = None
+) -> str:
+    """Non-fatal variant for *aggregator* narratives (e.g. Soros).
+
+    Per-character narratives stay strict — if Graham/Dow/Taleb produce
+    a banned word, dropping that one voter's row is the right outcome
+    (per-character isolation in the cycle orchestrator).
+
+    Soros, however, aggregates the whole signal: a single forbidden
+    word in its narrative would currently delete every voter's
+    contribution from the CSV / final_signals row. That's a worse
+    failure than emitting a redacted placeholder. So at *that* layer
+    we swap to a redacted message and surface the violation in logs
+    instead of raising.
+
+    Returns the cleaned narrative when safe, or a redacted placeholder
+    that names the offending word so reviewers can spot it. The
+    placeholder satisfies ``min_length=1`` Pydantic constraints.
+    """
+    try:
+        return sanitize_narrative(narrative)
+    except ForbiddenWordError as exc:
+        template = (
+            redaction_template
+            or "[narrative redacted — sanitizer caught '{word}' at position {pos}]"
+        )
+        return template.format(word=exc.word, pos=exc.position)

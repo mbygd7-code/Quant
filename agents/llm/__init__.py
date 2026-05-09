@@ -45,6 +45,7 @@ from agents.llm.sanitize import (
     ForbiddenWordError,
     forbidden_words_violations,
     sanitize_narrative,
+    sanitize_narrative_safe,
 )
 
 __all__ = [
@@ -57,4 +58,5 @@ __all__ = [
     "call_claude",
     "forbidden_words_violations",
     "sanitize_narrative",
+    "sanitize_narrative_safe",
 ]
