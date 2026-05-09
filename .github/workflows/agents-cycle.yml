@@ -12,10 +12,13 @@ name: Agents Cycle (M4)
 # the orchestrator (M2-T5).
 
 on:
-  schedule:
-    - cron: '0 22 * * *'   # 07:00 KST
-    - cron: '0 3  * * *'   # 12:00 KST
-    - cron: '0 7  * * *'   # 16:00 KST
+  # ⏸ Cron paused 2026-05-10 while mini-backtest validates M4. Re-enable
+  # after the backtest results are reviewed and any threshold tuning is
+  # done. To resume: uncomment the four lines below.
+  # schedule:
+  #   - cron: '0 22 * * *'   # 07:00 KST
+  #   - cron: '0 3  * * *'   # 12:00 KST
+  #   - cron: '0 7  * * *'   # 16:00 KST
   workflow_dispatch:
     inputs:
       tickers:

@@ -240,3 +240,31 @@ def _is_transient_with_fake(exc: BaseException) -> bool:
 
 
 _client_module._is_transient = _is_transient_with_fake
+
+
+# ─── _strip_json_fences ─────────────────────────────────────────────
+
+
+import pytest as _pytest
+
+from agents.llm.client import _strip_json_fences as _strip
+
+
+@_pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ('{"x": 1}', '{"x": 1}'),
+        ('```json\n{"x": 1}\n```', '{"x": 1}'),
+        ('```\n{"x": 1}\n```', '{"x": 1}'),
+        ('  ```json\n{"x": 1}\n```  ', '{"x": 1}'),
+        ('```json{"x": 1}```', '{"x": 1}'),
+        ('```JSON\n{"x": 1}\n```', '{"x": 1}'),
+    ],
+)
+def test_strip_json_fences_handles_common_wraps(
+    raw: str, expected: str
+) -> None:
+    """Pin the markdown-fence stripper Pydantic depends on. Real
+    Anthropic responses occasionally wrap JSON in ```` ```json ```` despite
+    the JSON-only system prompt; we must recover before model_validate_json."""
+    assert _strip(raw) == expected
