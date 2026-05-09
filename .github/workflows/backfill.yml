@@ -20,9 +20,9 @@ on:
   workflow_dispatch:
     inputs:
       days:
-        description: 'Trading days of history to pull (300 = ~14 months calendar)'
+        description: 'Trading days of history to pull (500 = ~22 months calendar — needed for past-date backtest with 200d MA)'
         required: true
-        default: '300'
+        default: '500'
       skip_dart:
         description: 'Skip DART steps (corpcodes + financials) if already done'
         type: boolean

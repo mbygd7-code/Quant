@@ -57,7 +57,7 @@ from agents.llm import (
     CacheBlock,
     ClaudeMessage,
     call_claude,
-    sanitize_narrative,
+    sanitize_narrative_safe,
 )
 from agents.weights.constants import DEFAULT_WEIGHTS
 
@@ -596,7 +596,7 @@ class Soros:
         )
         if parsed is None:
             raise RuntimeError("M3 narrative returned no parsed response")
-        narrative = sanitize_narrative(parsed.narrative.strip())
+        narrative = sanitize_narrative_safe(parsed.narrative.strip())
         return narrative, result.cost_estimate_usd, result.model
 
     # ── M4 synthesis (5 voters: + Taleb auto-constraint) ─────────
@@ -778,7 +778,7 @@ class Soros:
         )
         if parsed is None:
             raise RuntimeError("M4 narrative returned no parsed response")
-        narrative = sanitize_narrative(parsed.narrative.strip())
+        narrative = sanitize_narrative_safe(parsed.narrative.strip())
         return narrative, result.cost_estimate_usd, result.model
 
     # ── LLM calls ─────────────────────────────────────────────────
@@ -857,7 +857,7 @@ class Soros:
         )
         if parsed is None:
             raise RuntimeError("narrative call returned no parsed response")
-        narrative = sanitize_narrative(parsed.narrative.strip())
+        narrative = sanitize_narrative_safe(parsed.narrative.strip())
         return narrative, result.cost_estimate_usd, result.model
 
 

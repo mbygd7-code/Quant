@@ -53,3 +53,35 @@ def test_partial_match_does_not_false_positive() -> None:
 
 def test_empty_text_passes() -> None:
     assert sanitize_narrative("") == ""
+
+
+# ─── sanitize_narrative_safe ─────────────────────────────────────────
+
+
+from agents.llm.sanitize import sanitize_narrative_safe
+
+
+def test_safe_passes_clean_narrative_unchanged() -> None:
+    text = "안전마진이 충분히 확보된 수준입니다."
+    assert sanitize_narrative_safe(text) == text
+
+
+def test_safe_redacts_instead_of_raising_on_forbidden_word() -> None:
+    """Soros aggregates 5 voters; a single banned word should NOT
+    discard every voter's contribution. The safe variant returns a
+    redacted placeholder so the synthesis row still gets written."""
+    text = "이 종목의 추세가 확정적으로 상승입니다."
+    out = sanitize_narrative_safe(text)
+    # The placeholder names the offending word so reviewers can spot it.
+    assert "redacted" in out
+    assert "확정" in out
+    # Still satisfies min_length=10 Pydantic constraint.
+    assert len(out) >= 10
+
+
+def test_safe_custom_redaction_template() -> None:
+    text = "보장된 수익이 예상됩니다."
+    out = sanitize_narrative_safe(
+        text, redaction_template="[blocked: {word}]"
+    )
+    assert out == "[blocked: 보장]"
