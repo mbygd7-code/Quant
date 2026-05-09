@@ -218,7 +218,7 @@ def call_claude(
             return result, None
 
         try:
-            parsed = response_model.model_validate_json(text)
+            parsed = response_model.model_validate_json(_strip_json_fences(text))
             return result, parsed
         except ValidationError as exc:
             last_error = exc
@@ -239,6 +239,38 @@ def call_claude(
 
     # Unreachable in practice — kept for type-checker happiness.
     raise AgentLLMError(f"call_claude exhausted attempts; last error: {last_error}")
+
+
+def _strip_json_fences(text: str) -> str:
+    """Strip markdown code fences from a JSON-shaped LLM response.
+
+    Claude (and most chat-tuned LLMs) sometimes wrap JSON in
+    `````json … ````` despite an explicit
+    JSON-only system prompt. ``model_validate_json`` then chokes on the
+    backticks. This helper removes the fence — both `````json``
+    and bare ``````` variants — and trims surrounding
+    whitespace so the inner JSON parses cleanly. If no fence is present
+    the input is returned unchanged.
+    """
+    s = text.strip()
+    if not s.startswith("```"):
+        return s
+    # Drop the opening fence + optional language tag.
+    s = s[3:]  # consume the three backticks
+    first_newline = s.find("\n")
+    if first_newline == -1:
+        # Single-line wrap like `````json{...}`````. The
+        # opening "```" is gone; drop a leading "json" / "JSON" tag
+        # if present, then strip the trailing fence.
+        if s.startswith(("json", "JSON")):
+            s = s[4:]
+    else:
+        # Multi-line wrap. Discard the rest of the opening line
+        # (which is just the language tag, possibly empty).
+        s = s[first_newline + 1:]
+    if s.endswith("```"):
+        s = s[:-3]
+    return s.strip()
 
 
 def _extract_text(response: Any) -> str:
