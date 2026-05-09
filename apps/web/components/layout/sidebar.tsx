@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  Activity,
   BarChart3,
   Bell,
   ChartLine,
@@ -15,6 +16,7 @@ import {
   Radio,
   Scale,
   Settings,
+  SlidersHorizontal,
   Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -37,6 +39,7 @@ const NAV: Array<{ section: string; items: Item[] }> = [
       { href: '/stocks/kr', label: '국내주식', icon: LineChart, roles: ['admin'] },
       { href: '/realtime', label: '실시간 시세', icon: Radio, roles: ['user', 'beta', 'admin'] },
       { href: '/reports', label: 'Reports', icon: ChartLine, roles: ['user', 'beta', 'admin'] },
+      { href: '/settings/agent-weights', label: 'AI 가중치', icon: SlidersHorizontal, roles: ['user', 'beta', 'admin'] },
       { href: '/settings', label: 'Settings', icon: Settings, roles: ['user', 'beta', 'admin'] },
     ],
   },
@@ -49,6 +52,7 @@ const NAV: Array<{ section: string; items: Item[] }> = [
       { href: '/backtest', label: 'Backtest', icon: FlaskConical, roles: ['admin'] },
       { href: '/admin/users', label: 'Users', icon: Users, roles: ['admin'] },
       { href: '/admin/data-quality', label: 'Data Quality', icon: LineChart, roles: ['admin'] },
+      { href: '/admin/agent-monitoring', label: 'AI 모니터링', icon: Activity, roles: ['admin'] },
       { href: '/admin/notifications', label: 'Notifications', icon: Bell, roles: ['admin'] },
     ],
   },

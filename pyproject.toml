@@ -74,6 +74,7 @@ include = [
     "orchestrator*",
     "notifier*",
     "db*",
+    "agents*",   # 8-character system (M1+); see docs/quantsignal-design-docs/
 ]
 exclude = ["tests*", "apps*", "supabase*", "logs*"]
 
