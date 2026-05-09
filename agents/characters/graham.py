@@ -51,6 +51,11 @@ GROWTH_CLAMP_HIGH = Decimal("0.30")
 PER_CAP = Decimal("15.0")
 PER_BASE = Decimal("8.5")
 PER_GROWTH_COEF = Decimal("2.0")
+#: PER floor — even shrinking-earnings companies don't have a negative
+#: fair PE. 3.0 = "deep distressed but still going-concern" — produces
+#: an intrinsic value that's lower than the no-growth baseline (8.5)
+#: while staying positive so the safety-margin math doesn't flip sign.
+PER_FLOOR = Decimal("3.0")
 
 #: PBR multiplier capped (highly profitable firms above 2x book are
 #: rare; Graham would distrust higher multiples).
@@ -196,7 +201,9 @@ def per_intrinsic_value(
     growth_pct = growth_clamped * Decimal("100")  # fraction → percent units
     # Graham: fair_per = 8.5 + 2 × growth%
     # Hard cap at PER_CAP since the formula explodes at growth > 3.25%.
-    fair_per = min(PER_CAP, PER_BASE + PER_GROWTH_COEF * growth_pct)
+    fair_per = max(
+        PER_FLOOR, min(PER_CAP, PER_BASE + PER_GROWTH_COEF * growth_pct)
+    )
     return (eps * fair_per).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
