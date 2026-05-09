@@ -41,13 +41,16 @@ def test_per_value_low_growth_uses_formula() -> None:
 
 
 def test_per_value_negative_growth_clamped() -> None:
-    """Growth -50% should clamp at -20%, not flip to negative PE."""
+    """Growth -50% clamps to -20% then floors at PER_FLOOR=3.0.
+
+    Without the floor, 8.5 + 2*(-20) = -31.5 → eps × -31.5 flips the
+    intrinsic value sign, which then breaks the safety_margin math
+    (a negative IV would make every price look like a discount).
+    The floor caps the downside at "deep distressed" 3.0× EPS.
+    """
     v = per_intrinsic_value(eps=Decimal("1000"), growth_rate=Decimal("-0.50"))
-    # growth_pct = -20 → fair_per = 8.5 + 2*-20 = -31.5 → still capped at PER_CAP=15
-    # but min(15, -31.5) = -31.5 → eps * -31.5 = -31500. That's not what we want;
-    # the formula is meant to model "fair PE", not produce negative values.
-    # The caller should also gate on this — for now we just pin the behaviour.
-    assert v == Decimal("-31500.00")
+    # growth_pct = -20 → raw fair_per = -31.5 → floored at 3.0 → 1000 × 3.0
+    assert v == Decimal("3000.00")
 
 
 # ─── pbr_intrinsic_value ───────────────────────────────────────────

@@ -146,19 +146,76 @@ def run_cycle(
     soros = Soros(repo=repo)
 
     for ticker in target_tickers:
+        # Per-character isolation: a single character's
+        # InsufficientDataError must not silence the other character's
+        # output. Each character writes independently; Soros only
+        # synthesises when *both* voters succeeded (M2's two-voter
+        # contract). If only one voter has data, we still preserve its
+        # row so M1 can render a partial card and the cycle records
+        # a "skipped" outcome.
+        graham_out: AgentOutputNew | None = None
+        dow_out: AgentOutputNew | None = None
+        skip_reasons: list[str] = []
+        unexpected_errors: list[str] = []
         try:
             graham_out = graham.analyze(ticker, cycle_at)
+        except InsufficientDataError as exc:
+            skip_reasons.append(f"graham={exc.reason}")
+        except Exception as exc:  # noqa: BLE001
+            unexpected_errors.append(f"graham:{exc}")
+
+        try:
             dow_out = dow.analyze(ticker, cycle_at)
+        except InsufficientDataError as exc:
+            skip_reasons.append(f"dow={exc.reason}")
+        except Exception as exc:  # noqa: BLE001
+            unexpected_errors.append(f"dow:{exc}")
 
-            graham_full = (
-                _stamp(graham_out) if dry_run
-                else repo.insert_agent_output(graham_out)
-            )
-            dow_full = (
-                _stamp(dow_out) if dry_run
-                else repo.insert_agent_output(dow_out)
-            )
+        # Persist whatever we got — partial data is still useful for M1
+        # cards even if Soros can't synthesise without both voters.
+        graham_full = (
+            (_stamp(graham_out) if dry_run else repo.insert_agent_output(graham_out))
+            if graham_out is not None
+            else None
+        )
+        dow_full = (
+            (_stamp(dow_out) if dry_run else repo.insert_agent_output(dow_out))
+            if dow_out is not None
+            else None
+        )
 
+        partial_cost = (
+            float(graham_out.cost_estimate or 0) if graham_out else 0.0
+        ) + (float(dow_out.cost_estimate or 0) if dow_out else 0.0)
+
+        if unexpected_errors:
+            # An unexpected error (network, supabase 5xx, parser bug)
+            # is recorded as 'error' so the workflow surfaces it loudly.
+            report.add(
+                TickerOutcome(
+                    ticker=ticker,
+                    status="error",
+                    error="; ".join(unexpected_errors + skip_reasons),
+                    cost_estimate_usd=partial_cost,
+                )
+            )
+            continue
+
+        if graham_full is None or dow_full is None:
+            # Both characters returned cleanly InsufficientDataError —
+            # not noise, just thin data. Mark 'skipped' so noise budgets
+            # stay separate from real failures.
+            report.add(
+                TickerOutcome(
+                    ticker=ticker,
+                    status="skipped",
+                    error="; ".join(skip_reasons) or "missing voter",
+                    cost_estimate_usd=partial_cost,
+                )
+            )
+            continue
+
+        try:
             synthesis = soros.synthesize(
                 ticker=ticker,
                 cycle_at=cycle_at,
@@ -196,15 +253,11 @@ def run_cycle(
                 )
             )
 
-        except InsufficientDataError as exc:
-            report.add(
-                TickerOutcome(
-                    ticker=ticker, status="skipped", error=exc.reason
-                )
-            )
         except Exception as exc:  # pragma: no cover - belt and braces
             report.add(
-                TickerOutcome(ticker=ticker, status="error", error=str(exc))
+                TickerOutcome(
+                    ticker=ticker, status="error", error=f"soros: {exc}"
+                )
             )
 
     return report
