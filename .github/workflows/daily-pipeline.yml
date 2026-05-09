@@ -1,9 +1,13 @@
 name: Daily Pipeline
 
 on:
-  schedule:
-    # 06:00 KST = 21:00 UTC (전날). 한국 영업일 월~금 = UTC 일~목.
-    - cron: "0 21 * * 0-4"
+  # ⏸ Cron paused 2026-05-10 while mini-backtest validates M4. The
+  # legacy 7-step pipeline (collectors → refinery → cognition →
+  # signals → notifier) also makes LLM calls, so pausing it here
+  # avoids stacking spend. Re-enable together with agents-cycle.yml
+  # by uncommenting the two lines below.
+  # schedule:
+  #   - cron: "0 21 * * 0-4"
   workflow_dispatch:
     inputs:
       date:
