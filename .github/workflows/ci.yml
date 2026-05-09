@@ -33,6 +33,16 @@ jobs:
           SUPABASE_URL:               ${{ secrets.SUPABASE_URL_TEST || secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_TEST || secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
+      # M1-T9: assert migrations 18-22 (8-agent core schema + admin views)
+      # are present on the linked Supabase. Skipped on PRs from forks
+      # because they don't have access to repo secrets.
+      - name: Agent schema check
+        if: ${{ secrets.SUPABASE_URL != '' || secrets.SUPABASE_URL_TEST != '' }}
+        env:
+          SUPABASE_URL:               ${{ secrets.SUPABASE_URL_TEST || secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_TEST || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python -m agents.db.migrations_check
+
       - name: Show last 100 lines on failure
         if: failure()
         run: |
