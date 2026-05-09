@@ -1,0 +1,70 @@
+name: Agents M2 Cycle
+
+# Daily 3x cycle: 07:00 / 12:00 / 16:00 KST.
+# UTC = KST - 9h, so:
+#   07:00 KST → 22:00 UTC (previous day)
+#   12:00 KST → 03:00 UTC (same day)
+#   16:00 KST → 07:00 UTC (same day)
+#
+# All three rows fire from the same workflow; the orchestrator pulls
+# the master watchlist and writes one row per (ticker, cycle_at) into
+# agent_outputs + final_signals. Per-ticker failure is isolated by
+# the orchestrator (M2-T5).
+
+on:
+  schedule:
+    - cron: '0 22 * * *'   # 07:00 KST
+    - cron: '0 3  * * *'   # 12:00 KST
+    - cron: '0 7  * * *'   # 16:00 KST
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: 'Comma-separated tickers (empty = all watchlist)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Analyze without writing to the DB'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  cycle:
+    name: Run M2 cycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Run cycle
+        id: cycle
+        run: |
+          set -o pipefail
+          ARGS=""
+          if [ -n "${{ inputs.tickers }}" ]; then
+            ARGS="$ARGS --tickers ${{ inputs.tickers }}"
+          fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          python -m agents.cycle.run_m2_cycle $ARGS 2>&1 | tee cycle-stdout.log
+        env:
+          SUPABASE_URL:               ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANTHROPIC_API_KEY:          ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cycle-report
+          path: cycle-stdout.log
+          retention-days: 14
