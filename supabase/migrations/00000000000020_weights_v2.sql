@@ -64,16 +64,32 @@ CREATE TABLE IF NOT EXISTS soros_weight_adjustments (
     overlay           JSONB NOT NULL,                         -- {agent: multiplier}, e.g., {"taleb": 1.5, "simons": 0.5}
     rationale         TEXT NOT NULL,
     valid_until       TIMESTAMPTZ,                            -- NULL = single-cycle only
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    -- Soros can flex any single agent ±50% per spec; cap multiplier 0.5..1.5.
-    CONSTRAINT soros_weight_adjustments_overlay_range_chk CHECK (
-        NOT EXISTS (
-            SELECT 1 FROM jsonb_each_text(overlay) AS e(k, v)
-            WHERE v::NUMERIC < 0.5 OR v::NUMERIC > 1.5
-        )
-    )
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Soros can flex any single agent ±50% per spec; cap multiplier 0.5..1.5.
+-- Postgres disallows subqueries inside CHECK constraints (SQLSTATE 0A000),
+-- so we enforce the range via a trigger that walks the JSONB.
+CREATE OR REPLACE FUNCTION soros_weight_adjustments_validate_overlay()
+RETURNS TRIGGER AS $$
+DECLARE
+    v NUMERIC;
+BEGIN
+    FOR v IN SELECT (value)::NUMERIC FROM jsonb_each_text(NEW.overlay)
+    LOOP
+        IF v < 0.5 OR v > 1.5 THEN
+            RAISE EXCEPTION 'soros_weight_adjustments overlay multiplier % out of bounds (0.5..1.5)', v
+                USING ERRCODE = 'check_violation';
+        END IF;
+    END LOOP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS soros_weight_adjustments_overlay_chk ON soros_weight_adjustments;
+CREATE TRIGGER soros_weight_adjustments_overlay_chk
+    BEFORE INSERT OR UPDATE ON soros_weight_adjustments
+    FOR EACH ROW EXECUTE FUNCTION soros_weight_adjustments_validate_overlay();
 
 CREATE INDEX IF NOT EXISTS soros_weight_adjustments_cycle_idx
     ON soros_weight_adjustments (cycle_at DESC);
