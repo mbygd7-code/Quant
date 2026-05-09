@@ -41,7 +41,7 @@ def _probe_table(repo: AgentRepository, name: str) -> str | None:
     """Returns ``None`` on success, error message on failure."""
     try:
         repo.sb.table(name).select("*").limit(0).execute()
-    except Exception as exc:  # noqa: BLE001 - we want any failure
+    except Exception as exc:
         return f"{name}: {type(exc).__name__}: {exc}"
     return None
 

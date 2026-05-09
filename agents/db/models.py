@@ -142,7 +142,7 @@ class SignalChangeEvent(SignalChangeEventNew):
 
 
 class DailyBriefingNew(_AgentModel):
-    date: date  # noqa: A003
+    date: date
     headline: str = Field(min_length=1, max_length=200)
     summary_md: str = Field(min_length=1)
     top_stocks: list[JsonObject] = Field(default_factory=list)

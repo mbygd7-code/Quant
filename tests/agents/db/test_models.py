@@ -6,7 +6,7 @@ CHECKs are belt-and-braces against bypasses (e.g., bulk SQL imports).
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -22,7 +22,7 @@ from agents.db.models import (
     WeightsBundle,
 )
 
-NOW = datetime(2026, 5, 9, 1, 23, 45, tzinfo=timezone.utc)
+NOW = datetime(2026, 5, 9, 1, 23, 45, tzinfo=UTC)
 
 
 # ─── AgentOutputNew ──────────────────────────────────────────────────

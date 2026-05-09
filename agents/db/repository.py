@@ -19,14 +19,11 @@ Design notes
 """
 from __future__ import annotations
 
-import json
 from datetime import date, datetime
 from decimal import Decimal
 from functools import lru_cache
 from typing import Any
 from uuid import UUID
-
-from supabase import Client
 
 from agents.db.models import (
     AgentKnowledge,
@@ -45,11 +42,12 @@ from agents.db.models import (
     SorosWeightAdjustmentNew,
     UserWeightSettings,
     UserWeightSettingsNew,
+    WeightsBundle,
     WeightSettingsHistory,
     WeightSettingsHistoryNew,
-    WeightsBundle,
 )
 from db.supabase_client import get_admin_client
+from supabase import Client
 
 
 def _serialize(payload: Any) -> Any:

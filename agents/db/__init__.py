@@ -24,10 +24,10 @@ from agents.db.models import (
     SorosWeightAdjustmentNew,
     UserWeightSettings,
     UserWeightSettingsNew,
+    WeightsBundle,
     WeightSettingsHistory,
     WeightSettingsHistoryNew,
     WeightSource,
-    WeightsBundle,
 )
 from agents.db.repository import AgentRepository, get_agent_repository
 
