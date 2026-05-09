@@ -372,6 +372,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"[replay] {len(tickers)} tickers × {len(dates)} dates → {args.out}")
     print(f"[replay] cost cap: ${args.cost_budget:.2f}")
+    print("[replay] build-id: m4-fixes-applied (markdown+dry_run_repo+v2)")
     state = run_replay(
         tickers=tickers,
         dates=dates,
