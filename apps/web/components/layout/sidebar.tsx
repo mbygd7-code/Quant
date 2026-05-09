@@ -38,6 +38,7 @@ const NAV: Array<{ section: string; items: Item[] }> = [
       { href: '/watchlist', label: 'Watchlist', icon: ListTodo, roles: ['user', 'beta', 'admin'] },
       { href: '/stocks/kr', label: '국내주식', icon: LineChart, roles: ['admin'] },
       { href: '/realtime', label: '실시간 시세', icon: Radio, roles: ['user', 'beta', 'admin'] },
+      { href: '/agent-signals', label: 'AI 시그널', icon: Activity, roles: ['user', 'beta', 'admin'] },
       { href: '/reports', label: 'Reports', icon: ChartLine, roles: ['user', 'beta', 'admin'] },
       { href: '/settings/agent-weights', label: 'AI 가중치', icon: SlidersHorizontal, roles: ['user', 'beta', 'admin'] },
       { href: '/settings', label: 'Settings', icon: Settings, roles: ['user', 'beta', 'admin'] },
