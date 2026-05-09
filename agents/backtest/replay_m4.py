@@ -136,6 +136,23 @@ def _restore(originals: dict[str, Any]) -> None:
         setattr(mod, attr, orig)
 
 
+def _make_dry_run_repo() -> Any:
+    """A MagicMock configured for dry-run replay.
+
+    Soros.fetch_m3 calls ``repo.latest_final_signal(ticker)`` to detect
+    grade changes. A bare MagicMock returns another MagicMock there,
+    which Pydantic later rejects when constructing SignalChangeEventNew
+    (the ``from_grade`` literal-validation and ``from_signal_id`` UUID
+    parsing both blow up). For replay we don't need cross-cycle state —
+    every replayed cycle is a "fresh" signal. Returning None makes
+    detect_grade_change report ``did_change=True`` with ``from_grade=None``,
+    which Pydantic accepts.
+    """
+    repo = MagicMock()
+    repo.latest_final_signal.return_value = None
+    return repo
+
+
 def _stamp(out: AgentOutputNew) -> AgentOutput:
     """Wrap a fresh AgentOutputNew in a synthetic AgentOutput so Soros
     has a uuid + created_at to reference. Mirrors the dry-run helper
@@ -264,7 +281,7 @@ def run_replay(
     state = ReplayState(out_path=out_path, cost_budget_usd=cost_budget_usd)
     existing = _load_existing_keys(out_path)
 
-    soros = Soros(repo=soros_repo or MagicMock())  # repo unused in dry-run
+    soros = Soros(repo=soros_repo or _make_dry_run_repo())
     graham, dow_, shi, key, tal = Graham(), Dow(), Shiller(), Keynes(), Taleb()
 
     f_handle, writer = _open_writer(out_path)
@@ -300,7 +317,8 @@ def run_replay(
                         continue
                     if row is None:
                         sys.stderr.write(
-                            f"[replay] {ticker} @ {d}: all voters dropped\n"
+                            f"[replay] {ticker} @ {d}: all voters dropped: "
+                            f"{'; '.join(_dropped) or '(no detail)'}\n"
                         )
                         state.running_cost_usd += cost
                         continue

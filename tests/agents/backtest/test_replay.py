@@ -187,6 +187,14 @@ def test_replay_writes_csv_and_resumes(
     assert state2.skipped_existing == 4
 
 
+def test_dry_run_repo_returns_none_for_previous_signal() -> None:
+    """Regression: a bare MagicMock as Soros repo produces a MagicMock
+    for ``latest_final_signal`` which then blows up Pydantic validation
+    inside SignalChangeEventNew. The dry-run repo must return None."""
+    repo = replay_mod._make_dry_run_repo()
+    assert repo.latest_final_signal("005930") is None
+
+
 def test_replay_cost_cap_halts_loop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
