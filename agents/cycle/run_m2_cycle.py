@@ -95,16 +95,17 @@ class CycleReport:
         return "\n".join(lines)
 
 
-def _watchlist_tickers(repo: AgentRepository) -> list[str]:
-    """Pull stocks where is_watchlist=true. M2 user weight per-user
-    is honoured by Soros; M2-T5 itself uses the master watchlist as
-    the cycle scope (system-implementation-roadmap.md §M2)."""
-    res = (
-        repo.sb.table("stocks")
-        .select("ticker")
-        .eq("is_watchlist", True)
-        .execute()
-    )
+def _watchlist_tickers(
+    repo: AgentRepository, tiers: list[str] | None = None
+) -> list[str]:
+    """Pull stocks where is_watchlist=true. ``tiers`` filters by the
+    M5 cost-optimisation column (S/A/B) — see migration 23. ``None``
+    or empty list returns the whole watchlist regardless of tier
+    (back-compat for legacy callers)."""
+    q = repo.sb.table("stocks").select("ticker").eq("is_watchlist", True)
+    if tiers:
+        q = q.in_("tier", tiers)
+    res = q.execute()
     return [r["ticker"] for r in (res.data or [])]
 
 
