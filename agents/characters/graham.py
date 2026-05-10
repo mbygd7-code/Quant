@@ -225,10 +225,18 @@ def intrinsic_value(
     per_v: Decimal | None = None
     pbr_v: Decimal | None = None
 
-    # PER method needs trailing_pe (price/EPS) and a recent EPS proxy.
+    # PER method needs a price/earnings ratio and a recent EPS proxy.
     # kr_fundamentals stores PE not EPS, so derive EPS from PE + price.
-    if fundamentals.trailing_pe and fundamentals.trailing_pe > 0:
-        eps = current_price / Decimal(str(fundamentals.trailing_pe))
+    # Prefer trailing_pe (actual past earnings); fall back to forward_pe
+    # when trailing is NULL — this is common for Korean stocks where
+    # collectors only populate the analyst-consensus forward number.
+    pe = (
+        fundamentals.trailing_pe
+        if fundamentals.trailing_pe and fundamentals.trailing_pe > 0
+        else fundamentals.forward_pe
+    )
+    if pe and pe > 0:
+        eps = current_price / Decimal(str(pe))
         rev_yoys = [f.revenue_yoy for f in financials[:5] if f.revenue_yoy is not None]
         avg_growth = _avg([float(g) for g in rev_yoys]) if rev_yoys else 0.0
         per_v = per_intrinsic_value(
