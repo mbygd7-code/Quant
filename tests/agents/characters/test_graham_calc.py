@@ -346,3 +346,33 @@ def _now():
     from datetime import datetime as _dt
 
     return _dt(2026, 5, 9, 7, 0, tzinfo=UTC)
+
+
+# ─── PE fallback regression (2026-05-10) ───────────────────────────
+
+
+def test_intrinsic_value_falls_back_to_forward_pe_when_trailing_null() -> None:
+    """Korean kr_fundamentals snapshots commonly have trailing_pe=NULL
+    but forward_pe populated. Graham must use forward_pe in that case
+    instead of dropping the whole voter."""
+    b = _bundle(pe=None, pbr=None)
+    # Manually substitute trailing_pe=None, forward_pe=10 — kr_fundamentals
+    # truth shape from real DART/yfinance ingestion.
+    fundamentals = KrFundamentalsRow(
+        date=Date(2026, 5, 10),
+        ticker="005930",
+        forward_pe=10.0,
+        trailing_pe=None,
+        price_to_book=None,
+        roe=0.18,
+        market_cap=400_000_000_000_000,
+    )
+    iv = intrinsic_value(
+        fundamentals=fundamentals,
+        financials=b.financials,
+        current_price=Decimal("60000"),
+    )
+    assert iv.per_method is not None
+    assert iv.pbr_method is None  # no price_to_book → PBR drops
+    assert iv.conservative == iv.per_method
+    assert iv.method_used == "PER only"
