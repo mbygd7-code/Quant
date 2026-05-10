@@ -36,7 +36,7 @@ from agents.llm import (
     CacheBlock,
     ClaudeMessage,
     call_claude,
-    sanitize_narrative,
+    sanitize_narrative_safe,
 )
 
 # ─── Tunable constants (kept here, not in agents/weights/, because
@@ -451,7 +451,7 @@ class Graham(Character):
         if parsed is None:
             # Should not happen — call_claude raises on parse failure
             raise RuntimeError("call_claude returned no parsed response")
-        narrative = sanitize_narrative(parsed.narrative.strip())
+        narrative = sanitize_narrative_safe(parsed.narrative.strip())
         return narrative, result.model, result.cost_estimate_usd
 
 
