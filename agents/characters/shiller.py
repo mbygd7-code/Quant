@@ -51,7 +51,7 @@ from agents.llm import (
     CacheBlock,
     ClaudeMessage,
     call_claude,
-    sanitize_narrative,
+    sanitize_narrative_safe,
 )
 
 # ─── Tunables ───────────────────────────────────────────────────────
@@ -440,7 +440,7 @@ class Shiller(Character):
         )
         if parsed is None:
             raise RuntimeError("call_claude returned no parsed response")
-        narrative = sanitize_narrative(parsed.narrative.strip())
+        narrative = sanitize_narrative_safe(parsed.narrative.strip())
         return narrative, result.model, result.cost_estimate_usd
 
 

@@ -38,7 +38,7 @@ from agents.llm import (
     CacheBlock,
     ClaudeMessage,
     call_claude,
-    sanitize_narrative,
+    sanitize_narrative_safe,
 )
 
 #: Smallest history Dow can work with — 200 trading days for primary axis.
@@ -334,7 +334,7 @@ class Dow(Character):
         )
         if parsed is None:
             raise RuntimeError("call_claude returned no parsed response")
-        narrative = sanitize_narrative(parsed.narrative.strip())
+        narrative = sanitize_narrative_safe(parsed.narrative.strip())
         return narrative, result.model, result.cost_estimate_usd
 
 
