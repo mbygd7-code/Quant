@@ -19,12 +19,14 @@ name: Agents Cycle (M4)
 # Per-ticker failure is isolated by the orchestrator (M2-T5).
 
 on:
-  # ⏸ Cron paused 2026-05-10 while mini-backtest validates M4. Re-enable
-  # after backtest results are reviewed and any threshold tuning is done.
-  # schedule:
-  #   - cron: '0 22 * * *'   # 07:00 KST  →  --tier S,A,B
-  #   - cron: '0 3  * * *'   # 12:00 KST  →  --tier S
-  #   - cron: '0 7  * * *'   # 16:00 KST  →  --tier S
+  # ▶ Cron re-enabled 2026-05-10 after backtest validation +
+  # tier-stratification + change-detection (PR #8). Daily LLM call
+  # budget ~345 (-67% vs naive). Anthropic Console daily cap is the
+  # safety net against runaway loops.
+  schedule:
+    - cron: '0 22 * * *'   # 07:00 KST  →  --tier S,A,B
+    - cron: '0 3  * * *'   # 12:00 KST  →  --tier S
+    - cron: '0 7  * * *'   # 16:00 KST  →  --tier S
   workflow_dispatch:
     inputs:
       tickers:
