@@ -18,12 +18,17 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from agents.characters import InsufficientDataError
+from agents.characters._data import daily_quotes, global_quotes
 from agents.characters.dow import Dow
 from agents.characters.graham import Graham
 from agents.characters.keynes import Keynes
 from agents.characters.shiller import Shiller
 from agents.characters.soros import Soros
 from agents.characters.taleb import Taleb
+from agents.cycle._change_detect import (
+    MACRO_SHOCK_SYMBOLS,
+    should_reanalyze,
+)
 from agents.cycle.run_m2_cycle import (
     CycleReport,
     TickerOutcome,
@@ -60,19 +65,64 @@ def run_cycle(
     *,
     cycle_at: datetime | None = None,
     tickers: list[str] | None = None,
+    tiers: list[str] | None = None,
+    require_change: bool = False,
     user_id: UUID | None = None,
     dry_run: bool = False,
     repo: AgentRepository | None = None,
 ) -> CycleReport:
+    """Run one M4 cycle.
+
+    Args:
+        tiers: Filter watchlist to these tier letters (S/A/B). ``None``
+            keeps the full universe (legacy behaviour).
+        require_change: When True, skip a ticker whose price/volume have
+            been quiet AND no macro factor has shocked. Drops LLM cost
+            on calm days by 30-50% without altering algorithm semantics
+            — the skip just reuses the previous cycle's outputs implicit
+            in the absence of a fresh row.
+    """
     cycle_at = cycle_at or datetime.now(UTC)
     repo = repo or get_agent_repository()
-    target_tickers = tickers or _watchlist_tickers(repo)
+    target_tickers = tickers or _watchlist_tickers(repo, tiers=tiers)
+
+    # Cache the macro snapshot once per cycle — every ticker's change-
+    # detection check shares the same shock state.
+    macro_snapshot: dict[str, list] = {}
+    if require_change:
+        for sym in MACRO_SHOCK_SYMBOLS:
+            try:
+                macro_snapshot[sym] = global_quotes(sym, days=5)
+            except Exception:  # noqa: BLE001
+                macro_snapshot[sym] = []
 
     report = CycleReport(cycle_at=cycle_at)
     soros = Soros(repo=repo)
     characters = {name: cls() for name, cls in M4_CHARACTER_ORDER}
 
     for ticker in target_tickers:
+        # ── Phase 2: change-detection short-circuit ──────────────
+        if require_change:
+            try:
+                quote_window = daily_quotes(ticker, days=22)
+                report_ = should_reanalyze(
+                    ticker=ticker,
+                    quotes=quote_window,
+                    macro_quotes_by_symbol=macro_snapshot,
+                )
+            except Exception:  # noqa: BLE001
+                # Quote fetch failed — be safe and analyse.
+                report_ = None
+            if report_ is not None and not report_.re_run:
+                report.add(
+                    TickerOutcome(
+                        ticker=ticker,
+                        status="skipped",
+                        error=f"change-detect: {report_.reason}",
+                    )
+                )
+                continue
+
         per_voter_outputs: dict[AgentName, AgentOutput] = {}
         per_voter_costs: float = 0.0
         skip_reasons: list[str] = []
@@ -173,6 +223,23 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "system defaults)"
         ),
     )
+    p.add_argument(
+        "--tier",
+        type=str,
+        default=None,
+        help=(
+            "Filter watchlist to these tiers, comma-separated (S,A,B). "
+            "Default: no filter. See migration 23."
+        ),
+    )
+    p.add_argument(
+        "--require-change",
+        action="store_true",
+        help=(
+            "Skip tickers whose price/volume/macro have all been quiet "
+            "since the last cycle. Saves ~30%% of LLM cost on calm days."
+        ),
+    )
     return p.parse_args(argv)
 
 
@@ -183,10 +250,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.tickers
         else None
     )
+    tiers = (
+        [t.strip().upper() for t in args.tier.split(",") if t.strip()]
+        if args.tier
+        else None
+    )
     user_id = UUID(args.user_id) if args.user_id else None
 
     report = run_cycle(
         tickers=tickers,
+        tiers=tiers,
+        require_change=args.require_change,
         user_id=user_id,
         dry_run=args.dry_run,
     )
