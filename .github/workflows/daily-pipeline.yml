@@ -1,13 +1,11 @@
 name: Daily Pipeline
 
 on:
-  # ⏸ Cron paused 2026-05-10 while mini-backtest validates M4. The
-  # legacy 7-step pipeline (collectors → refinery → cognition →
-  # signals → notifier) also makes LLM calls, so pausing it here
-  # avoids stacking spend. Re-enable together with agents-cycle.yml
-  # by uncommenting the two lines below.
-  # schedule:
-  #   - cron: "0 21 * * 0-4"
+  # ▶ Cron re-enabled 2026-05-10 alongside agents-cycle.yml after
+  # backtest validation + cost-optimisation. Single daily run at
+  # 06:00 KST (21:00 UTC previous day). KR weekdays = UTC Sun-Thu.
+  schedule:
+    - cron: "0 21 * * 0-4"
   workflow_dispatch:
     inputs:
       date:
