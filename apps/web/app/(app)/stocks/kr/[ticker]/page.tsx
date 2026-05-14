@@ -11,8 +11,10 @@ import { ScoreTrend } from '@/components/charts/score-trend';
 import { createClient } from '@/lib/supabase/server';
 import { DEV_BYPASS_AUTH, getQueryClient } from '@/lib/supabase/query-client';
 import { getStockDetail } from '@/lib/queries/reports';
+import { getVoterBreakdown } from '@/lib/queries/voters';
 import type { Role } from '@/lib/types';
 import { StockDetailLive } from '@/components/stocks/stock-detail-live';
+import { VoterBreakdownCard } from '@/components/signals/voter-breakdown';
 import { KR_TICKER_RE } from '@/lib/ticker';
 
 export const dynamic = 'force-dynamic';
@@ -113,7 +115,10 @@ export default async function KrStockDetail({ params }: Props) {
   }
 
   // ── Rich AI detail (only when a score exists for this ticker)
-  const detail = latestDate ? await getStockDetail(latestDate, ticker) : null;
+  const [detail, voterBreakdown] = await Promise.all([
+    latestDate ? getStockDetail(latestDate, ticker) : Promise.resolve(null),
+    getVoterBreakdown(ticker),
+  ]);
 
   const masterNameUsable = masterName && masterName !== ticker;
   const meta = {
@@ -167,7 +172,7 @@ export default async function KrStockDetail({ params }: Props) {
         <Button asChild variant="ghost" size="sm" className="h-8 px-2 -ml-2">
           <Link href="/watchlist">
             <ArrowLeft className="h-4 w-4 mr-1" />
-            관심주식
+            주식리스트
           </Link>
         </Button>
         <Button asChild variant="outline" size="sm" className="h-8">
@@ -214,9 +219,16 @@ export default async function KrStockDetail({ params }: Props) {
         role={role}
         inWatchlist={meta.inWatchlist}
         inMaster={meta.inMaster}
+        signal={detail?.score.signal ?? null}
+        finalScore={detail?.score.final_score ?? null}
       />
 
-      {/* AI commentary */}
+      {/* 6-Voter breakdown — the new character-system view. Sits between
+          the price/chart card and the legacy AI commentary so users see
+          the canonical signal first, then the per-voter rationale. */}
+      {voterBreakdown && <VoterBreakdownCard data={voterBreakdown} />}
+
+      {/* AI commentary (legacy) */}
       {detail?.commentary && (
         <Card className="border-brand-purple/30 bg-gradient-to-br from-brand-purple/5 via-transparent to-transparent">
           <CardHeader className="pb-3">

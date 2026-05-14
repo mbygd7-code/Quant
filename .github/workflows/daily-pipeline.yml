@@ -34,6 +34,20 @@ jobs:
       - name: Install
         run: pip install -e .
 
+      - name: Collect KR news (per-ticker NAVER feed)
+        run: |
+          set -o pipefail
+          python -m collectors.kr_news --tickers "$(python -c '
+          from db.supabase_client import get_admin_client
+          sb = get_admin_client()
+          rows = sb.table("stocks").select("ticker").eq("is_watchlist", True).execute().data or []
+          print(",".join(sorted([r["ticker"] for r in rows])))
+          ')" 2>&1 | tee kr-news.log
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        continue-on-error: true
+
       - name: Run pipeline
         run: |
           set -o pipefail
