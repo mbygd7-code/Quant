@@ -49,8 +49,11 @@ interface ChartRow {
  */
 function buildForecast(
   history: Point[], horizonDays = 5,
-): { mean: Point[]; lower: Point[]; upper: Point[] } {
-  const empty = { mean: [] as Point[], lower: [] as Point[], upper: [] as Point[] };
+): { mean: Point[]; lower: Point[]; upper: Point[]; fittedPast: Point[] } {
+  const empty = {
+    mean: [] as Point[], lower: [] as Point[], upper: [] as Point[],
+    fittedPast: [] as Point[],
+  };
   if (history.length < 4) return empty;
 
   const recent = history.slice(-7);
@@ -68,6 +71,15 @@ function buildForecast(
   const residuals = ys.map((y, i) => y - (intercept + slope * xs[i]));
   const ssr = residuals.reduce((acc, r) => acc + r * r, 0);
   const sigma = n > 2 ? Math.sqrt(ssr / (n - 2)) : 0.05;
+
+  // Backcast: fitted line over the same history points used for the regression.
+  // Anchors x=0..n-1 onto the *recent* slice, so the fitted curve sits under
+  // the actual line and the user can read the residual (실측 − 예측) directly.
+  const clip = (v: number) => Math.max(0, Math.min(1, v));
+  const fittedPast: Point[] = recent.map((p, i) => ({
+    date: p.date,
+    final_score: clip(intercept + slope * i),
+  }));
 
   const lastDate = new Date(history[history.length - 1].date);
   const mean: Point[] = [];
@@ -93,12 +105,11 @@ function buildForecast(
     const halfWidth = 1.96 * sigma * seFactor * damp;   // dampening narrows band too
 
     const date = cursor.toISOString().slice(0, 10);
-    const clip = (v: number) => Math.max(0, Math.min(1, v));
     mean.push({ date, final_score: clip(projected) });
     lower.push({ date, final_score: clip(projected - halfWidth) });
     upper.push({ date, final_score: clip(projected + halfWidth) });
   }
-  return { mean, lower, upper };
+  return { mean, lower, upper, fittedPast };
 }
 
 export function ScoreTrend({
@@ -114,9 +125,15 @@ export function ScoreTrend({
   let mean: Point[] = [];
   let lower: Point[] = [];
   let upper: Point[] = [];
+  let fittedPast: Point[] = [];
   let usingML = false;
 
   if (showForecast) {
+    // Always compute the OLS fit — gives us the backcast/fitted line over
+    // historical dates so the user can eyeball residuals vs the actual line.
+    const ols = buildForecast(data, 5);
+    fittedPast = ols.fittedPast;
+
     if (mlPredictions && mlPredictions.length > 0) {
       usingML = true;
       mean = mlPredictions.map((p) => ({
@@ -132,35 +149,97 @@ export function ScoreTrend({
         final_score: p.upper_95 ?? p.predicted_score,
       }));
     } else {
-      const ols = buildForecast(data, 5);
       mean = ols.mean;
       lower = ols.lower;
       upper = ols.upper;
     }
   }
 
+  // Build a date-keyed lookup for the fitted-past series so we can attach
+  // a `predicted` value to every historical row (not just the last one).
+  const fittedByDate = new Map(fittedPast.map((p) => [p.date, p.final_score]));
+
   // Merge into one array per Recharts.
-  // Last historical point gets predicted = its own value so the dashed
-  // forecast line connects without a visual gap.
-  const merged: ChartRow[] = [
-    ...data.map((p, i) => ({
-      date: p.date,
-      actual: p.final_score,
-      predicted: i === data.length - 1 && mean.length > 0 ? p.final_score : null,
-      band_low: i === data.length - 1 && lower.length > 0 ? p.final_score : null,
-      band_high: i === data.length - 1 && upper.length > 0 ? p.final_score : null,
-    })),
+  // - History rows: actual = real score, predicted = OLS-fitted value (if available).
+  // - Forecast rows: actual = null, predicted = projection.
+  // - `residual` and `residual_pct` are derived for tooltip readout.
+  const merged: (ChartRow & { residual: number | null; residual_pct: number | null })[] = [
+    ...data.map((p, i) => {
+      const fitted = fittedByDate.get(p.date) ?? null;
+      // Make the forecast line connect by setting predicted on the last
+      // history point even if it's outside the OLS window.
+      const predicted =
+        fitted !== null
+          ? fitted
+          : i === data.length - 1 && mean.length > 0
+            ? p.final_score
+            : null;
+      const residual = predicted !== null ? p.final_score - predicted : null;
+      const residual_pct =
+        predicted !== null && predicted !== 0
+          ? ((p.final_score - predicted) / predicted) * 100
+          : null;
+      return {
+        date: p.date,
+        actual: p.final_score,
+        predicted,
+        band_low: i === data.length - 1 && lower.length > 0 ? p.final_score : null,
+        band_high: i === data.length - 1 && upper.length > 0 ? p.final_score : null,
+        residual,
+        residual_pct,
+      };
+    }),
     ...mean.map((p, i) => ({
       date: p.date,
       actual: null,
       predicted: p.final_score,
       band_low: lower[i]?.final_score ?? null,
       band_high: upper[i]?.final_score ?? null,
+      residual: null,
+      residual_pct: null,
     })),
   ];
 
+  // MAE / MAPE over the overlap so the legend can show overall fit quality.
+  const overlap = merged.filter(
+    (r) => r.actual !== null && r.predicted !== null && r.residual !== null,
+  );
+  const mae =
+    overlap.length > 0
+      ? overlap.reduce((acc, r) => acc + Math.abs(r.residual as number), 0) /
+        overlap.length
+      : null;
+  const mape =
+    overlap.length > 0
+      ? overlap.reduce(
+          (acc, r) =>
+            acc +
+            Math.abs(
+              ((r.actual as number) - (r.predicted as number)) /
+                Math.max(0.01, Math.abs(r.actual as number)),
+            ),
+          0,
+        ) /
+        overlap.length *
+        100
+      : null;
+
   return (
-    <div className="h-56 w-full">
+    <div className="w-full">
+     {mae !== null && mape !== null && (
+       <div className="mb-1 flex items-center gap-3 text-[11px] text-[color:var(--text-secondary)]">
+         <span>
+           실측 vs 예측 적합도 (최근 {overlap.length}일):
+         </span>
+         <span>
+           MAE <span className="text-[color:var(--text-primary)] font-medium">{mae.toFixed(3)}</span>
+         </span>
+         <span>
+           MAPE <span className="text-[color:var(--text-primary)] font-medium">{mape.toFixed(1)}%</span>
+         </span>
+       </div>
+     )}
+     <div className="h-56 w-full">
      <ClientOnly>
       <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
         <ComposedChart data={merged} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
@@ -178,21 +257,47 @@ export function ScoreTrend({
           />
           <YAxis domain={[0, 1]} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
           <Tooltip
-            contentStyle={{
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-default)',
-              borderRadius: 8,
-              fontSize: 12,
-            }}
-            formatter={(v, name) => {
-              if (typeof v !== 'number') return [String(v), String(name)];
-              const labels: Record<string, string> = {
-                actual: '실측',
-                predicted: '예측',
-                band_low: '95% 하단',
-                band_high: '95% 상단',
-              };
-              return [v.toFixed(3), labels[String(name)] ?? String(name)];
+            content={({ active, payload, label }) => {
+              if (!active || !payload || payload.length === 0) return null;
+              const row = payload[0]?.payload as
+                | (ChartRow & { residual: number | null; residual_pct: number | null })
+                | undefined;
+              if (!row) return null;
+              const fmt = (v: number | null, digits = 3) =>
+                v === null ? '—' : v.toFixed(digits);
+              const signed = (v: number | null, digits = 3) =>
+                v === null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(digits)}`;
+              return (
+                <div
+                  style={{
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 8,
+                    fontSize: 12,
+                    padding: '8px 10px',
+                    minWidth: 160,
+                  }}
+                >
+                  <div style={{ marginBottom: 4, color: 'var(--text-secondary)' }}>{label}</div>
+                  <div>실측: <b>{fmt(row.actual)}</b></div>
+                  <div>예측: <b>{fmt(row.predicted)}</b></div>
+                  {row.residual !== null && (
+                    <>
+                      <div>
+                        오차(실측−예측): <b>{signed(row.residual)}</b>
+                      </div>
+                      <div>
+                        오차율: <b>{signed(row.residual_pct, 1)}%</b>
+                      </div>
+                    </>
+                  )}
+                  {row.band_low !== null && row.band_high !== null && (
+                    <div style={{ color: 'var(--text-secondary)', marginTop: 2 }}>
+                      95% 구간: {fmt(row.band_low)} ~ {fmt(row.band_high)}
+                    </div>
+                  )}
+                </div>
+              );
             }}
           />
           <ReferenceLine y={0.65} stroke="rgba(114,60,235,0.45)" strokeDasharray="4 4" />
@@ -248,7 +353,7 @@ export function ScoreTrend({
             name="actual"
             isAnimationActive={false}
           />
-          {showForecast && mean.length > 0 && (
+          {showForecast && (mean.length > 0 || fittedPast.length > 0) && (
             <Line
               type="monotone"
               dataKey="predicted"
@@ -265,6 +370,7 @@ export function ScoreTrend({
         </ComposedChart>
       </ResponsiveContainer>
      </ClientOnly>
+     </div>
     </div>
   );
 }

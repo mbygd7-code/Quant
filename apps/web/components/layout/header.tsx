@@ -1,7 +1,27 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { Bell, LogOut, Moon, Sun, User } from 'lucide-react';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import {
+  Activity,
+  BarChart3,
+  Bell,
+  ChartLine,
+  ChevronDown,
+  Database,
+  FlaskConical,
+  LineChart,
+  LogOut,
+  Moon,
+  Network,
+  Radio,
+  Scale,
+  Settings as SettingsIcon,
+  SlidersHorizontal,
+  Sun,
+  User,
+  Users,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -16,6 +36,7 @@ import {
 import { useTheme } from '@/components/theme-provider';
 import { MobileSidebar } from '@/components/layout/mobile-sidebar';
 import { createClient } from '@/lib/supabase/client';
+import { cn } from '@/lib/utils';
 
 type Role = 'user' | 'beta' | 'admin';
 
@@ -24,8 +45,39 @@ interface HeaderProps {
   role: Role;
 }
 
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  roles: Role[];
+}
+
+// Primary nav — rendered inline in the GNB.
+const PRIMARY_NAV: NavItem[] = [
+  { href: '/dashboard',     label: 'Dashboard',   icon: BarChart3, roles: ['user', 'beta', 'admin'] },
+  { href: '/stocks/kr',     label: '국내주식',     icon: LineChart, roles: ['admin'] },
+  { href: '/realtime',      label: '실시간 시세',  icon: Radio,     roles: ['user', 'beta', 'admin'] },
+  { href: '/agent-signals', label: 'AI 시그널',    icon: Activity,  roles: ['user', 'beta', 'admin'] },
+  { href: '/reports',       label: 'Reports',     icon: ChartLine, roles: ['user', 'beta', 'admin'] },
+];
+
+// Settings dropdown — AI 가중치 + every admin tool live here.
+const SETTINGS_NAV: NavItem[] = [
+  { href: '/settings',                 label: 'Settings',     icon: SettingsIcon,      roles: ['user', 'beta', 'admin'] },
+  { href: '/settings/agent-weights',   label: 'AI 가중치',     icon: SlidersHorizontal, roles: ['user', 'beta', 'admin'] },
+  { href: '/mapping',                  label: 'Mapping',      icon: Network,           roles: ['admin'] },
+  { href: '/knowledge',                label: 'Knowledge',    icon: Database,          roles: ['admin'] },
+  { href: '/weights',                  label: 'Weights',      icon: Scale,             roles: ['admin'] },
+  { href: '/backtest',                 label: 'Backtest',     icon: FlaskConical,      roles: ['admin'] },
+  { href: '/admin/users',              label: 'Users',        icon: Users,             roles: ['admin'] },
+  { href: '/admin/data-quality',       label: 'Data Quality', icon: LineChart,         roles: ['admin'] },
+  { href: '/admin/agent-monitoring',   label: 'AI 모니터링',   icon: Activity,          roles: ['admin'] },
+  { href: '/admin/notifications',      label: 'Notifications',icon: Bell,              roles: ['admin'] },
+];
+
 export function Header({ email, role }: HeaderProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
 
   async function signOut() {
@@ -36,9 +88,15 @@ export function Header({ email, role }: HeaderProps) {
     router.refresh();
   }
 
+  const primaryVisible = PRIMARY_NAV.filter((i) => i.roles.includes(role));
+  const settingsVisible = SETTINGS_NAV.filter((i) => i.roles.includes(role));
+  const settingsActive = settingsVisible.some(
+    (i) => pathname === i.href || pathname.startsWith(`${i.href}/`),
+  );
+
   return (
     <header
-      className="flex items-center justify-between h-14 px-4 md:px-6 border-b border-border-divider"
+      className="flex items-center h-14 px-4 md:px-6 border-b border-border-divider gap-2"
       style={{ background: 'var(--bg-primary)' }}
     >
       <div className="flex items-center gap-2">
@@ -48,6 +106,76 @@ export function Header({ email, role }: HeaderProps) {
           <span className="font-heading text-sm font-semibold">QuantSignal</span>
         </div>
       </div>
+
+      {/* Primary nav — hidden on small screens, MobileSidebar handles those. */}
+      <nav className="hidden md:flex items-center gap-0.5">
+        {primaryVisible.map((item) => {
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                'flex items-center gap-1.5 px-3 h-9 rounded-md text-[13px] font-medium transition-colors',
+                active
+                  ? 'bg-[var(--sidebar-active-bg)] text-brand-purple'
+                  : 'text-txt-secondary hover:text-txt-primary hover:bg-[var(--sidebar-hover)]',
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+
+        {/* Settings dropdown */}
+        {settingsVisible.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  'flex items-center gap-1.5 px-3 h-9 rounded-md text-[13px] font-medium transition-colors',
+                  settingsActive
+                    ? 'bg-[var(--sidebar-active-bg)] text-brand-purple'
+                    : 'text-txt-secondary hover:text-txt-primary hover:bg-[var(--sidebar-hover)]',
+                )}
+              >
+                <SettingsIcon className="h-4 w-4 shrink-0" />
+                <span>Settings</span>
+                <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              {settingsVisible.map((item, idx) => {
+                const Icon = item.icon;
+                const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                // Insert a separator between user-level (first 2) and admin items.
+                const showSeparator =
+                  idx === 2 && settingsVisible.some((i) => i.roles.length === 1);
+                return (
+                  <span key={item.href}>
+                    {showSeparator && <DropdownMenuSeparator />}
+                    <DropdownMenuItem asChild>
+                      <Link
+                        href={item.href}
+                        className={cn(
+                          'flex items-center gap-2 cursor-pointer',
+                          active && 'text-brand-purple',
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span>{item.label}</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  </span>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </nav>
 
       <div className="ml-auto flex items-center gap-1">
         <Button variant="ghost" size="icon" aria-label="알림">

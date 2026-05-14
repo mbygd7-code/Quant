@@ -1,9 +1,9 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Trash2 } from 'lucide-react';
+import { Star, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -40,6 +40,8 @@ interface Props {
   role: Role;
 }
 
+const FAVORITES_KEY = 'qs:favorites:v1';
+
 export function WatchlistTable({ rows, date, role }: Props) {
   const router = useRouter();
   const [query, setQuery] = useState('');
@@ -48,6 +50,60 @@ export function WatchlistTable({ rows, date, role }: Props) {
   const [pending, startTransition] = useTransition();
   const canEdit = role === 'admin' || role === 'beta' || role === 'user';
   const isAdmin = role === 'admin';
+
+  // Personal favorites — synced with the LNB Sidebar (same localStorage key).
+  // Keep an in-component Set so re-renders are O(1) lookups.
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FAVORITES_KEY);
+      if (raw) setFavorites(new Set(JSON.parse(raw) as string[]));
+    } catch {
+      /* ignore corrupt storage */
+    }
+    // Listen for other tabs / Sidebar updates so adds elsewhere reflect here.
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== FAVORITES_KEY) return;
+      try {
+        setFavorites(new Set(JSON.parse(e.newValue ?? '[]') as string[]));
+      } catch {
+        setFavorites(new Set());
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  const toggleFavorite = useCallback(
+    (ticker: string, name: string) => {
+      // IMPORTANT: side effects (localStorage write, dispatchEvent, toast) must
+      // live OUTSIDE the setState updater — React strict mode runs updaters
+      // twice in dev, which would toggle the value back to its original state.
+      // We read once from localStorage to know the canonical previous set.
+      let prev: string[] = [];
+      try {
+        prev = JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? '[]') as string[];
+      } catch {
+        /* corrupt — treat as empty */
+      }
+      const wasIn = prev.includes(ticker);
+      const next = wasIn ? prev.filter((t) => t !== ticker) : [...prev, ticker];
+      try {
+        localStorage.setItem(FAVORITES_KEY, JSON.stringify(next));
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: FAVORITES_KEY,
+            newValue: JSON.stringify(next),
+          }),
+        );
+      } catch {
+        /* over quota — silent */
+      }
+      setFavorites(new Set(next));
+      toast.success(wasIn ? `${name} 관심주식에서 제거` : `${name} 관심주식 추가됨`);
+    },
+    [],
+  );
 
   const sectors = useMemo(() => {
     const set = new Set<string>();
@@ -101,7 +157,7 @@ export function WatchlistTable({ rows, date, role }: Props) {
               <TableHead className="w-[8%] text-right">점수</TableHead>
               <TableHead className="w-[16%] text-right">종가 / 등락</TableHead>
               <TableHead className="w-[14%] text-right">상세</TableHead>
-              {canEdit && <TableHead className="w-[8%] text-right">액션</TableHead>}
+              <TableHead className="w-[12%] text-right">액션</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -134,19 +190,37 @@ export function WatchlistTable({ rows, date, role }: Props) {
                     <span className="text-xs text-txt-muted">—</span>
                   )}
                 </TableCell>
-                {canEdit && (
-                  <TableCell className="text-right">
+                <TableCell className="text-right">
+                  <div className="inline-flex items-center justify-end gap-1">
                     <Button
                       size="icon"
                       variant="ghost"
-                      title="관심 종목에서 제거"
-                      onClick={() => setConfirmRemove(r)}
-                      disabled={pending}
+                      title={favorites.has(r.ticker) ? '관심주식에서 제거' : '관심주식에 추가'}
+                      onClick={() => toggleFavorite(r.ticker, r.name)}
+                      aria-pressed={favorites.has(r.ticker)}
                     >
-                      <Trash2 className="h-3.5 w-3.5 text-status-error" />
+                      <Star
+                        className={
+                          'h-3.5 w-3.5 ' +
+                          (favorites.has(r.ticker)
+                            ? 'fill-status-warning text-status-warning'
+                            : 'text-txt-muted')
+                        }
+                      />
                     </Button>
-                  </TableCell>
-                )}
+                    {canEdit && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        title="시스템 마스터에서 제거"
+                        onClick={() => setConfirmRemove(r)}
+                        disabled={pending}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-status-error" />
+                      </Button>
+                    )}
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

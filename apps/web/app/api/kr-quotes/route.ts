@@ -102,7 +102,9 @@ export async function GET(req: NextRequest) {
   const tickers = tickersParam
     .split(',')
     .map((s) => s.trim())
-    .filter((s) => /^\d{6}$/.test(s))
+    .map((s) => s.toUpperCase())
+    // 6-char alphanumeric — newer ETF codes (e.g. 0167A0) include a letter.
+    .filter((s) => /^[0-9A-Z]{6}$/.test(s))
     .slice(0, 30);
   if (tickers.length === 0) {
     return NextResponse.json({ error: 'tickers= required (6-digit, comma-separated)' }, { status: 400 });

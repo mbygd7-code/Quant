@@ -155,8 +155,10 @@ export function StockChart({
   const change = first != null && last != null ? ((last - first) / first) * 100 : null;
 
   // KR convention: red=up, blue=down. US: green=up, red=down.
-  const upColor = variant === 'kr' ? 'var(--status-danger)' : 'var(--status-success)';
-  const downColor = variant === 'kr' ? 'var(--status-info)' : 'var(--status-danger)';
+  // Softer, designer-friendly palette — coral red & cerulean blue for KR,
+  // emerald & rose for US. Avoids the harsh #ef4444 / #3b82f6 status hues.
+  const upColor = variant === 'kr' ? '#F26D6D' : '#3DD68C';   // coral / emerald
+  const downColor = variant === 'kr' ? '#5BA8F2' : '#F26D6D'; // cerulean / coral
   const lineColor = isUp === false ? downColor : upColor;
   const fmt = (v: number) =>
     variant === 'kr'
@@ -268,22 +270,16 @@ export function StockChart({
               content={(p: unknown) => <ChartTooltip raw={p} variant={variant} />}
             />
 
-            {/* Candle wicks (high-low lines) */}
+            {/* Candle — wick + body drawn together so they share an x-center. */}
             {mode === 'candle' && (
-              <>
-                <Bar
-                  yAxisId="price"
-                  dataKey="wick"
-                  shape={(props: unknown) => <WickShape {...(props as WickShapeProps)} upColor={upColor} downColor={downColor} />}
-                  isAnimationActive={false}
-                />
-                <Bar
-                  yAxisId="price"
-                  dataKey="body"
-                  shape={(props: unknown) => <BodyShape {...(props as BodyShapeProps)} upColor={upColor} downColor={downColor} />}
-                  isAnimationActive={false}
-                />
-              </>
+              <Bar
+                yAxisId="price"
+                dataKey="wick"
+                shape={(props: unknown) => (
+                  <CandleShape {...(props as CandleShapeProps)} upColor={upColor} downColor={downColor} />
+                )}
+                isAnimationActive={false}
+              />
             )}
 
             {/* Line mode */}
@@ -357,45 +353,79 @@ export function StockChart({
   );
 }
 
-interface WickShapeProps {
+interface CandleShapeProps {
   x?: number;
-  width?: number;
-  payload?: ChartRow;
   y?: number;
+  width?: number;
   height?: number;
+  payload?: ChartRow;
   upColor: string;
   downColor: string;
 }
-function WickShape(p: WickShapeProps) {
-  if (p.x == null || p.width == null || p.y == null || p.height == null || !p.payload) return null;
+function CandleShape(p: CandleShapeProps) {
+  if (p.x == null || p.y == null || p.width == null || p.height == null || !p.payload) return null;
+  // The Bar uses dataKey="wick" (low..high), so y/height span the full wick.
   const cx = p.x + p.width / 2;
   const color = p.payload.isUp ? p.upColor : p.downColor;
-  return <line x1={cx} x2={cx} y1={p.y} y2={p.y + p.height} stroke={color} strokeWidth={1} />;
-}
 
-interface BodyShapeProps {
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-  payload?: ChartRow;
-  upColor: string;
-  downColor: string;
-}
-function BodyShape(p: BodyShapeProps) {
-  if (p.x == null || p.y == null || p.width == null || p.height == null || !p.payload) return null;
-  const w = Math.max(2, p.width * 0.7);
-  const offset = (p.width - w) / 2;
-  const color = p.payload.isUp ? p.upColor : p.downColor;
+  // Body width: 88% of slot, clamped so dense charts don't disappear and
+  // sparse charts don't get oversized rectangles.
+  const w = Math.min(14, Math.max(4, p.width * 0.88));
+  const bodyX = cx - w / 2;
+
+  // Map body extent (open..close) into pixel coordinates using the wick range.
+  const { open, close, low, high } = p.payload;
+  const wickRange = high - low;
+  const px = (v: number) =>
+    wickRange === 0 ? p.y! + p.height! / 2 : p.y! + ((high - v) / wickRange) * p.height!;
+  const bodyTop = px(Math.max(open, close));
+  const bodyBottom = px(Math.min(open, close));
+  const bodyH = Math.max(2, bodyBottom - bodyTop);
+
+  const r = Math.min(2, w / 4);
+  const sw = p.width >= 6 ? 1.75 : 1.25;
+
   return (
-    <rect
-      x={p.x + offset}
-      y={p.y}
-      width={w}
-      height={Math.max(1, p.height)}
-      fill={color}
-      stroke={color}
-    />
+    <g>
+      {/* Wick — single vertical line centered on the slot. */}
+      <line
+        x1={cx}
+        x2={cx}
+        y1={p.y}
+        y2={p.y + p.height}
+        stroke={color}
+        strokeWidth={sw}
+        strokeLinecap="round"
+        opacity={0.95}
+      />
+      {/* Body */}
+      <rect
+        x={bodyX}
+        y={bodyTop}
+        width={w}
+        height={bodyH}
+        rx={r}
+        ry={r}
+        fill={color}
+        fillOpacity={0.92}
+        stroke={color}
+        strokeOpacity={0.85}
+        strokeWidth={1}
+      />
+      {bodyH >= 6 && (
+        <rect
+          x={bodyX + 1}
+          y={bodyTop + 1}
+          width={Math.max(0, w - 2)}
+          height={Math.max(0, bodyH - 2)}
+          rx={Math.max(0, r - 0.5)}
+          ry={Math.max(0, r - 0.5)}
+          fill="none"
+          stroke="rgba(255,255,255,0.10)"
+          strokeWidth={0.75}
+        />
+      )}
+    </g>
   );
 }
 
@@ -445,7 +475,7 @@ function ChartTooltip({ raw, variant }: { raw: unknown; variant: 'kr' | 'us' }) 
         <span className="text-txt-muted">저</span>
         <span className="text-right">{fmt(row.low)}</span>
         <span className="text-txt-muted">종</span>
-        <span className="text-right" style={{ color: row.isUp ? (variant === 'kr' ? 'var(--status-danger)' : 'var(--status-success)') : (variant === 'kr' ? 'var(--status-info)' : 'var(--status-danger)') }}>
+        <span className="text-right" style={{ color: row.isUp ? (variant === 'kr' ? '#F26D6D' : '#3DD68C') : (variant === 'kr' ? '#5BA8F2' : '#F26D6D') }}>
           {fmt(row.close)}
         </span>
         {row.volume > 0 && (
