@@ -12,10 +12,11 @@ import { createClient } from '@/lib/supabase/server';
 import { DEV_BYPASS_AUTH, getQueryClient } from '@/lib/supabase/query-client';
 import { getStockDetail } from '@/lib/queries/reports';
 import { getVoterBreakdown } from '@/lib/queries/voters';
-import type { Role } from '@/lib/types';
+import type { Role, Signal } from '@/lib/types';
 import { StockDetailLive } from '@/components/stocks/stock-detail-live';
 import { VoterBreakdownCard } from '@/components/signals/voter-breakdown';
 import { KR_TICKER_RE } from '@/lib/ticker';
+import { gradeToLabel, type SignalGrade } from '@/lib/signal-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -207,10 +208,22 @@ export default async function KrStockDetail({ params }: Props) {
             )}
           </p>
         </div>
-        {detail && <SignalBadge signal={detail.score.signal} />}
+        {(voterBreakdown || detail) && (
+          <SignalBadge
+            signal={
+              voterBreakdown
+                ? gradeToLabel(voterBreakdown.signal_grade as SignalGrade)
+                : detail!.score.signal
+            }
+          />
+        )}
       </header>
 
-      {/* Price + Chart (always present — works even without AI data) */}
+      {/* Signal preference — final_signals (M4 character system) wins
+          over the legacy ai_scores reading so the top card and the 6-voter
+          card can never disagree. We use confidence directly when present
+          and fall back to a -2..+2 → 0..1 mapping of weighted_score.
+          When neither final_signals row exists yet, fall through to legacy. */}
       <StockDetailLive
         ticker={meta.ticker}
         name={meta.name}
@@ -219,8 +232,19 @@ export default async function KrStockDetail({ params }: Props) {
         role={role}
         inWatchlist={meta.inWatchlist}
         inMaster={meta.inMaster}
-        signal={detail?.score.signal ?? null}
-        finalScore={detail?.score.final_score ?? null}
+        signal={
+          voterBreakdown
+            ? gradeToLabel(voterBreakdown.signal_grade as SignalGrade)
+            : (detail?.score.signal as Signal | undefined) ?? null
+        }
+        finalScore={
+          voterBreakdown
+            ? (voterBreakdown.confidence ??
+                (voterBreakdown.weighted_score != null
+                  ? (voterBreakdown.weighted_score + 2) / 4
+                  : null))
+            : detail?.score.final_score ?? null
+        }
       />
 
       {/* 6-Voter breakdown — the new character-system view. Sits between
