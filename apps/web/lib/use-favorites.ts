@@ -4,22 +4,28 @@
  * Personal favorites hook — backs the LNB 관심주식 list and the ★ toggle
  * on /watchlist rows.
  *
- * Two components used to reimplement this independently (sidebar.tsx +
- * watchlist-table.tsx) with the same StrictMode-double-invocation
- * workaround and the same cross-tab + same-tab broadcast trick. Audit
- * High #3 — factored here.
+ * Two-tier persistence:
+ *   1. localStorage  → instant UX, no network round-trip on toggle.
+ *   2. user_favorites table  → server-side mirror so the M4 cycle worker
+ *      knows which tickers to spend LLM budget on (Stage-2 analysis).
  *
- * Contract:
- *   - `tickers` is the ordered list (insertion order preserved).
- *   - `add` / `remove` are stable references; safe to use in deps.
- *   - Writes localStorage immediately and broadcasts a `storage` event so
- *     every other consumer (Sidebar ↔ WatchlistTable) updates in lockstep.
- *   - Side effects live OUTSIDE the setState updater — React strict mode
- *     would otherwise run updaters twice and toggle the value back.
+ * The two are eventually consistent — a localStorage write that hasn't
+ * propagated to the server yet just delays inclusion in the next cron.
+ *
+ * Side effects (write, broadcast, network) live OUTSIDE the setState
+ * updater since React strict mode would otherwise toggle them twice.
  */
 import { useCallback, useEffect, useState } from 'react';
 
+import {
+  addFavoriteAction,
+  removeFavoriteAction,
+  syncFavoritesAction,
+} from '@/app/actions/favorites';
+
 const STORAGE_KEY = 'qs:favorites:v1';
+const SYNCED_KEY  = 'qs:favorites:synced-at';
+const SYNC_THROTTLE_MS = 30_000; // don't bulk-sync more than 1×/30s
 
 function readStorage(): string[] {
   try {
@@ -59,8 +65,29 @@ export function useFavorites(): UseFavoritesResult {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setTickers(readStorage());
+    const initial = readStorage();
+    setTickers(initial);
     setHydrated(true);
+
+    // One-shot bulk sync on mount — handles the case where the user added
+    // favorites offline / on another device and the localStorage layer is
+    // ahead of the server. Throttled so we don't hammer it on every page
+    // navigation.
+    try {
+      const lastSync = Number(localStorage.getItem(SYNCED_KEY) ?? '0');
+      if (Date.now() - lastSync > SYNC_THROTTLE_MS) {
+        void syncFavoritesAction(initial).then((res) => {
+          if ('ok' in res && res.ok) {
+            try {
+              localStorage.setItem(SYNCED_KEY, String(Date.now()));
+            } catch {}
+          }
+        });
+      }
+    } catch {
+      /* localStorage unavailable — skip server sync this turn */
+    }
+
     const onStorage = (e: StorageEvent) => {
       if (e.key !== STORAGE_KEY) return;
       try {
@@ -73,29 +100,50 @@ export function useFavorites(): UseFavoritesResult {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const add = useCallback((ticker: string) => {
-    const prev = readStorage();
-    if (prev.includes(ticker)) return;
-    const next = [...prev, ticker];
-    writeAndBroadcast(next);
-    setTickers(next);
+  // Fire-and-forget server mirror. If the network call fails we silently
+  // retry on the next mount's bulk-sync; UI never blocks on it.
+  const mirrorToServer = useCallback((op: 'add' | 'remove', ticker: string) => {
+    const fn = op === 'add' ? addFavoriteAction : removeFavoriteAction;
+    void fn(ticker).catch(() => {
+      /* swallow — next mount's bulk sync will reconcile */
+    });
   }, []);
 
-  const remove = useCallback((ticker: string) => {
-    const prev = readStorage();
-    const next = prev.filter((t) => t !== ticker);
-    writeAndBroadcast(next);
-    setTickers(next);
-  }, []);
+  const add = useCallback(
+    (ticker: string) => {
+      const prev = readStorage();
+      if (prev.includes(ticker)) return;
+      const next = [...prev, ticker];
+      writeAndBroadcast(next);
+      setTickers(next);
+      mirrorToServer('add', ticker);
+    },
+    [mirrorToServer],
+  );
 
-  const toggle = useCallback((ticker: string): boolean => {
-    const prev = readStorage();
-    const wasIn = prev.includes(ticker);
-    const next = wasIn ? prev.filter((t) => t !== ticker) : [...prev, ticker];
-    writeAndBroadcast(next);
-    setTickers(next);
-    return !wasIn;
-  }, []);
+  const remove = useCallback(
+    (ticker: string) => {
+      const prev = readStorage();
+      const next = prev.filter((t) => t !== ticker);
+      writeAndBroadcast(next);
+      setTickers(next);
+      mirrorToServer('remove', ticker);
+    },
+    [mirrorToServer],
+  );
+
+  const toggle = useCallback(
+    (ticker: string): boolean => {
+      const prev = readStorage();
+      const wasIn = prev.includes(ticker);
+      const next = wasIn ? prev.filter((t) => t !== ticker) : [...prev, ticker];
+      writeAndBroadcast(next);
+      setTickers(next);
+      mirrorToServer(wasIn ? 'remove' : 'add', ticker);
+      return !wasIn;
+    },
+    [mirrorToServer],
+  );
 
   const has = useCallback(
     (ticker: string) => tickers.includes(ticker),

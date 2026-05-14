@@ -35,6 +35,7 @@ from agents.cycle.run_m2_cycle import (
     _stamp,
     _watchlist_tickers,
 )
+from agents.cycle._favorites import favorites_union
 from agents.db.models import (
     AgentName,
     AgentOutput,
@@ -66,6 +67,7 @@ def run_cycle(
     cycle_at: datetime | None = None,
     tickers: list[str] | None = None,
     tiers: list[str] | None = None,
+    favorites_only: bool = False,
     require_change: bool = False,
     user_id: UUID | None = None,
     dry_run: bool = False,
@@ -84,7 +86,25 @@ def run_cycle(
     """
     cycle_at = cycle_at or datetime.now(UTC)
     repo = repo or get_agent_repository()
-    target_tickers = tickers or _watchlist_tickers(repo, tiers=tiers)
+
+    # Universe selection order of precedence:
+    #   1. explicit --tickers wins (debug / one-off runs)
+    #   2. --favorites-only: union of every user's LNB favorites
+    #      → falls back to watchlist if no favorites are registered yet
+    #   3. --tier filter on the admin watchlist
+    #   4. full admin watchlist (legacy default)
+    if tickers:
+        target_tickers = tickers
+    elif favorites_only:
+        favs = favorites_union(repo)
+        if favs:
+            target_tickers = favs
+        else:
+            # Empty favorites table — fall back so the cron isn't silent.
+            # Logged as a warning in the report.
+            target_tickers = _watchlist_tickers(repo, tiers=tiers)
+    else:
+        target_tickers = _watchlist_tickers(repo, tiers=tiers)
 
     # Cache the macro snapshot once per cycle — every ticker's change-
     # detection check shares the same shock state.
@@ -240,6 +260,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "since the last cycle. Saves ~30%% of LLM cost on calm days."
         ),
     )
+    p.add_argument(
+        "--favorites-only",
+        action="store_true",
+        help=(
+            "Restrict expensive LLM analysis to the union of all users' "
+            "LNB favorites (migration 24). Data collectors continue to "
+            "ingest the full watchlist independently. Falls back to the "
+            "full watchlist if no user has favorited anything yet."
+        ),
+    )
     return p.parse_args(argv)
 
 
@@ -260,6 +290,7 @@ def main(argv: list[str] | None = None) -> int:
     report = run_cycle(
         tickers=tickers,
         tiers=tiers,
+        favorites_only=args.favorites_only,
         require_change=args.require_change,
         user_id=user_id,
         dry_run=args.dry_run,
