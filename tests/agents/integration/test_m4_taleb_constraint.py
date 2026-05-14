@@ -127,18 +127,21 @@ def _patch_llm(
 
 
 def _bull_voters(taleb_severity: int | None) -> dict[AgentName, AgentOutput]:
-    """All four primary voters strongly bullish; Taleb risk_score
-    neutral so Q1 lands above the STRONG_BUY threshold (≥ +1.00).
-    Severity is set independently to test Q3 — a calm Taleb (severity
-    1-3) lets the bull case stand; a worried Taleb (severity 4-5)
-    triggers the auto-constraint."""
+    """All five voters strongly bullish + tightly convergent.
+
+    Convergence matters because the M4 synthesizer now runs a
+    confidence gate after Q2: a STRONG_BUY (≥+1.00) with low voter
+    agreement gets demoted to BUY *before* Taleb's auto-constraint
+    fires. To test Q3 (Taleb) in isolation we need voters that
+    survive the gate — hence the tight band 1.7..2.0 instead of the
+    old 0.0..2.0 spread."""
     return {
         "graham": _voter("graham", "2.0", narrative="안전마진 충분"),
-        "dow": _voter("dow", "1.8", narrative="추세 정렬"),
-        "shiller": _voter("shiller", "1.5", narrative="시장 정상"),
-        "keynes": _voter("keynes", "1.5", narrative="매크로 순풍"),
+        "dow": _voter("dow", "1.9", narrative="추세 정렬"),
+        "shiller": _voter("shiller", "1.8", narrative="시장 정상"),
+        "keynes": _voter("keynes", "1.8", narrative="매크로 순풍"),
         "taleb": _voter(
-            "taleb", "0",
+            "taleb", "1.7",
             severity=taleb_severity,
             narrative="변동성 평가 결과",
         ),
@@ -146,15 +149,17 @@ def _bull_voters(taleb_severity: int | None) -> dict[AgentName, AgentOutput]:
 
 
 def _mild_bull_voters(taleb_severity: int) -> dict[AgentName, AgentOutput]:
-    """Q1 lands in BUY range (≥0.30, <1.00) so a one-step downgrade
-    pushes it to HOLD."""
+    """Q1 lands in BUY range (≥0.30, <1.00) so a one-step Taleb
+    downgrade pushes it to HOLD. Tight convergence keeps voter
+    confidence above the BUY gate floor (0.50) so the test isolates
+    Taleb's effect rather than the new gate's effect."""
     return {
-        "graham": _voter("graham", "0.6"),
-        "dow": _voter("dow", "0.5"),
-        "shiller": _voter("shiller", "0.3"),
-        "keynes": _voter("keynes", "0.5"),
+        "graham": _voter("graham", "0.7"),
+        "dow": _voter("dow", "0.6"),
+        "shiller": _voter("shiller", "0.5"),
+        "keynes": _voter("keynes", "0.6"),
         "taleb": _voter(
-            "taleb", "0", severity=taleb_severity,
+            "taleb", "0.4", severity=taleb_severity,
             narrative="severity 4 우려 발행",
         ),
     }

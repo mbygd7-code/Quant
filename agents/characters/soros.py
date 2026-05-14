@@ -52,7 +52,11 @@ from agents.db.models import (
     UserWeightSettings,
 )
 from agents.db.repository import AgentRepository, get_agent_repository
-from agents.grading import apply_taleb_constraint, score_to_signal_grade
+from agents.grading import (
+    apply_confidence_gate,
+    apply_taleb_constraint,
+    score_to_signal_grade,
+)
 from agents.llm import (
     CacheBlock,
     ClaudeMessage,
@@ -222,11 +226,67 @@ def apply_priced_in(score: Decimal, priced_in: Decimal) -> Decimal:
 
 
 def confidence_from_score(score: Decimal) -> Decimal:
-    """abs(score) / 2.0 mapped into [0, 1] with two decimals."""
+    """Legacy `abs(score) / 2` — kept for M2/M3 paths that don't have
+    voter context yet. New code should prefer `confidence_from_voters`
+    which measures actual disagreement instead of restating magnitude.
+    """
     raw = abs(score) / Decimal(2)
     return min(Decimal(1), max(Decimal(0), raw)).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
+
+
+def confidence_from_voters(
+    voter_scores: dict[AgentName, Decimal],
+    adjusted_score: Decimal,
+) -> Decimal:
+    """Measure voter agreement, not signal magnitude.
+
+    The previous `confidence_from_score` returned `abs(score)/2`, which is
+    just a rescaling of the headline number — it could never tell you
+    "1 voter at +2, 4 voters at 0" apart from "5 voters at +0.4 each".
+    Both have the same weighted score, but the second case is a much
+    more trustworthy bullish signal.
+
+    Formula:
+      1. dispersion = stdev(voter_scores)           (≥0, capped at 1.0 in practice)
+      2. directional = fraction of voters in same direction as adjusted_score
+      3. confidence = 0.5·directional + 0.5·(1 − min(1, dispersion/1.0))
+
+    With 5 voters all at +1 → dispersion 0, directional 1.0 → confidence 1.0
+    With 1 at +2, 4 at 0 → dispersion ~0.89, directional 0.20 → confidence ~0.16
+    With 3 at +0.5, 2 at -0.5 → dispersion ~0.55, directional 0.60 → confidence ~0.52
+    """
+    scores = [float(s) for s in voter_scores.values()]
+    if not scores:
+        return Decimal("0")
+    n = len(scores)
+
+    # 1. Standard deviation of voter scores (population, not sample —
+    #    n is small and we just want a dispersion proxy).
+    mean = sum(scores) / n
+    variance = sum((s - mean) ** 2 for s in scores) / n
+    stdev = variance ** 0.5
+
+    # 2. Directional agreement: fraction of voters whose sign matches
+    #    the final adjusted score. Voters at exactly 0 don't count
+    #    against directional agreement — they're abstentions.
+    target_sign = 1 if float(adjusted_score) > 0 else -1 if float(adjusted_score) < 0 else 0
+    if target_sign == 0:
+        directional = 0.5  # neutral signal, any voter direction is fine
+    else:
+        non_zero = [s for s in scores if abs(s) > 0.05]
+        if not non_zero:
+            directional = 0.0
+        else:
+            agreeing = sum(1 for s in non_zero if (s > 0) == (target_sign > 0))
+            directional = agreeing / len(non_zero)
+
+    # 3. Compose. Stdev > 1.0 is rare with our ±2 contract; cap so it
+    #    doesn't produce negative confidence.
+    dispersion_term = max(0.0, 1.0 - min(1.0, stdev / 1.0))
+    conf = 0.5 * directional + 0.5 * dispersion_term
+    return Decimal(str(conf)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def detect_grade_change(
@@ -579,11 +639,22 @@ class Soros:
             f"- {a}: {bundle.voters[a].score}점"
             for a in bundle.voters
         )
+        # priced_in dampening direction guidance — without this hint the
+        # LLM frequently calls a dampening "상향 조정" because the final
+        # absolute number can sit at a notable threshold like 1.00.
+        dampened = priced_in > PRICED_IN_DAMPEN_THRESHOLD
+        direction_note = (
+            "priced_in이 임계(0.70)를 초과해 점수가 절반으로 감쇠됐습니다 (×0.5 적용). "
+            "narrative에서 '상향' 같은 증폭 표현을 쓰지 마세요."
+            if dampened
+            else "priced_in이 임계 미만이므로 감쇠 없이 그대로 통과됐습니다."
+        )
         user_text = (
             f"{ticker} 종합 (M3 — 4명 투표):\n"
             f"{voter_lines}\n"
             f"- Q1 가중 합산 점수: {q1}\n"
             f"- Q2 priced_in: {priced_in}  → 적용된 점수: {adjusted}\n"
+            f"- {direction_note}\n"
             f"- 산출 시그널: {grade}\n"
             "네 분석가 의견을 인용하며 결론을 작성하세요. "
             "동의·견제 구도를 명확히 하세요."
@@ -638,13 +709,25 @@ class Soros:
 
         baseline_grade = score_to_signal_grade(adjusted)
 
-        # Q3 — Taleb auto-constraint on the baseline grade.
+        # Voter-agreement confidence — replaces the legacy |score|/2
+        # version so '강한 관심 with 50% 신뢰도' (1 voter strong, 4
+        # neutral) gets correctly demoted by the gate below.
+        confidence = confidence_from_voters(scores, adjusted)
+
+        # Q4 — confidence gate. Demote STRONG_BUY/BUY when voter
+        # agreement is weak. Runs BEFORE Taleb so the dual override
+        # path is: confidence gate → Taleb constraint, with both
+        # recorded in weights_snapshot for audit.
+        gated_grade, gate_applied = apply_confidence_gate(
+            baseline_grade, confidence
+        )
+
+        # Q3 — Taleb auto-constraint on the gated grade.
         taleb_out = bundle.voters.get("taleb")
         taleb_severity = taleb_out.severity if taleb_out is not None else None
         signal_grade, constraint_applied = apply_taleb_constraint(
-            baseline_grade, taleb_severity
+            gated_grade, taleb_severity
         )
-        confidence = confidence_from_score(adjusted)
 
         narrative, narr_cost, _narr_model = self._narrative_m4(
             ticker,
@@ -658,15 +741,27 @@ class Soros:
             constraint_applied,
         )
 
+        # `active_voters` = voters whose |score| ≥ 0.1 — used as an audit
+        # field so we can spot single-voter-driven signals retrospectively.
+        # The confidence gate (Phase A) is the runtime guard; this column
+        # makes the post-hoc analysis cheaper than re-running the cycle.
+        active_voters = [
+            a for a in present if abs(float(scores[a])) >= 0.1
+        ]
+
         weights_snapshot = {
             "shares": {a: float(shares[a]) for a in present},
             "raw_user_weights": {k: float(v) for k, v in bundle.weights.items()},
             "voter_set": list(present),
+            "active_voters": active_voters,
+            "active_voter_count": len(active_voters),
             "priced_in": float(priced_in),
             "priced_in_dampen_applied": priced_in > PRICED_IN_DAMPEN_THRESHOLD,
             "q1_score": float(q1),
             "q2_adjusted_score": float(adjusted),
             "baseline_grade": baseline_grade,
+            "gated_grade": gated_grade,
+            "confidence_gate_applied": gate_applied,
             "taleb_severity": taleb_severity,
             "taleb_constraint_applied": constraint_applied,
             "milestone": "M4",
@@ -759,11 +854,19 @@ class Soros:
                 f"{taleb_severity if taleb_severity is not None else '없음'})"
             )
         )
+        dampened = priced_in > PRICED_IN_DAMPEN_THRESHOLD
+        direction_note = (
+            "priced_in이 임계(0.70)를 초과해 점수가 절반으로 감쇠됐습니다 (×0.5 적용). "
+            "narrative에서 '상향' 같은 증폭 표현을 쓰지 마세요."
+            if dampened
+            else "priced_in이 임계 미만이므로 감쇠 없이 그대로 통과됐습니다."
+        )
         user_text = (
             f"{ticker} 종합 (M4 — 5명 투표):\n"
             f"{voter_lines}\n"
             f"- Q1 가중 합산 점수: {q1}\n"
             f"- Q2 priced_in: {priced_in} → 적용 점수: {adjusted}\n"
+            f"- {direction_note}\n"
             f"- 산출 기본 시그널: {baseline}\n"
             f"{constraint_line}\n"
             f"- 최종 시그널: {final_grade}\n"

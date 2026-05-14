@@ -57,13 +57,30 @@ export function VoterBreakdownCard({ data }: { data: VoterBreakdown }) {
           </span>
           {data.confidence != null && (
             <>
-              <span className="text-txt-muted ml-3">신뢰도</span>
-              <span className="font-mono tabular-nums">
+              <span className="text-txt-muted ml-3">voter 합의</span>
+              <span
+                className={cn(
+                  'font-mono tabular-nums',
+                  data.confidence < 0.5 && 'text-status-warning',
+                  data.confidence >= 0.7 && 'text-status-success',
+                )}
+              >
                 {Math.round(data.confidence * 100)}%
               </span>
             </>
           )}
         </div>
+
+        {/* Low-confidence warning — when voters disagree the grade
+            could swing on the next cron. Surface this prominently so
+            users don't treat a low-confidence call like a high-confidence
+            one. */}
+        {data.confidence != null && data.confidence < 0.5 && (
+          <div className="rounded-md border border-status-warning/40 bg-status-warning/10 px-3 py-2 text-xs text-status-warning">
+            ⚠ voter 의견이 분산되어 있습니다 ({Math.round(data.confidence * 100)}%). 단일
+            voter가 신호를 주도하므로 다음 사이클 갱신을 함께 확인하세요.
+          </div>
+        )}
 
         {/* Per-voter bars — score on a -2..+2 axis, half-width = 0. */}
         <div className="space-y-2">

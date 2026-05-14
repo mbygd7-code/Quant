@@ -241,10 +241,17 @@ function SignalPanel({
           {tone.label}
         </span>
         {/* Confidence as a small badge under the label — voter-agreement,
-            distinct from the strength readout on the right. */}
+            distinct from the strength readout on the right. Highlighted
+            in warning tone when below 50% so users don't trust a single-
+            voter-driven signal like a unanimous one. */}
         {confPct !== null && (
-          <span className="text-[10px] opacity-70 mt-0.5">
-            voter 합의 {confPct}%
+          <span
+            className={cn(
+              'text-[10px] mt-0.5',
+              confPct < 50 ? 'opacity-100 font-semibold' : 'opacity-70',
+            )}
+          >
+            voter 합의 {confPct}%{confPct < 50 && ' ⚠'}
           </span>
         )}
       </div>
