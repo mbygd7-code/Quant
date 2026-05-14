@@ -19,6 +19,7 @@ from agents.characters.keynes import Keynes
 from agents.characters.shiller import Shiller
 from agents.characters.soros import Soros
 from agents.characters.taleb import Taleb
+from agents.characters.turing import Turing
 
 __all__ = [
     "Character",
@@ -29,4 +30,5 @@ __all__ = [
     "Shiller",
     "Soros",
     "Taleb",
+    "Turing",
 ]

@@ -25,6 +25,7 @@ from agents.characters.keynes import Keynes
 from agents.characters.shiller import Shiller
 from agents.characters.soros import Soros
 from agents.characters.taleb import Taleb
+from agents.characters.turing import Turing
 from agents.cycle._change_detect import (
     MACRO_SHOCK_SYMBOLS,
     should_reanalyze,
@@ -50,6 +51,7 @@ from agents.db.repository import AgentRepository, get_agent_repository
 M4_CHARACTER_ORDER: tuple[tuple[AgentName, type], ...] = (
     ("graham", Graham),
     ("dow", Dow),
+    ("turing", Turing),    # technical patterns (RSI + MACD + Bollinger)
     ("shiller", Shiller),
     ("keynes", Keynes),
     ("taleb", Taleb),
