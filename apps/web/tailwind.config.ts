@@ -30,6 +30,10 @@ const config: Config = {
           success: 'rgb(var(--status-success-rgb) / <alpha-value>)',
           warning: 'rgb(var(--status-warning-rgb) / <alpha-value>)',
           error: 'rgb(var(--status-error-rgb) / <alpha-value>)',
+          // `danger` is the Korean-market-aligned synonym used across the
+          // codebase for down-tick / risk / 위험 indicators. Aliased to the
+          // same RGB as error so a 30-file rename isn't required.
+          danger: 'rgb(var(--status-error-rgb) / <alpha-value>)',
           info: 'rgb(var(--status-info-rgb) / <alpha-value>)',
         },
         border: {

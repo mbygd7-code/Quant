@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { KR_TICKER_RE } from '@/lib/ticker';
+
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
@@ -31,8 +33,7 @@ const PERIOD_MAP: Record<Period, { resolution: 'minute' | 'day' | 'week' | 'mont
 
 export async function GET(req: NextRequest) {
   const ticker = (req.nextUrl.searchParams.get('ticker') ?? '').trim().toUpperCase();
-  // 6-char alphanumeric — newer ETFs (e.g. 0167A0) include a letter.
-  if (!/^[0-9A-Z]{6}$/.test(ticker)) {
+  if (!KR_TICKER_RE.test(ticker)) {
     return NextResponse.json({ error: 'ticker= 6-char alphanumeric required' }, { status: 400 });
   }
   const period = (req.nextUrl.searchParams.get('period') ?? '3m') as Period;
@@ -66,7 +67,11 @@ export async function GET(req: NextRequest) {
         Referer: 'https://stock.naver.com/',
         Accept: 'application/json',
       },
-      cache: 'no-store',
+      // Daily candles don't change intra-day — cache 5 min upstream so a
+      // detail-page reload doesn't re-fetch NAVER on every refresh. The
+      // route handler is still `force-dynamic` (per-user response shape),
+      // but the upstream fetch is shared across users via Next's cache.
+      next: { revalidate: 300 },
     });
     if (!res.ok) {
       return NextResponse.json({ error: `naver ${res.status}` }, { status: 502 });

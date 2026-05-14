@@ -13,6 +13,7 @@ import { DEV_BYPASS_AUTH, getQueryClient } from '@/lib/supabase/query-client';
 import { getStockDetail } from '@/lib/queries/reports';
 import type { Role } from '@/lib/types';
 import { StockDetailLive } from '@/components/stocks/stock-detail-live';
+import { KR_TICKER_RE } from '@/lib/ticker';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,8 +33,7 @@ const FACTOR_LABELS: Record<string, string> = {
 
 export default async function KrStockDetail({ params }: Props) {
   const ticker = params.ticker.toUpperCase();
-  // 6-char alphanumeric — newer ETFs include a letter (e.g. 0167A0).
-  if (!/^[0-9A-Z]{6}$/.test(ticker)) notFound();
+  if (!KR_TICKER_RE.test(ticker)) notFound();
 
   // ── Auth + role
   let role: Role = 'admin';

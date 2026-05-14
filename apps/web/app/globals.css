@@ -43,6 +43,13 @@ html[data-theme="dark"] {
   --status-warning-rgb: 255 239 99;
   --status-error-rgb: 239 68 68;
   --status-info-rgb: 114 60 235;
+  /* Convenience CSS-var aliases for component code that uses
+     `var(--status-foo)` directly (e.g. inline `style={{background: ...}}`). */
+  --status-success: rgb(var(--status-success-rgb));
+  --status-warning: rgb(var(--status-warning-rgb));
+  --status-error:   rgb(var(--status-error-rgb));
+  --status-danger:  rgb(var(--status-error-rgb));
+  --status-info:    rgb(var(--status-info-rgb));
 
   --surface-overlay: rgba(0, 0, 0, 0.60);
 
@@ -109,6 +116,11 @@ html[data-theme="light"] {
   --status-warning-rgb: 220 180 50;
   --status-error-rgb: 220 72 72;
   --status-info-rgb: 110 140 40;
+  --status-success: rgb(var(--status-success-rgb));
+  --status-warning: rgb(var(--status-warning-rgb));
+  --status-error:   rgb(var(--status-error-rgb));
+  --status-danger:  rgb(var(--status-error-rgb));
+  --status-info:    rgb(var(--status-info-rgb));
 
   --surface-overlay: rgba(30, 27, 46, 0.35);
 

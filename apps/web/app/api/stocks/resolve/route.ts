@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server';
 
 import { getQueryClient } from '@/lib/supabase/query-client';
+import { KR_TICKER_RE } from '@/lib/ticker';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,8 +46,7 @@ export async function GET(req: Request) {
   // itself) get resolved via NAVER mobile stock API so the LNB can show the
   // real Korean name instead of a 6-digit code.
   const unresolved = tickers.filter((t) => {
-    // 6-char alphanumeric — letters appear in newer ETF codes (e.g. 0167A0).
-    if (!/^[0-9A-Z]{6}$/i.test(t)) return false;
+    if (!KR_TICKER_RE.test(t.toUpperCase())) return false;
     const hit = byTicker.get(t);
     if (!hit) return true;
     return hit.name === t || hit.name.trim() === '';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -14,6 +14,8 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useFavorites } from '@/lib/use-favorites';
+import { KR_TICKER_RE } from '@/lib/ticker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -35,8 +37,6 @@ interface WatchlistItem {
   change_rate: number | null;
 }
 
-const STORAGE_KEY = 'qs:favorites:v1';
-
 function signalColor(signal: string | null): string {
   switch (signal) {
     case '강한 관심': return 'var(--status-success)';
@@ -48,84 +48,8 @@ function signalColor(signal: string | null): string {
   }
 }
 
-// Personal favorites — stored in localStorage so users curate their own
-// 관심주식 list. The full universe (admin watchlist + discovery) lives at
-// /stocks/kr ("국내주식" in the GNB).
-function useFavorites() {
-  const [tickers, setTickers] = useState<string[]>([]);
-  const [hydrated, setHydrated] = useState(false);
-
-  // Initial hydrate + listen for cross-component updates (the /watchlist
-  // table and other callers dispatch a `storage` event after writing).
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setTickers(JSON.parse(raw) as string[]);
-    } catch {
-      /* corrupt storage — reset */
-    }
-    setHydrated(true);
-
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== STORAGE_KEY) return;
-      try {
-        setTickers(JSON.parse(e.newValue ?? '[]') as string[]);
-      } catch {
-        setTickers([]);
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
-
-  // Write + broadcast to other listeners in this tab (the native `storage`
-  // event only fires cross-tab, so we dispatch a synthetic one).
-  const writeAndBroadcast = useCallback((next: string[]) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      window.dispatchEvent(
-        new StorageEvent('storage', {
-          key: STORAGE_KEY,
-          newValue: JSON.stringify(next),
-        }),
-      );
-    } catch {
-      /* over quota — silent */
-    }
-  }, []);
-
-  // Side effects must live OUTSIDE the setState updater — React strict mode
-  // runs updaters twice in dev, which would broadcast/write twice and the
-  // second pass would toggle back to the original state.
-  const add = useCallback(
-    (ticker: string) => {
-      let prev: string[] = [];
-      try {
-        prev = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') as string[];
-      } catch {}
-      if (prev.includes(ticker)) return;
-      const next = [...prev, ticker];
-      writeAndBroadcast(next);
-      setTickers(next);
-    },
-    [writeAndBroadcast],
-  );
-
-  const remove = useCallback(
-    (ticker: string) => {
-      let prev: string[] = [];
-      try {
-        prev = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') as string[];
-      } catch {}
-      const next = prev.filter((t) => t !== ticker);
-      writeAndBroadcast(next);
-      setTickers(next);
-    },
-    [writeAndBroadcast],
-  );
-
-  return { tickers, add, remove, hydrated };
-}
+// Personal favorites — see `apps/web/lib/use-favorites.ts`. The hook is
+// shared with the /watchlist ★ toggle so both stay in lockstep.
 
 export function Sidebar({ role, variant = 'desktop' }: { role: Role; variant?: 'desktop' | 'sheet' }) {
   const pathname = usePathname();
@@ -315,7 +239,7 @@ export function Sidebar({ role, variant = 'desktop' }: { role: Role; variant?: '
                 {favoriteItems.map((it) => {
                   // KR tickers (6-char alphanumeric) → KR detail; everything
                   // else falls through to a generic stocks route.
-                  const isKr = /^[0-9A-Z]{6}$/i.test(it.ticker);
+                  const isKr = KR_TICKER_RE.test(it.ticker.toUpperCase());
                   const href = isKr
                     ? `/stocks/kr/${it.ticker}`
                     : `/stocks/${it.ticker.toLowerCase()}`;

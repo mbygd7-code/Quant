@@ -8,6 +8,8 @@
  */
 import { NextResponse } from 'next/server';
 
+import { KR_TICKER_RE } from '@/lib/ticker';
+
 export const dynamic = 'force-dynamic';
 
 interface NaverAcItem {
@@ -75,7 +77,7 @@ export async function GET(req: Request) {
     // Accept any 6-char alphanumeric ticker. Newer ETFs use codes with a
     // letter in them (e.g. 0167A0 for SOL AI반도체TOP2플러스).
     const out = (j.items ?? [])
-      .filter((it) => /^[0-9A-Z]{6}$/i.test(it.code))
+      .filter((it) => KR_TICKER_RE.test(it.code.toUpperCase()))
       .slice(0, 20)
       .map((it) => ({
         ticker: it.code,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Star, Trash2 } from 'lucide-react';
@@ -33,14 +33,13 @@ import {
   removeStockFromWatchlist,
 } from '@/app/actions/watchlist';
 import type { Role } from '@/lib/types';
+import { useFavorites } from '@/lib/use-favorites';
 
 interface Props {
   rows: WatchlistRow[];
   date: string;
   role: Role;
 }
-
-const FAVORITES_KEY = 'qs:favorites:v1';
 
 export function WatchlistTable({ rows, date, role }: Props) {
   const router = useRouter();
@@ -51,59 +50,14 @@ export function WatchlistTable({ rows, date, role }: Props) {
   const canEdit = role === 'admin' || role === 'beta' || role === 'user';
   const isAdmin = role === 'admin';
 
-  // Personal favorites — synced with the LNB Sidebar (same localStorage key).
-  // Keep an in-component Set so re-renders are O(1) lookups.
-  const [favorites, setFavorites] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(FAVORITES_KEY);
-      if (raw) setFavorites(new Set(JSON.parse(raw) as string[]));
-    } catch {
-      /* ignore corrupt storage */
-    }
-    // Listen for other tabs / Sidebar updates so adds elsewhere reflect here.
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== FAVORITES_KEY) return;
-      try {
-        setFavorites(new Set(JSON.parse(e.newValue ?? '[]') as string[]));
-      } catch {
-        setFavorites(new Set());
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
-
-  const toggleFavorite = useCallback(
-    (ticker: string, name: string) => {
-      // IMPORTANT: side effects (localStorage write, dispatchEvent, toast) must
-      // live OUTSIDE the setState updater — React strict mode runs updaters
-      // twice in dev, which would toggle the value back to its original state.
-      // We read once from localStorage to know the canonical previous set.
-      let prev: string[] = [];
-      try {
-        prev = JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? '[]') as string[];
-      } catch {
-        /* corrupt — treat as empty */
-      }
-      const wasIn = prev.includes(ticker);
-      const next = wasIn ? prev.filter((t) => t !== ticker) : [...prev, ticker];
-      try {
-        localStorage.setItem(FAVORITES_KEY, JSON.stringify(next));
-        window.dispatchEvent(
-          new StorageEvent('storage', {
-            key: FAVORITES_KEY,
-            newValue: JSON.stringify(next),
-          }),
-        );
-      } catch {
-        /* over quota — silent */
-      }
-      setFavorites(new Set(next));
-      toast.success(wasIn ? `${name} 관심주식에서 제거` : `${name} 관심주식 추가됨`);
-    },
-    [],
-  );
+  // Personal favorites — single source of truth in `lib/use-favorites.ts`.
+  // The LNB Sidebar uses the same hook so toggling here updates both views
+  // in the same render tick (synthetic storage-event broadcast).
+  const { has: isFavorite, toggle: toggleFav } = useFavorites();
+  const toggleFavorite = (ticker: string, name: string) => {
+    const nowIn = toggleFav(ticker);
+    toast.success(nowIn ? `${name} 관심주식 추가됨` : `${name} 관심주식에서 제거`);
+  };
 
   const sectors = useMemo(() => {
     const set = new Set<string>();
@@ -195,14 +149,14 @@ export function WatchlistTable({ rows, date, role }: Props) {
                     <Button
                       size="icon"
                       variant="ghost"
-                      title={favorites.has(r.ticker) ? '관심주식에서 제거' : '관심주식에 추가'}
+                      title={isFavorite(r.ticker) ? '관심주식에서 제거' : '관심주식에 추가'}
                       onClick={() => toggleFavorite(r.ticker, r.name)}
-                      aria-pressed={favorites.has(r.ticker)}
+                      aria-pressed={isFavorite(r.ticker)}
                     >
                       <Star
                         className={
                           'h-3.5 w-3.5 ' +
-                          (favorites.has(r.ticker)
+                          (isFavorite(r.ticker)
                             ? 'fill-status-warning text-status-warning'
                             : 'text-txt-muted')
                         }

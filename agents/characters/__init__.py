@@ -13,8 +13,20 @@ their concrete classes::
     from agents.characters import Graham, Dow, InsufficientDataError
 """
 from agents.characters._base import Character, InsufficientDataError
+from agents.characters.dow import Dow
+from agents.characters.graham import Graham
+from agents.characters.keynes import Keynes
+from agents.characters.shiller import Shiller
+from agents.characters.soros import Soros
+from agents.characters.taleb import Taleb
 
 __all__ = [
     "Character",
     "InsufficientDataError",
+    "Dow",
+    "Graham",
+    "Keynes",
+    "Shiller",
+    "Soros",
+    "Taleb",
 ]

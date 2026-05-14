@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Activity,
-  BarChart3,
   Bell,
   ChartLine,
   ChevronDown,
@@ -52,19 +51,21 @@ interface NavItem {
   roles: Role[];
 }
 
-// Primary nav — rendered inline in the GNB.
+// Primary nav — rendered inline in the GNB. Trimmed to the high-traffic
+// surfaces; everything else (signals, reports, admin tools) lives in the
+// Settings dropdown below.
 const PRIMARY_NAV: NavItem[] = [
-  { href: '/dashboard',     label: 'Dashboard',   icon: BarChart3, roles: ['user', 'beta', 'admin'] },
-  { href: '/stocks/kr',     label: '국내주식',     icon: LineChart, roles: ['admin'] },
-  { href: '/realtime',      label: '실시간 시세',  icon: Radio,     roles: ['user', 'beta', 'admin'] },
-  { href: '/agent-signals', label: 'AI 시그널',    icon: Activity,  roles: ['user', 'beta', 'admin'] },
-  { href: '/reports',       label: 'Reports',     icon: ChartLine, roles: ['user', 'beta', 'admin'] },
+  { href: '/stocks/kr', label: '국내주식',         icon: LineChart, roles: ['admin'] },
+  { href: '/realtime',  label: '실시간 미국주식',  icon: Radio,     roles: ['user', 'beta', 'admin'] },
 ];
 
-// Settings dropdown — AI 가중치 + every admin tool live here.
+// Settings dropdown — user-level pages (Settings, AI 가중치, AI 시그널,
+// Reports) on top, then admin-only tools below a separator.
 const SETTINGS_NAV: NavItem[] = [
   { href: '/settings',                 label: 'Settings',     icon: SettingsIcon,      roles: ['user', 'beta', 'admin'] },
   { href: '/settings/agent-weights',   label: 'AI 가중치',     icon: SlidersHorizontal, roles: ['user', 'beta', 'admin'] },
+  { href: '/agent-signals',            label: 'AI 시그널',     icon: Activity,          roles: ['user', 'beta', 'admin'] },
+  { href: '/reports',                  label: 'Reports',      icon: ChartLine,         roles: ['user', 'beta', 'admin'] },
   { href: '/mapping',                  label: 'Mapping',      icon: Network,           roles: ['admin'] },
   { href: '/knowledge',                label: 'Knowledge',    icon: Database,          roles: ['admin'] },
   { href: '/weights',                  label: 'Weights',      icon: Scale,             roles: ['admin'] },
@@ -151,9 +152,15 @@ export function Header({ email, role }: HeaderProps) {
               {settingsVisible.map((item, idx) => {
                 const Icon = item.icon;
                 const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-                // Insert a separator between user-level (first 2) and admin items.
+                // Insert a separator at the user→admin boundary. An item is
+                // "admin-only" when its `roles` list has exactly one entry
+                // (just 'admin'); the divider appears at the first such row.
+                const prev = idx > 0 ? settingsVisible[idx - 1] : null;
                 const showSeparator =
-                  idx === 2 && settingsVisible.some((i) => i.roles.length === 1);
+                  idx > 0 &&
+                  item.roles.length === 1 &&
+                  prev !== null &&
+                  prev.roles.length > 1;
                 return (
                   <span key={item.href}>
                     {showSeparator && <DropdownMenuSeparator />}

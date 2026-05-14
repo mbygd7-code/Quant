@@ -55,14 +55,16 @@ export function RealtimeMonitor({
     () => (paused ? [] : tracked.map((c) => c.symbol)),
     [tracked, paused],
   );
+  // String key derived from the symbol set — re-runs the snapshot effect
+  // only when the *content* changes, not on every parent re-render that
+  // produces a new `tracked` array identity (audit High #7).
+  const trackedKey = useMemo(() => tracked.map((c) => c.symbol).sort().join(','), [tracked]);
   const { state, ticks } = useFinnhubTrades(symbols);
 
   // Snapshot once per new symbol so cards show open/high/low/prevClose
-  // even before the first WS trade fires. We rely on the ref to dedupe
-  // (StrictMode double-mounts effects) instead of a cancelled flag,
-  // because cancelled would drop the first mount's in-flight result on
-  // unmount while the ref-guard already prevents the second mount from
-  // re-fetching.
+  // even before the first WS trade fires. Ref-guard dedupes (StrictMode
+  // double-mounts effects) without dropping the first mount's in-flight
+  // request via a cancelled flag.
   const fetchedSnapshotRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     for (const c of tracked) {
@@ -81,7 +83,10 @@ export function RealtimeMonitor({
           }));
         });
     }
-  }, [tracked]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally
+    // keyed by content via trackedKey; reading `tracked` is fine because the
+    // ref-guard prevents duplicate fetches.
+  }, [trackedKey]);
 
   // Local list filter (curated + us_kr_mapping) — runs synchronously
   const localMatches = useMemo(() => {
@@ -391,9 +396,14 @@ function QuoteCard({
   return (
     <Card
       className={cn(
-        'transition-colors',
-        flash === 'up' && 'border-status-success/60 bg-status-success/5',
-        flash === 'down' && 'border-status-danger/60 bg-status-danger/5',
+        'transition-shadow transition-colors',
+        // Tick flash via ring/border only — DON'T touch bg-card so the
+        // card's solid surface (white in light, #1A1A1A in dark) never
+        // disappears, even briefly. Previously we swapped bg → translucent
+        // green which let the page background bleed through and made the
+        // card look like it lost its surface.
+        flash === 'up' && 'border-status-success/70 ring-2 ring-status-success/30',
+        flash === 'down' && 'border-status-danger/70 ring-2 ring-status-danger/30',
       )}
     >
       <CardContent className="p-4 space-y-3">
