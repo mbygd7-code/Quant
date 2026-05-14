@@ -1,19 +1,16 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
-import { ArrowDownRight, ArrowUpRight, Plus, Check } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowDownRight, ArrowUpRight, Check, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { StockChart } from '@/components/charts/stock-chart';
-import {
-  adminAddOrCreateStockAction,
-  adminAddToWatchlist,
-} from '@/app/actions/watchlist';
-import type { Role } from '@/lib/types';
+import { SIGNAL_TONE } from '@/lib/format';
+import { useFavorites } from '@/lib/use-favorites';
+import type { Role, Signal } from '@/lib/types';
 
 interface LiveQuote {
   price: number | null;
@@ -36,6 +33,18 @@ interface Props {
   role: Role;
   inWatchlist: boolean;
   inMaster: boolean;
+  /** Latest AI signal — when present, displaces the watchlist CTA with a
+   *  prominent signal panel (강한 관심 / 관심 / 관망 / 주의 / 위험). */
+  signal?: Signal | null;
+  /** Headline strength in [0, 1] — should be monotonic with the grade.
+   *  Map weighted_score (-2..+2) → ((score + 2) / 4) so 강한 관심 always
+   *  reads ≥75; never use raw confidence here (it can be low even for
+   *  a strong directional call). */
+  finalScore?: number | null;
+  /** Optional voter-agreement signal in [0, 1]. Rendered as a small
+   *  secondary label so users see both strength + agreement without
+   *  conflating them. */
+  confidence?: number | null;
 }
 
 export function StockDetailLive({
@@ -46,11 +55,29 @@ export function StockDetailLive({
   role,
   inWatchlist: initialInWatchlist,
   inMaster,
+  signal,
+  finalScore,
+  confidence,
 }: Props) {
-  const router = useRouter();
   const [quote, setQuote] = useState<LiveQuote | null>(null);
-  const [pending, startTransition] = useTransition();
-  const [inWatchlist, setInWatchlist] = useState(initialInWatchlist);
+  // Personal favorites (LNB 관심주식) — same store as the Sidebar so the
+  // ★ here and the LNB rail stay in lockstep.
+  const { has: isFavorite, toggle: toggleFav } = useFavorites();
+  const isFav = isFavorite(ticker);
+  const onToggleFav = () => {
+    const nowIn = toggleFav(ticker);
+    toast.success(
+      nowIn ? `${name} 관심주식 추가됨` : `${name} 관심주식에서 제거`,
+    );
+  };
+  // These props still influence UI elsewhere (admin add-to-master flow is
+  // now in the picker dialog, but the badge in the header still consumes
+  // `inWatchlist`). Keep referenced to avoid lint noise.
+  void initialInWatchlist;
+  void inMaster;
+  void role;
+  void market;
+  void sector;
 
   useEffect(() => {
     let cancelled = false;
@@ -86,25 +113,6 @@ export function StockDetailLive({
       if (timer) clearInterval(timer);
     };
   }, [ticker]);
-
-  const onAdd = () => {
-    if (role !== 'admin') {
-      toast.error('admin 권한 필요');
-      return;
-    }
-    startTransition(async () => {
-      const res = inMaster
-        ? await adminAddToWatchlist(ticker)
-        : await adminAddOrCreateStockAction({ ticker, name, market, sector });
-      if (res.error) {
-        toast.error(res.error);
-        return;
-      }
-      toast.success(`${name} 워치리스트 추가됨`);
-      setInWatchlist(true);
-      router.refresh();
-    });
-  };
 
   const isUp = quote?.change != null ? quote.change > 0 : null;
   const colorCls =
@@ -156,24 +164,41 @@ export function StockDetailLive({
             />
           </dl>
 
-          {role === 'admin' && (
-            <Button
-              type="button"
-              onClick={onAdd}
-              disabled={inWatchlist || pending}
-              className="w-full bg-gradient-brand text-white hover:opacity-90"
-            >
-              {inWatchlist ? (
-                <>
-                  <Check className="h-4 w-4 mr-1" />워치리스트
-                </>
-              ) : (
-                <>
-                  <Plus className="h-4 w-4 mr-1" />워치리스트 추가
-                </>
-              )}
-            </Button>
+          {/* AI signal panel — the primary call-to-attention now lives here.
+              Replaces the previous 워치리스트 toggle, which moved to the LNB
+              (관심주식) and /watchlist page ★. */}
+          {signal ? (
+            <SignalPanel
+              signal={signal}
+              finalScore={finalScore ?? null}
+              confidence={confidence ?? null}
+            />
+          ) : (
+            <div className="rounded-md border border-dashed border-border-default px-3 py-3 text-center text-xs text-txt-muted">
+              아직 AI 신호가 산출되지 않았습니다.
+            </div>
           )}
+
+          <Button
+            type="button"
+            variant={isFav ? 'outline' : 'default'}
+            size="sm"
+            onClick={onToggleFav}
+            className={cn(
+              'w-full',
+              !isFav && 'bg-gradient-brand text-white hover:opacity-90',
+            )}
+          >
+            {isFav ? (
+              <>
+                <Check className="h-3.5 w-3.5 mr-1" />관심주식
+              </>
+            ) : (
+              <>
+                <Plus className="h-3.5 w-3.5 mr-1" />관심주식에 추가
+              </>
+            )}
+          </Button>
         </CardContent>
       </Card>
 
@@ -183,6 +208,57 @@ export function StockDetailLive({
           <StockChart ticker={ticker} variant="kr" height={320} />
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function SignalPanel({
+  signal,
+  finalScore,
+  confidence,
+}: {
+  signal: Signal;
+  finalScore: number | null;
+  confidence: number | null;
+}) {
+  const tone = SIGNAL_TONE[signal];
+  // 0..1 strength → 0..100 for display. Monotonic with the grade —
+  // 강한 관심 always reads ≥75, 위험 always reads ≤25.
+  const strengthPct = finalScore != null ? Math.round(finalScore * 100) : null;
+  const confPct = confidence != null ? Math.round(confidence * 100) : null;
+  return (
+    <div
+      className={cn(
+        'rounded-md px-3 py-3 flex items-center justify-between gap-3',
+        tone.pillBg,
+      )}
+    >
+      <div className="flex flex-col">
+        <span className="text-[10px] uppercase tracking-wider opacity-70">
+          AI 신호
+        </span>
+        <span className="text-base font-semibold leading-tight">
+          {tone.label}
+        </span>
+        {/* Confidence as a small badge under the label — voter-agreement,
+            distinct from the strength readout on the right. */}
+        {confPct !== null && (
+          <span className="text-[10px] opacity-70 mt-0.5">
+            voter 합의 {confPct}%
+          </span>
+        )}
+      </div>
+      {strengthPct !== null && (
+        <div className="text-right">
+          <div className="text-[10px] uppercase tracking-wider opacity-70">
+            방향 강도
+          </div>
+          <div className="text-base font-semibold tabular-nums leading-tight">
+            {strengthPct}
+            <span className="text-[10px] opacity-70 ml-0.5">/100</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

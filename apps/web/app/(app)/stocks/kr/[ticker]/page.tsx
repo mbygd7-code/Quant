@@ -239,12 +239,17 @@ export default async function KrStockDetail({ params }: Props) {
         }
         finalScore={
           voterBreakdown
-            ? (voterBreakdown.confidence ??
-                (voterBreakdown.weighted_score != null
-                  ? (voterBreakdown.weighted_score + 2) / 4
-                  : null))
+            ? // The headline score must be monotonic with the grade so a
+              // user reading "강한 관심" never sees a 50/100 underneath
+              // (that was confidence, not strength). weighted_score is
+              // the value that derives the grade — normalize -2..+2 →
+              // 0..100. Confidence becomes a separate signal below.
+              (voterBreakdown.weighted_score != null
+                ? ((voterBreakdown.weighted_score + 2) / 4)
+                : voterBreakdown.confidence ?? null)
             : detail?.score.final_score ?? null
         }
+        confidence={voterBreakdown?.confidence ?? null}
       />
 
       {/* 6-Voter breakdown — the new character-system view. Sits between
