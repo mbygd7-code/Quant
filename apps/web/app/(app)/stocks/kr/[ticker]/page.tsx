@@ -253,7 +253,12 @@ export default async function KrStockDetail({ params }: Props) {
       {voterBreakdown && <VoterBreakdownCard data={voterBreakdown} />}
 
       {/* AI commentary (legacy) */}
-      {detail?.commentary && (
+      {/* Legacy 'AI 퀀트 전문가 분석' card — only render when the new
+          character-system breakdown is unavailable. The character system's
+          Soros narrative already lives inside <VoterBreakdownCard /> above
+          so showing both produces conflicting headlines (legacy may say
+          '적자 전환 심화' while final_signals says '강한 관심'). */}
+      {!voterBreakdown && detail?.commentary && (
         <Card className="border-brand-purple/30 bg-gradient-to-br from-brand-purple/5 via-transparent to-transparent">
           <CardHeader className="pb-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -328,7 +333,11 @@ export default async function KrStockDetail({ params }: Props) {
       )}
 
       {/* Reasons / risks */}
-      {(reasons.length > 0 || risks.length > 0) && (
+      {/* Legacy '긍정 근거 / 리스크' two-column card — also from ai_scores
+          rationale_json. Hide when the character system has produced a
+          signal so we don't show contradictory bullet points alongside
+          the Soros narrative. */}
+      {!voterBreakdown && (reasons.length > 0 || risks.length > 0) && (
         <div className="grid gap-4 md:grid-cols-2">
           {reasons.length > 0 && (
             <Card>
@@ -368,7 +377,11 @@ export default async function KrStockDetail({ params }: Props) {
       )}
 
       {/* Sub-score breakdown */}
-      {subscore.length > 0 && (
+      {/* Legacy '7요소 sub-score' — replaced by the per-voter bars in
+          <VoterBreakdownCard /> when the character system has data.
+          Still useful as a fallback view for tickers without a
+          final_signals row yet. */}
+      {!voterBreakdown && subscore.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base font-heading">7요소 sub-score</CardTitle>
