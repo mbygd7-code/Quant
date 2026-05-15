@@ -12,7 +12,12 @@ export const runtime = 'nodejs';
  */
 const ENDPOINT = 'https://api.stock.naver.com/chart/domestic/item';
 
-interface NaverCandle {
+/** NAVER returns two slightly different shapes:
+ *    - daily / weekly / monthly: { localDate: "YYYYMMDD", closePrice, … }
+ *    - minute (1D intraday):     { localDateTime: "YYYYMMDDHHMMSS", currentPrice, … }
+ *  Both share open/high/low/volume field names but the close + date
+ *  field names differ. We normalize on the proxy side. */
+interface NaverDailyCandle {
   localDate: string;        // "YYYYMMDD"
   closePrice: number;
   openPrice: number;
@@ -20,6 +25,17 @@ interface NaverCandle {
   lowPrice: number;
   accumulatedTradingVolume: number;
 }
+
+interface NaverMinuteCandle {
+  localDateTime: string;    // "YYYYMMDDHHMMSS"
+  currentPrice: number;
+  openPrice: number;
+  highPrice: number;
+  lowPrice: number;
+  accumulatedTradingVolume: number;
+}
+
+type NaverCandle = NaverDailyCandle | NaverMinuteCandle;
 
 type Period = '1d' | '1w' | '1m' | '3m' | '1y';
 
@@ -78,19 +94,28 @@ export async function GET(req: NextRequest) {
     }
     const arr = (await res.json()) as NaverCandle[];
     const candles = arr.slice(-bars).map((c) => {
-      const ld = c.localDate ?? '';
+      // Minute response uses localDateTime + currentPrice; daily uses
+      // localDate + closePrice. Read either and normalize.
+      const isMinute = 'localDateTime' in c;
+      const ld = isMinute
+        ? (c as NaverMinuteCandle).localDateTime
+        : (c as NaverDailyCandle).localDate;
+      const dateStr = ld ?? '';
       const date =
-        ld.length >= 8
-          ? `${ld.slice(0, 4)}-${ld.slice(4, 6)}-${ld.slice(6, 8)}${
-              ld.length >= 12 ? ` ${ld.slice(8, 10)}:${ld.slice(10, 12)}` : ''
+        dateStr.length >= 8
+          ? `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}${
+              dateStr.length >= 12 ? ` ${dateStr.slice(8, 10)}:${dateStr.slice(10, 12)}` : ''
             }`
-          : ld;
+          : dateStr;
+      const close = isMinute
+        ? (c as NaverMinuteCandle).currentPrice
+        : (c as NaverDailyCandle).closePrice;
       return {
         date,
         open: c.openPrice,
         high: c.highPrice,
         low: c.lowPrice,
-        close: c.closePrice,
+        close,
         volume: c.accumulatedTradingVolume,
       };
     });
