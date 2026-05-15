@@ -433,6 +433,13 @@ export function FullscreenChartViewer({
   // snaps the selection edges so the measure rectangle locks onto
   // bar boundaries.
   const [spaceHeld, setSpaceHeld] = useState(false);
+  // Recharts' OWN active index — the candle under the vertical
+  // Tooltip cursor. Captured via the chart's onMouseMove so the snap
+  // Y always references the SAME candle the vertical line is on,
+  // regardless of how Recharts' internal slot math distributes the
+  // candles (which doesn't always equal innerWidth/N exactly when
+  // band padding or edge insets are in play).
+  const [rechartsActiveIdx, setRechartsActiveIdx] = useState<number | null>(null);
   useEffect(() => {
     const isTextInput = (target: EventTarget | null): boolean => {
       const tag = (target as HTMLElement | null)?.tagName;
@@ -873,13 +880,19 @@ export function FullscreenChartViewer({
     const innerRight = Math.max(innerLeft + 1, containerW - MARGIN_RIGHT);
     const innerWidth = innerRight - innerLeft;
     const innerHeight = Math.max(1, containerH - MARGIN_TOP);
-    // Slot-based index: each candle occupies a fixed slot of width
-    // (innerWidth / N), Recharts hover detection uses the same model.
     const slot = innerWidth / data.length;
-    const idx = Math.max(
-      0,
-      Math.min(data.length - 1, Math.floor((rawX - innerLeft) / slot)),
-    );
+    // Prefer Recharts' own activeTooltipIndex when available — that
+    // is the exact candle under the vertical Tooltip cursor line,
+    // and using it guarantees the snap target matches what the user
+    // sees. Fall back to slot-based math when Recharts hasn't fired
+    // its first onMouseMove yet (e.g. on the very first frame).
+    const idx =
+      rechartsActiveIdx != null && rechartsActiveIdx >= 0 && rechartsActiveIdx < data.length
+        ? rechartsActiveIdx
+        : Math.max(
+            0,
+            Math.min(data.length - 1, Math.floor((rawX - innerLeft) / slot)),
+          );
     const candle = data[idx];
     // Recharts ~5% padding on auto domain → mirror it.
     const pad = (periodHigh - periodLow) * 0.05;
@@ -1272,6 +1285,25 @@ export function FullscreenChartViewer({
               data={data}
               syncId="fs-chart"
               margin={{ top: 12, right: 64, bottom: 0, left: sharedLeftMargin }}
+              // Capture Recharts' own activeTooltipIndex so the magnetic
+              // snap (Space held) references the exact same candle the
+              // vertical Tooltip cursor is highlighting. Different field
+              // names across Recharts versions, so we defensively read
+              // both 'activeTooltipIndex' and 'activeIndex'.
+              onMouseMove={(state: unknown) => {
+                const s = state as {
+                  activeTooltipIndex?: number;
+                  activeIndex?: number;
+                } | null;
+                const idx =
+                  s?.activeTooltipIndex ??
+                  s?.activeIndex ??
+                  null;
+                if (typeof idx === 'number' && Number.isFinite(idx)) {
+                  setRechartsActiveIdx(idx);
+                }
+              }}
+              onMouseLeave={() => setRechartsActiveIdx(null)}
             >
               <CartesianGrid stroke="var(--border-subtle)" strokeOpacity="0.5" strokeDasharray="2 4" />
               <XAxis
