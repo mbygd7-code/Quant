@@ -152,6 +152,20 @@ const PERIOD_TO_API: Record<FsPeriod, string> = {
  *  instead of HH:MM clutter or compressed scientific notation. */
 const INTRADAY_PERIODS = new Set<FsPeriod>(['1d', '5d', '1w']);
 
+/** Crosshair styling for the chart cursor. Used across all three
+ *  panes (price / volume / RSI) so the vertical line reads as ONE
+ *  continuous trace through the syncId'd composition. Previously the
+ *  default Recharts dashed cursor was too faint to scan against the
+ *  candle wicks — bumped to a brand-purple solid line with explicit
+ *  width so it's immediately visible without competing with price
+ *  lines. */
+const CROSSHAIR_CURSOR = {
+  stroke: 'rgb(114,60,235)',       // brand purple — high contrast on both themes
+  strokeWidth: 1.4,
+  strokeOpacity: 0.85,
+  strokeDasharray: '4 3',
+} as const;
+
 const PERIODS: { id: FsPeriod; label: string; hint?: string }[] = [
   { id: '1d', label: '1D' },
   { id: '5d', label: '5D' },
@@ -662,7 +676,7 @@ export function FullscreenChartViewer({
                 />
               )}
               <Tooltip
-                cursor={{ stroke: 'var(--border-default)', strokeOpacity: 0.6, strokeDasharray: '3 3' }}
+                cursor={CROSSHAIR_CURSOR}
                 content={(p: unknown) => (
                   <FullscreenTooltip raw={p} variant={variant} compareLabel={compareLabel} />
                 )}
@@ -796,7 +810,7 @@ export function FullscreenChartViewer({
                 <CartesianGrid stroke="var(--border-subtle)" strokeOpacity="0.3" vertical={false} />
                 <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={50} ticks={intradayTicks} tickFormatter={xTickFormatter} hide={showRsi} />
                 <YAxis yAxisId="volume" domain={[0, 'auto']} tick={{ fontSize: 9, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} width={64} orientation="right" tickFormatter={(v) => fmtVol(Number(v))} tickCount={3} />
-                <Tooltip cursor={{ stroke: 'var(--border-default)', strokeOpacity: 0.6, strokeDasharray: '3 3' }} content={() => null} />
+                <Tooltip cursor={CROSSHAIR_CURSOR} content={() => null} />
                 <Bar
                   yAxisId="volume"
                   dataKey="volume"
@@ -816,7 +830,7 @@ export function FullscreenChartViewer({
                 <CartesianGrid stroke="var(--border-subtle)" strokeOpacity="0.3" vertical={false} />
                 <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={50} ticks={intradayTicks} tickFormatter={xTickFormatter} />
                 <YAxis yAxisId="rsi" domain={[0, 100]} ticks={[30, 50, 70]} tick={{ fontSize: 9, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} width={64} orientation="right" />
-                <Tooltip cursor={{ stroke: 'var(--border-default)', strokeOpacity: 0.6, strokeDasharray: '3 3' }} content={() => null} />
+                <Tooltip cursor={CROSSHAIR_CURSOR} content={() => null} />
                 <ReferenceLine yAxisId="rsi" y={70} stroke="rgba(220,72,72,0.5)" strokeDasharray="3 3" />
                 <ReferenceLine yAxisId="rsi" y={30} stroke="rgba(72,166,152,0.5)" strokeDasharray="3 3" />
                 <Line yAxisId="rsi" type="monotone" dataKey="rsi" stroke="#A855F7" strokeWidth={1.4} dot={false} connectNulls isAnimationActive={false} />

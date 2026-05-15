@@ -484,7 +484,15 @@ export function StockChart({
                 tickFormatter={(v) => fmt(Number(v))}
               />
               <Tooltip
-                cursor={{ stroke: 'var(--border-default)', strokeOpacity: 0.6, strokeDasharray: '3 3' }}
+                cursor={{
+                  // Brand-purple crosshair so the vertical guide reads
+                  // clearly against price wicks (previous neutral
+                  // var(--border-default) at 0.6 opacity was too faint).
+                  stroke: 'rgb(114,60,235)',
+                  strokeWidth: 1.4,
+                  strokeOpacity: 0.85,
+                  strokeDasharray: '4 3',
+                }}
                 content={(p: unknown) => <ChartTooltip raw={p} variant={variant} />}
               />
 
@@ -682,7 +690,15 @@ export function StockChart({
                   tickCount={3}
                 />
                 <Tooltip
-                  cursor={{ stroke: 'var(--border-default)', strokeOpacity: 0.6, strokeDasharray: '3 3' }}
+                  cursor={{
+                  // Brand-purple crosshair so the vertical guide reads
+                  // clearly against price wicks (previous neutral
+                  // var(--border-default) at 0.6 opacity was too faint).
+                  stroke: 'rgb(114,60,235)',
+                  strokeWidth: 1.4,
+                  strokeOpacity: 0.85,
+                  strokeDasharray: '4 3',
+                }}
                   content={() => null}
                 />
                 <Bar

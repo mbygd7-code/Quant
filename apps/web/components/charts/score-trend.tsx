@@ -919,6 +919,15 @@ export function ScoreTrend({
           />
           <YAxis domain={[0, 1]} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
           <Tooltip
+            cursor={{
+              // Brand-purple crosshair — consistent with the stock /
+              // fullscreen chart cursors so users get the same visual
+              // affordance everywhere.
+              stroke: 'rgb(114,60,235)',
+              strokeWidth: 1.4,
+              strokeOpacity: 0.85,
+              strokeDasharray: '4 3',
+            }}
             content={({ active, payload, label }) => {
               if (!active || !payload || payload.length === 0) return null;
               const row = payload[0]?.payload as
