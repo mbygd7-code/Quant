@@ -580,67 +580,163 @@ function SorosSynthesis({ narrative }: { narrative: string }) {
         </div>
       </div>
 
-      {/* Verdict headline — large, color-bordered, like the old AI 퀀트 카드 헤드라인 */}
+      {/* Verdict headline — hero-style with gradient + decorative quote marks */}
       {headline && (
-        <div className="px-5 pt-4">
+        <div className="px-5 pt-5">
           <div
-            className="rounded-md border-l-4 px-4 py-3 bg-bg-secondary/40"
-            style={{ borderLeftColor: verdictTone }}
+            className="relative rounded-lg overflow-hidden border bg-gradient-to-br from-bg-secondary/60 via-bg-secondary/40 to-transparent shadow-sm"
+            style={{ borderColor: `${verdictTone}40` }}
           >
+            {/* Top accent stripe */}
             <div
-              className="text-[10px] uppercase tracking-[0.15em] mb-1 font-bold"
+              className="absolute top-0 left-0 right-0 h-0.5"
+              style={{ background: `linear-gradient(to right, ${verdictTone}00, ${verdictTone}, ${verdictTone}00)` }}
+            />
+
+            {/* Background decorative quote mark — visually anchors the hero */}
+            <div
+              className="absolute -right-2 -bottom-4 text-[120px] font-serif leading-none select-none pointer-events-none opacity-[0.06]"
               style={{ color: verdictTone }}
+              aria-hidden
             >
-              최종 결론
+              "
             </div>
-            <p className="text-base font-semibold text-txt-primary leading-snug">
-              {headline}
-            </p>
+
+            <div className="relative px-6 py-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div
+                  className="h-1.5 w-8 rounded-full"
+                  style={{ background: verdictTone }}
+                />
+                <span
+                  className="text-[10px] uppercase tracking-[0.2em] font-bold"
+                  style={{ color: verdictTone }}
+                >
+                  최종 결론
+                </span>
+              </div>
+              <p
+                className="text-lg font-semibold leading-snug text-txt-primary"
+                style={{
+                  // Slightly tighten letter spacing for a more polished
+                  // editorial feel on the headline.
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                {headline}
+              </p>
+              {/* Sentiment label tag below the headline */}
+              <div className="mt-3 flex items-center gap-2">
+                <div
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                  style={{
+                    background: `${verdictTone}1F`,
+                    color: verdictTone,
+                  }}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: verdictTone }} />
+                  <span>분석가 합의 종합</span>
+                </div>
+                <span className="text-[10px] text-txt-muted">
+                  {positiveQuotes.length}/{positiveQuotes.length + negativeQuotes.length + neutralQuotes.length}명 지지 · {negativeQuotes.length}명 주의
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Two-column 지지/주의 요인 — mirrors the old 카탈리스트/리스크 grid */}
+      {/* Two-column 지지/주의 요인 — each side in its own panel with
+          tinted top border + accent color. Vertical divider between
+          them on desktop. */}
       {(positiveQuotes.length > 0 || negativeQuotes.length > 0) && (
-        <div className="grid gap-4 md:grid-cols-2 px-5 py-4">
-          {positiveQuotes.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="h-5 w-5 rounded-full bg-status-success/15 flex items-center justify-center">
-                  <ArrowUp className="h-3 w-3" style={{ color: '#48A698' }} />
-                </div>
-                <span
-                  className="text-[11px] uppercase tracking-[0.15em] font-bold"
-                  style={{ color: '#48A698' }}
+        <div className="grid gap-3 md:grid-cols-2 md:gap-0 px-5 py-4 md:divide-x md:divide-border-default/30">
+          {positiveQuotes.length > 0 ? (
+            <div className="md:pr-5">
+              <div
+                className="rounded-md border bg-status-success/[0.04] overflow-hidden"
+                style={{ borderColor: '#48A69833' }}
+              >
+                <div
+                  className="flex items-center gap-2 px-3 py-2 border-b"
+                  style={{
+                    background: '#48A6981F',
+                    borderColor: '#48A69833',
+                  }}
                 >
-                  지지 요인 ({positiveQuotes.length})
-                </span>
+                  <div className="h-5 w-5 rounded-full flex items-center justify-center" style={{ background: '#48A6983F' }}>
+                    <ArrowUp className="h-3 w-3" style={{ color: '#2A7568' }} />
+                  </div>
+                  <span
+                    className="text-[11px] uppercase tracking-[0.15em] font-bold"
+                    style={{ color: '#2A7568' }}
+                  >
+                    지지 요인
+                  </span>
+                  <span
+                    className="ml-auto text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded font-bold"
+                    style={{ background: '#48A6981F', color: '#2A7568' }}
+                  >
+                    {positiveQuotes.length}건
+                  </span>
+                </div>
+                <ul className="px-3 py-3 space-y-3">
+                  {positiveQuotes.map((q, i) => (
+                    <QuotePill key={i} quote={q} tone="positive" />
+                  ))}
+                </ul>
               </div>
-              <ul className="space-y-3">
-                {positiveQuotes.map((q, i) => (
-                  <QuotePill key={i} quote={q} tone="positive" />
-                ))}
-              </ul>
+            </div>
+          ) : (
+            // Empty state — keeps the grid balanced if one side has nothing.
+            <div className="md:pr-5">
+              <div className="rounded-md border border-border-subtle/40 bg-bg-secondary/20 px-3 py-6 text-center text-[11px] text-txt-muted">
+                지지 의견 없음
+              </div>
             </div>
           )}
-          {negativeQuotes.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="h-5 w-5 rounded-full bg-status-danger/15 flex items-center justify-center">
-                  <ArrowDown className="h-3 w-3" style={{ color: '#DC4848' }} />
-                </div>
-                <span
-                  className="text-[11px] uppercase tracking-[0.15em] font-bold"
-                  style={{ color: '#DC4848' }}
+
+          {negativeQuotes.length > 0 ? (
+            <div className="md:pl-5">
+              <div
+                className="rounded-md border bg-status-danger/[0.04] overflow-hidden"
+                style={{ borderColor: '#DC484833' }}
+              >
+                <div
+                  className="flex items-center gap-2 px-3 py-2 border-b"
+                  style={{
+                    background: '#DC48481F',
+                    borderColor: '#DC484833',
+                  }}
                 >
-                  주의 요인 ({negativeQuotes.length})
-                </span>
+                  <div className="h-5 w-5 rounded-full flex items-center justify-center" style={{ background: '#DC48483F' }}>
+                    <ArrowDown className="h-3 w-3" style={{ color: '#A52828' }} />
+                  </div>
+                  <span
+                    className="text-[11px] uppercase tracking-[0.15em] font-bold"
+                    style={{ color: '#A52828' }}
+                  >
+                    주의 요인
+                  </span>
+                  <span
+                    className="ml-auto text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded font-bold"
+                    style={{ background: '#DC48481F', color: '#A52828' }}
+                  >
+                    {negativeQuotes.length}건
+                  </span>
+                </div>
+                <ul className="px-3 py-3 space-y-3">
+                  {negativeQuotes.map((q, i) => (
+                    <QuotePill key={i} quote={q} tone="negative" />
+                  ))}
+                </ul>
               </div>
-              <ul className="space-y-3">
-                {negativeQuotes.map((q, i) => (
-                  <QuotePill key={i} quote={q} tone="negative" />
-                ))}
-              </ul>
+            </div>
+          ) : (
+            <div className="md:pl-5">
+              <div className="rounded-md border border-border-subtle/40 bg-bg-secondary/20 px-3 py-6 text-center text-[11px] text-txt-muted">
+                주의 의견 없음
+              </div>
             </div>
           )}
         </div>
