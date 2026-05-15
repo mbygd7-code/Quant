@@ -696,7 +696,12 @@ export function StockChart({
             const pad = (periodHigh - periodLow) * 0.05;
             const yMax = periodHigh + pad;
             const yMin = Math.max(0, periodLow - pad);
-            const price = yMax - ratio * (yMax - yMin);
+            const rawPrice = yMax - ratio * (yMax - yMin);
+            // Snap KR prices to nearest 100원 (matches actual tick
+            // size and avoids false-precision readouts like 34,567).
+            const price = variant === 'kr'
+              ? Math.round(rawPrice / 100) * 100
+              : rawPrice;
             const text = fmt(price);
             return (
               <div className="pointer-events-none absolute inset-0" aria-hidden>

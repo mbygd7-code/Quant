@@ -1123,7 +1123,14 @@ export function FullscreenChartViewer({
             const pad = (periodHigh - periodLow) * 0.05;
             const yMax = periodHigh + pad;
             const yMin = Math.max(0, periodLow - pad);
-            const price = yMax - ratio * (yMax - yMin);
+            const rawPrice = yMax - ratio * (yMax - yMin);
+            // Snap the displayed price to the nearest 100원 for KR
+            // charts — KR prices trade in 100원 ticks at low-to-mid
+            // values, so showing 34,567 implied false precision. US
+            // charts keep their existing $XX.XX formatting.
+            const price = variant === 'kr'
+              ? Math.round(rawPrice / 100) * 100
+              : rawPrice;
             const text = fmt(price);
             return (
               <div
