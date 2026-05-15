@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   Area,
   ComposedChart,
@@ -14,6 +15,26 @@ import {
 } from 'recharts';
 import { ClientOnly } from './client-only';
 import { cn } from '@/lib/utils';
+
+export type ScoreTrendPeriod = '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
+
+const PERIOD_DAYS: Record<ScoreTrendPeriod, number> = {
+  '1W': 7,
+  '1M': 30,
+  '3M': 90,
+  '6M': 180,
+  '1Y': 365,
+  ALL: Number.POSITIVE_INFINITY,
+};
+
+const PERIODS: { id: ScoreTrendPeriod; label: string }[] = [
+  { id: '1W', label: '1W' },
+  { id: '1M', label: '1M' },
+  { id: '3M', label: '3M' },
+  { id: '6M', label: '6M' },
+  { id: '1Y', label: '1Y' },
+  { id: 'ALL', label: 'ALL' },
+];
 
 interface Point {
   date: string;
@@ -117,11 +138,31 @@ export function ScoreTrend({
   data,
   showForecast = true,
   mlPredictions,
+  initialPeriod = '1M',
 }: {
   data: Point[];
   showForecast?: boolean;
   mlPredictions?: MLPrediction[];
+  initialPeriod?: ScoreTrendPeriod;
 }) {
+  const [period, setPeriod] = useState<ScoreTrendPeriod>(initialPeriod);
+
+  // Slice the history to the chosen window. ALL keeps everything; the
+  // rest count backward from the most recent point. OLS forecast still
+  // uses the LAST 7 points of the sliced window so the band reflects
+  // recent regime.
+  const filteredData = (() => {
+    if (data.length === 0) return data;
+    const maxDays = PERIOD_DAYS[period];
+    if (!Number.isFinite(maxDays)) return data;
+    const newestTs = new Date(data[data.length - 1].date).getTime();
+    const cutoff = newestTs - maxDays * 86400_000;
+    return data.filter((p) => new Date(p.date).getTime() >= cutoff);
+  })();
+  // For the prediction series we also restrict to the same window —
+  // future predictions stay (they're beyond newestTs), past
+  // backcast/fitted is naturally constrained by `filteredData`.
+
   // Prefer ML-stored predictions if available; fall back to in-browser OLS.
   let mean: Point[] = [];
   let lower: Point[] = [];
@@ -132,7 +173,7 @@ export function ScoreTrend({
   if (showForecast) {
     // Always compute the OLS fit — gives us the backcast/fitted line over
     // historical dates so the user can eyeball residuals vs the actual line.
-    const ols = buildForecast(data, 5);
+    const ols = buildForecast(filteredData, 5);
     fittedPast = ols.fittedPast;
 
     if (mlPredictions && mlPredictions.length > 0) {
@@ -165,14 +206,14 @@ export function ScoreTrend({
   // - Forecast rows: actual = null, predicted = projection.
   // - `residual` and `residual_pct` are derived for tooltip readout.
   const merged: (ChartRow & { residual: number | null; residual_pct: number | null })[] = [
-    ...data.map((p, i) => {
+    ...filteredData.map((p, i) => {
       const fitted = fittedByDate.get(p.date) ?? null;
       // Make the forecast line connect by setting predicted on the last
       // history point even if it's outside the OLS window.
       const predicted =
         fitted !== null
           ? fitted
-          : i === data.length - 1 && mean.length > 0
+          : i === filteredData.length - 1 && mean.length > 0
             ? p.final_score
             : null;
       const residual = predicted !== null ? p.final_score - predicted : null;
@@ -184,8 +225,8 @@ export function ScoreTrend({
         date: p.date,
         actual: p.final_score,
         predicted,
-        band_low: i === data.length - 1 && lower.length > 0 ? p.final_score : null,
-        band_high: i === data.length - 1 && upper.length > 0 ? p.final_score : null,
+        band_low: i === filteredData.length - 1 && lower.length > 0 ? p.final_score : null,
+        band_high: i === filteredData.length - 1 && upper.length > 0 ? p.final_score : null,
         residual,
         residual_pct,
       };
@@ -272,6 +313,31 @@ export function ScoreTrend({
 
   return (
     <div className="w-full">
+     {/* Period filter row — sits above the metrics so users can re-scope
+         the chart before reading the fit-quality numbers. */}
+     <div className="mb-3 flex items-center justify-between gap-2 flex-wrap">
+       <div className="flex rounded-md bg-bg-secondary/40 p-0.5 border border-border-subtle/40">
+         {PERIODS.map((p) => (
+           <button
+             key={p.id}
+             type="button"
+             onClick={() => setPeriod(p.id)}
+             className={cn(
+               'px-2.5 py-1 text-[11px] font-semibold transition-all rounded',
+               period === p.id
+                 ? 'bg-brand-purple text-white shadow-sm'
+                 : 'text-txt-secondary hover:text-txt-primary',
+             )}
+           >
+             {p.label}
+           </button>
+         ))}
+       </div>
+       <div className="text-[10px] text-txt-muted">
+         실측 {filteredData.length}일 · 예측 {mean.length}일
+       </div>
+     </div>
+
      {mae !== null && mape !== null && (
        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[color:var(--text-secondary)]">
          <span className="text-txt-muted">
