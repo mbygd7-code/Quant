@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Bar,
@@ -184,6 +185,22 @@ export function StockChart({
     () => (data.length === 0 ? null : Math.min(...data.map((d) => d.low))),
     [data],
   );
+  // Period-aware OHLV — user expected the header row to reflect the
+  // *selected period* (e.g. when 3M is active, O = open price 3M ago,
+  // V = cumulative volume over 3M), not just the most recent candle's
+  // single-bar values. So we compute period open/high/low/volumeSum
+  // and feed those into the stats bar.
+  const periodOpen = useMemo(
+    () => (data.length === 0 ? null : data[0].open),
+    [data],
+  );
+  const periodVolumeSum = useMemo(
+    () =>
+      data.length === 0
+        ? null
+        : data.reduce((acc, d) => acc + (Number.isFinite(d.volume) ? d.volume : 0), 0),
+    [data],
+  );
 
   // Palette — KR convention: red=up, blue=down. US: green up, red down.
   const upColor = variant === 'kr' ? '#F26D6D' : '#3DD68C';
@@ -227,19 +244,26 @@ export function StockChart({
             )}
           </div>
 
-          {/* OHLC compact */}
-          <div className="flex items-baseline gap-3 text-[11px] tabular-nums">
+          {/* OHLV — PERIOD-AWARE. O = first open in period, H/L =
+              period extremes, V = cumulative volume across the window.
+              Switching 1D ↔ 3M ↔ 1Y now changes these values, matching
+              user expectation that the header summarises the selected
+              window instead of just the latest bar. */}
+          <div
+            className="flex items-baseline gap-3 text-[11px] tabular-nums"
+            title={`선택 기간(${period.toUpperCase()}) 기준 통계 — O=시초가, H=최고가, L=최저가, V=누적 거래량`}
+          >
             <span className="text-txt-muted">
-              O <span className="text-txt-primary font-mono">{fmt(last.open)}</span>
+              O <span className="text-txt-primary font-mono">{fmt(periodOpen)}</span>
             </span>
             <span className="text-txt-muted">
-              H <span className="text-txt-primary font-mono">{fmt(last.high)}</span>
+              H <span className="font-mono text-status-success">{fmt(periodHigh)}</span>
             </span>
             <span className="text-txt-muted">
-              L <span className="text-txt-primary font-mono">{fmt(last.low)}</span>
+              L <span className="font-mono text-status-danger">{fmt(periodLow)}</span>
             </span>
             <span className="text-txt-muted">
-              V <span className="text-txt-primary font-mono">{fmtVol(last.volume)}</span>
+              V <span className="text-txt-primary font-mono">{fmtVol(periodVolumeSum)}</span>
             </span>
           </div>
 
@@ -281,18 +305,36 @@ export function StockChart({
             </div>
           )}
 
-          {/* Period high/low */}
-          {periodHigh != null && periodLow != null && (
-            <div className="flex items-baseline gap-3 text-[11px] tabular-nums ml-auto">
-              <span className="text-txt-muted">
-                기간 H{' '}
-                <span className="font-mono text-status-success">{fmt(periodHigh)}</span>
-              </span>
-              <span className="text-txt-muted">
-                L <span className="font-mono text-status-danger">{fmt(periodLow)}</span>
-              </span>
-            </div>
-          )}
+          {/* Fullscreen launcher — opens a dedicated chart viewer
+              with extended periods, indicators (Bollinger, RSI), log
+              scale, compare overlay etc. Same ticker + variant passed
+              through query string. The 기간 H/L info that used to live
+              here has migrated into the period-aware OHLV row above. */}
+          <Link
+            href={`/chart/${ticker}?variant=${variant}${symbol ? `&symbol=${encodeURIComponent(symbol)}` : ''}&period=${period}&mode=${mode}`}
+            className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border-subtle/40 bg-bg-secondary/40 hover:bg-bg-tertiary/60 hover:border-brand-purple/40 text-[11px] font-semibold text-txt-secondary hover:text-brand-purple transition-colors"
+            title="전체화면 차트 뷰어 (확장 기간, Bollinger Bands, RSI, 로그 스케일, 비교 종목 등)"
+            aria-label="전체화면 차트 뷰어 열기"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M15 3h6v6" />
+              <path d="M9 21H3v-6" />
+              <path d="M21 3l-7 7" />
+              <path d="M3 21l7-7" />
+            </svg>
+            <span>전체화면</span>
+          </Link>
         </div>
       )}
 
