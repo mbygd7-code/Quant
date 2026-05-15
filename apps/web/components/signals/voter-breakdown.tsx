@@ -274,35 +274,35 @@ function VoterCard({
 
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-1.5">
-            <span className="font-semibold text-sm text-txt-primary">{meta.name}</span>
+            <span className="font-semibold text-base text-txt-primary">{meta.name}</span>
             <span
-              className="text-[9px] uppercase tracking-wider px-1 rounded"
+              className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded"
               style={{ background: `${meta.accent}1F`, color: meta.accent }}
             >
               {meta.domain}
             </span>
           </div>
-          <div className="text-[10px] text-txt-muted truncate" title={meta.philosophy}>
+          <div className="text-[11px] text-txt-muted truncate" title={meta.philosophy}>
             {meta.philosophy}
           </div>
         </div>
         {weight != null && (
-          <span className="text-[10px] text-txt-muted tabular-nums shrink-0 mt-1">
+          <span className="text-[11px] text-txt-muted tabular-nums shrink-0 mt-1">
             w {Math.round(weight * 100)}%
           </span>
         )}
       </div>
 
       {/* Score + verdict + bar */}
-      <div className="flex items-baseline justify-between mb-1.5">
+      <div className="flex items-baseline justify-between mb-2">
         <span
-          className="text-[10px] uppercase tracking-[0.15em] font-bold"
+          className="text-[11px] uppercase tracking-[0.15em] font-bold"
           style={{ color }}
         >
           {verdict}
         </span>
         <span
-          className="font-mono tabular-nums text-lg font-bold"
+          className="font-mono tabular-nums text-xl font-bold"
           style={{ color }}
         >
           {voter.score >= 0 ? '+' : ''}
@@ -323,7 +323,7 @@ function VoterCard({
 
       {voter.narrative && (
         <p
-          className="text-[11px] text-txt-secondary line-clamp-3 leading-relaxed"
+          className="text-[13px] text-txt-secondary line-clamp-4 leading-relaxed"
           title={voter.narrative}
         >
           {voter.narrative}
