@@ -59,23 +59,17 @@ export async function GET(req: NextRequest) {
   const explicitDays = Number(req.nextUrl.searchParams.get('days') ?? 0);
   const bars = explicitDays > 0 ? Math.min(365, explicitDays) : cfg.bars;
 
-  const end = new Date();
-  const start = new Date();
-  // Calendar window padded for non-trading days; 1d intraday uses today only.
-  if (cfg.resolution === 'minute') {
-    start.setHours(0, 0, 0, 0);
-  } else {
-    start.setDate(end.getDate() - Math.ceil(bars * cfg.calendarMult));
-  }
   const fmt = (d: Date) =>
     `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}00`;
 
-  const url =
-    cfg.resolution === 'minute'
-      ? `${ENDPOINT}/${ticker}/minute?startDateTime=${fmt(start)}&endDateTime=${fmt(end)}`
-      : `${ENDPOINT}/${ticker}/${cfg.resolution}?startDateTime=${fmt(start)}&endDateTime=${fmt(end)}`;
-
-  try {
+  /** Run one fetch attempt and return the raw NAVER array. Empty array
+   *  ([]) is a valid response — used by the 1D fallback loop to detect
+   *  non-trading days and try a previous calendar day. */
+  async function fetchWindow(start: Date, end: Date): Promise<NaverCandle[] | null> {
+    const url =
+      cfg.resolution === 'minute'
+        ? `${ENDPOINT}/${ticker}/minute?startDateTime=${fmt(start)}&endDateTime=${fmt(end)}`
+        : `${ENDPOINT}/${ticker}/${cfg.resolution}?startDateTime=${fmt(start)}&endDateTime=${fmt(end)}`;
     const res = await fetch(url, {
       headers: {
         'User-Agent':
@@ -83,16 +77,50 @@ export async function GET(req: NextRequest) {
         Referer: 'https://stock.naver.com/',
         Accept: 'application/json',
       },
-      // Daily candles don't change intra-day — cache 5 min upstream so a
-      // detail-page reload doesn't re-fetch NAVER on every refresh. The
-      // route handler is still `force-dynamic` (per-user response shape),
-      // but the upstream fetch is shared across users via Next's cache.
       next: { revalidate: 300 },
     });
-    if (!res.ok) {
-      return NextResponse.json({ error: `naver ${res.status}` }, { status: 502 });
+    if (!res.ok) return null;
+    return (await res.json()) as NaverCandle[];
+  }
+
+  try {
+    let arr: NaverCandle[] | null = null;
+    let intradayDateUsed: string | null = null;
+
+    if (cfg.resolution === 'minute') {
+      // 1D intraday — try today first. If empty (weekend / pre-market /
+      // public holiday), walk back up to 5 calendar days to find the
+      // most recent trading day. This keeps the chart populated even
+      // on weekends instead of showing '차트 데이터 없음'.
+      for (let daysBack = 0; daysBack <= 5; daysBack++) {
+        const dayStart = new Date();
+        dayStart.setDate(dayStart.getDate() - daysBack);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(dayStart);
+        // For today we use 'now'; for past days we use 15:30 (KRX close).
+        if (daysBack === 0) {
+          dayEnd.setHours(new Date().getHours(), new Date().getMinutes(), 0, 0);
+        } else {
+          dayEnd.setHours(15, 30, 0, 0);
+        }
+        const candidate = await fetchWindow(dayStart, dayEnd);
+        if (candidate && candidate.length > 0) {
+          arr = candidate;
+          intradayDateUsed = dayStart.toISOString().slice(0, 10);
+          break;
+        }
+      }
+      if (!arr) arr = [];
+    } else {
+      // Daily / weekly / monthly — single window covers enough calendar
+      // days to absorb non-trading gaps.
+      const end = new Date();
+      const start = new Date();
+      start.setDate(end.getDate() - Math.ceil(bars * cfg.calendarMult));
+      arr = (await fetchWindow(start, end)) ?? [];
     }
-    const arr = (await res.json()) as NaverCandle[];
+
+    void intradayDateUsed; // surfaced via X-Intraday-Date header below if needed
     const candles = arr.slice(-bars).map((c) => {
       // Minute response uses localDateTime + currentPrice; daily uses
       // localDate + closePrice. Read either and normalize.
@@ -120,7 +148,15 @@ export async function GET(req: NextRequest) {
       };
     });
     return NextResponse.json(
-      { ticker, period, candles },
+      {
+        ticker,
+        period,
+        candles,
+        // Expose which intraday day was actually used so the UI can
+        // display '5/15 (이전 거래일)' instead of pretending the data
+        // is today's when it falls back.
+        intraday_date: intradayDateUsed,
+      },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (e) {

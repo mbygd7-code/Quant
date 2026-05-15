@@ -93,6 +93,10 @@ export function StockChart({
   const [raw, setRaw] = useState<RawCandle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Server reports which trading day the 1D intraday data came from
+  // (today when markets are open, the previous trading day otherwise).
+  // Lets the UI label the chart honestly e.g. '5/15 분봉 (전 거래일)'.
+  const [intradayDate, setIntradayDate] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,14 +108,16 @@ export function StockChart({
         : `/api/us-chart?symbol=${encodeURIComponent(symbol ?? ticker)}&period=${period}`;
     fetch(url, { cache: 'no-store' })
       .then((r) => r.json())
-      .then((j: { candles?: RawCandle[]; error?: string }) => {
+      .then((j: { candles?: RawCandle[]; error?: string; intraday_date?: string | null }) => {
         if (cancelled) return;
         if (j.error) {
           setError(j.error);
           setRaw([]);
+          setIntradayDate(null);
           return;
         }
         setRaw(j.candles ?? []);
+        setIntradayDate(j.intraday_date ?? null);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -291,6 +297,23 @@ export function StockChart({
         </div>
       )}
 
+      {/* Intraday fallback notice — when 1D loaded data from a previous
+          trading day (weekend / pre-market), label it honestly. */}
+      {period === '1d' && intradayDate && (() => {
+        const today = new Date().toISOString().slice(0, 10);
+        if (intradayDate === today) return null;
+        const d = intradayDate.slice(5).replace('-', '/');
+        return (
+          <div className="flex items-center gap-1.5 text-[10px] text-status-warning bg-status-warning/10 border border-status-warning/30 rounded-md px-2.5 py-1.5">
+            <span>ⓘ</span>
+            <span>
+              오늘 분봉 데이터가 없어 가장 최근 거래일{' '}
+              <strong className="font-mono">{d}</strong>의 5분봉을 표시합니다.
+            </span>
+          </div>
+        );
+      })()}
+
       {/* ── Toolbar — period + mode + indicators ────────────────────── */}
       <div className="flex flex-wrap items-center gap-1.5">
         {/* Period segmented control */}
@@ -378,7 +401,14 @@ export function StockChart({
       ) : error ? (
         <div className="text-xs text-status-danger px-2 py-3">차트 로드 실패: {error}</div>
       ) : data.length === 0 ? (
-        <div className="text-xs text-txt-muted px-2 py-3">차트 데이터 없음</div>
+        <div className="rounded-md border border-border-subtle/40 bg-bg-secondary/30 px-4 py-6 text-center">
+          <div className="text-sm text-txt-secondary mb-1">차트 데이터 없음</div>
+          <div className="text-xs text-txt-muted">
+            {period === '1d'
+              ? '최근 5거래일 분봉 데이터가 없습니다. 1W 이상 다른 기간을 선택해 보세요.'
+              : '해당 기간의 데이터를 불러올 수 없습니다.'}
+          </div>
+        </div>
       ) : (
         <div className="space-y-0">
           {/* Price pane */}
