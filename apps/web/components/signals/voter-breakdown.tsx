@@ -147,6 +147,33 @@ function VoterDistribution({ voters }: { voters: VoterRow[] }) {
         </span>
         <div className="h-px flex-1 bg-border-default/40" />
       </div>
+
+      {/* Help line — explains the centered-axis design at-a-glance */}
+      <div className="text-[11px] text-txt-muted mb-2 px-3 leading-relaxed">
+        각 voter의 -2.00 ~ +2.00 점수를 가운데 0(중립)을 기준으로 표시합니다.
+        막대가 <span className="text-status-success font-medium">오른쪽</span>이면 강세,{' '}
+        <span className="text-status-danger font-medium">왼쪽</span>이면 약세 신호.
+      </div>
+
+      {/* Axis scale labels — shown above the first row so the reader
+          maps the bar width to a numeric range without guessing. The
+          left/right columns are sized to match the data rows below
+          (name=80, domain=56) so the -2/0/+2 ticks line up with the
+          centered bar area. */}
+      <div className="flex items-center gap-3 px-3 mb-1.5">
+        <div className="w-20" />
+        <div className="w-14" />
+        <div className="flex-1 flex justify-between text-[10px] text-txt-muted font-mono tabular-nums">
+          <span>-2.00</span>
+          <span>-1.00</span>
+          <span className="font-bold text-txt-secondary">0.00</span>
+          <span>+1.00</span>
+          <span>+2.00</span>
+        </div>
+        <div className="w-16" />
+        <div className="w-14" />
+      </div>
+
       <div className="space-y-1.5">
         {voters.map((v) => {
           const meta = VOTER_META[v.agent_name];
@@ -159,6 +186,7 @@ function VoterDistribution({ voters }: { voters: VoterRow[] }) {
             <div
               key={v.agent_name}
               className="flex items-center gap-3 px-3 py-1.5 rounded-sm hover:bg-bg-secondary/30 transition-colors"
+              title={`${meta.name} (${meta.realName}) ${v.score >= 0 ? '+' : ''}${v.score.toFixed(2)} — ${verdict}`}
             >
               <div className="w-20 text-xs font-semibold tabular-nums" style={{ color: meta.accent }}>
                 {meta.name}
@@ -166,8 +194,12 @@ function VoterDistribution({ voters }: { voters: VoterRow[] }) {
               <div className="text-[10px] text-txt-muted w-14 truncate" title={meta.philosophy}>
                 {meta.domain}
               </div>
-              <div className="flex-1 relative h-2 rounded-full bg-bg-tertiary/30 overflow-hidden">
-                <div className="absolute left-1/2 top-0 bottom-0 w-px bg-border-default/50" />
+              <div className="flex-1 relative h-3 rounded-full bg-bg-tertiary/30 overflow-hidden">
+                {/* Tick marks at -1, 0, +1 for visual reference */}
+                <div className="absolute left-1/4 top-0 bottom-0 w-px bg-border-default/20" />
+                <div className="absolute left-1/2 top-0 bottom-0 w-px bg-border-default/60" />
+                <div className="absolute left-3/4 top-0 bottom-0 w-px bg-border-default/20" />
+                {/* The voter's score bar — extends from center axis */}
                 <div
                   className={cn(
                     'absolute top-0 bottom-0 rounded-full transition-all',
@@ -195,6 +227,31 @@ function VoterDistribution({ voters }: { voters: VoterRow[] }) {
             </div>
           );
         })}
+      </div>
+
+      {/* Legend at the bottom — 5 score-band tiers as small colored chips */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 px-3 text-[10px]">
+        <span className="text-txt-muted">점수대:</span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-full" style={{ background: 'rgb(72,166,152)' }} />
+          <span className="text-txt-secondary">강한 긍정 ≥+1.0</span>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-full" style={{ background: '#7CC97E' }} />
+          <span className="text-txt-secondary">긍정 +0.3~+1.0</span>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-full" style={{ background: 'rgb(170,170,170)' }} />
+          <span className="text-txt-secondary">중립 ±0.3</span>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-full" style={{ background: '#E9B247' }} />
+          <span className="text-txt-secondary">부정 -1.0~-0.3</span>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-full" style={{ background: 'rgb(220,72,72)' }} />
+          <span className="text-txt-secondary">강한 부정 ≤-1.0</span>
+        </span>
       </div>
     </section>
   );
