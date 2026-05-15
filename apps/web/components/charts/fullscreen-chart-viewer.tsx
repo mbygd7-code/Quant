@@ -179,6 +179,78 @@ const PERIODS: { id: FsPeriod; label: string; hint?: string }[] = [
   { id: 'all', label: 'ALL', hint: '※ 데이터는 최대 1Y' },
 ];
 
+/** Common index / ETF tickers → 한글 라벨. Used both in the recent-
+ *  compares dropdown and as a fallback when the stocks table doesn't
+ *  have a row for the symbol (indices are not in the `stocks` master
+ *  table). Extend as users request new entries. */
+const SYMBOL_LABEL_MAP: Record<string, string> = {
+  '^KS11': '코스피',
+  '^KQ11': '코스닥',
+  '^IXIC': '나스닥',
+  '^GSPC': 'S&P 500',
+  '^DJI': '다우존스',
+  '^N225': '닛케이',
+  '^HSI': '항셍',
+  SPY: 'SPDR S&P 500',
+  QQQ: 'Invesco QQQ',
+};
+
+interface RecentCompare {
+  symbol: string;
+  /** Human-readable label (한글 종목명 또는 지수명). Falls back to
+   *  symbol when no name could be resolved. */
+  label: string;
+}
+
+const RECENTS_KEY = 'chart:fs:recent-compares';
+const RECENTS_MAX = 5;
+
+function loadRecents(): RecentCompare[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(RECENTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as RecentCompare[]).filter(
+      (r) => r && typeof r.symbol === 'string' && typeof r.label === 'string',
+    ).slice(0, RECENTS_MAX);
+  } catch {
+    return [];
+  }
+}
+
+function saveRecents(list: RecentCompare[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, RECENTS_MAX)));
+  } catch {
+    /* quota / disabled — silent */
+  }
+}
+
+/** Resolve a ticker/index symbol to a 한글 label. Indices use the
+ *  built-in map; 6-digit KR tickers go through /api/stocks/resolve. */
+async function resolveLabel(symbol: string): Promise<string> {
+  const sym = symbol.trim();
+  if (!sym) return sym;
+  // Known index / ETF
+  if (SYMBOL_LABEL_MAP[sym]) return SYMBOL_LABEL_MAP[sym];
+  if (SYMBOL_LABEL_MAP[sym.toUpperCase()]) return SYMBOL_LABEL_MAP[sym.toUpperCase()];
+  // 6-digit KR ticker — hit stocks master table
+  if (/^\d{6}$/.test(sym)) {
+    try {
+      const r = await fetch(`/api/stocks/resolve?tickers=${sym}`);
+      const j = (await r.json()) as { items?: Array<{ ticker: string; name?: string }> };
+      const item = j.items?.find((x) => x.ticker === sym);
+      if (item?.name) return item.name;
+    } catch {
+      /* fall through to symbol fallback */
+    }
+  }
+  return sym;
+}
+
 interface Props {
   ticker: string;
   variant: 'kr' | 'us';
@@ -217,6 +289,44 @@ export function FullscreenChartViewer({
   // Compare overlay — default to KOSPI for KR, S&P for US.
   const [compareSymbol, setCompareSymbol] = useState<string>('');
   const [compareEnabled, setCompareEnabled] = useState(false);
+  // Recent-compares dropdown — populated from localStorage on mount,
+  // re-saved whenever a new compare is activated. Shows on input
+  // focus or hover so the user can re-use a previous comparison in
+  // one click instead of retyping the ticker.
+  const [recents, setRecents] = useState<RecentCompare[]>([]);
+  const [recentsOpen, setRecentsOpen] = useState(false);
+  useEffect(() => {
+    setRecents(loadRecents());
+  }, []);
+
+  // When user activates compare with a valid symbol, push it to the
+  // recents list (deduped, head-of-list, max 5). Display label is
+  // resolved via the indices map + stocks table lookup.
+  useEffect(() => {
+    if (!compareEnabled || !compareSymbol.trim()) return;
+    const sym = compareSymbol.trim();
+    let cancelled = false;
+    void resolveLabel(sym).then((label) => {
+      if (cancelled) return;
+      setRecents((prev) => {
+        const next = [
+          { symbol: sym, label },
+          ...prev.filter((r) => r.symbol !== sym),
+        ].slice(0, RECENTS_MAX);
+        saveRecents(next);
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [compareEnabled, compareSymbol]);
+
+  const pickRecent = (r: RecentCompare) => {
+    setCompareSymbol(r.symbol);
+    setCompareEnabled(true);
+    setRecentsOpen(false);
+  };
 
   // ── Data fetch ───────────────────────────────────────────────
   const [raw, setRaw] = useState<RawCandle[]>([]);
@@ -594,13 +704,77 @@ export function FullscreenChartViewer({
           ))}
 
           <span className="ml-3 text-[10px] text-txt-muted px-1">비교:</span>
-          <input
-            type="text"
-            value={compareSymbol}
-            onChange={(e) => setCompareSymbol(e.target.value)}
-            placeholder={variant === 'kr' ? '예: ^KS11, 005930' : '예: SPY, AAPL'}
-            className="px-2 py-1 text-[11px] font-mono rounded-md border border-border-subtle/40 bg-bg-secondary/40 focus:border-brand-purple/60 focus:outline-none w-[140px]"
-          />
+          {/* Compare input with recent-compares dropdown.
+              - Korean placeholder examples so first-time users know
+                they can type 종목명 or 지수명.
+              - Dropdown opens on focus/mouseenter, lists up to 5
+                previous comparisons (한글 라벨), one-click re-apply.
+              - mouseleave + onBlur close it so it doesn't linger. */}
+          <div
+            className="relative"
+            onMouseEnter={() => recents.length > 0 && setRecentsOpen(true)}
+            onMouseLeave={() => setRecentsOpen(false)}
+          >
+            <input
+              type="text"
+              value={compareSymbol}
+              onChange={(e) => setCompareSymbol(e.target.value)}
+              onFocus={() => recents.length > 0 && setRecentsOpen(true)}
+              onClick={(e) => {
+                // Explicit click selects all so the user can immediately
+                // overwrite the previous symbol without first clearing.
+                (e.target as HTMLInputElement).select();
+              }}
+              placeholder={variant === 'kr' ? '예: 코스피, 삼성전자' : 'e.g. SPY, AAPL'}
+              className="px-2 py-1 text-[11px] font-mono rounded-md border border-border-subtle/40 bg-bg-secondary/40 focus:border-brand-purple/60 focus:outline-none w-[160px]"
+            />
+            {recentsOpen && recents.length > 0 && (
+              <div
+                className="absolute left-0 top-full mt-1 z-20 w-[220px] rounded-md border border-border-default bg-bg-secondary/95 backdrop-blur-sm shadow-lg py-1 text-[11px]"
+                role="listbox"
+                aria-label="최근 비교 종목"
+              >
+                <div className="px-2.5 py-1 text-[10px] text-txt-muted border-b border-border-subtle/40 mb-1 flex items-center justify-between">
+                  <span>최근 비교 종목</span>
+                  {recents.length > 0 && (
+                    <button
+                      type="button"
+                      className="text-txt-muted hover:text-status-danger transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRecents([]);
+                        saveRecents([]);
+                        setRecentsOpen(false);
+                      }}
+                      title="최근 목록 비우기"
+                    >
+                      비우기
+                    </button>
+                  )}
+                </div>
+                {recents.map((r) => (
+                  <button
+                    key={r.symbol}
+                    type="button"
+                    role="option"
+                    aria-selected={compareSymbol === r.symbol}
+                    onClick={() => pickRecent(r)}
+                    className={cn(
+                      'w-full text-left px-2.5 py-1.5 flex items-baseline justify-between gap-2 transition-colors',
+                      compareSymbol === r.symbol
+                        ? 'bg-brand-purple/15 text-brand-purple'
+                        : 'hover:bg-bg-tertiary/60 text-txt-primary',
+                    )}
+                  >
+                    <span className="font-medium truncate">{r.label}</span>
+                    <span className="font-mono text-[10px] text-txt-muted shrink-0">
+                      {r.symbol}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <ToolbarToggle
             on={compareEnabled && compareSymbol.length > 0}
             onClick={() => setCompareEnabled((v) => !v)}
