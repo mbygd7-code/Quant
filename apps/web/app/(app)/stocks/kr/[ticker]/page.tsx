@@ -410,7 +410,7 @@ export default async function KrStockDetail({ params }: Props) {
       {detail && detail.scoreHistory.length > 1 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base font-heading">점수 추이</CardTitle>
+            <CardTitle className="text-base font-heading">예측 점수 추이</CardTitle>
           </CardHeader>
           <CardContent>
             <ScoreTrend

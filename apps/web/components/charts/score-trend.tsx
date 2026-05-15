@@ -604,7 +604,7 @@ export function ScoreTrend({
                ? 'border-brand-purple/40 bg-brand-purple/10 text-brand-purple'
                : 'border-border-subtle/40 text-txt-muted hover:text-txt-primary',
            )}
-           title="순진한 baseline: '내일 점수 = 오늘 점수'. 모델이 이걸 못 이기면 가치 없음."
+           title="Naive baseline: '내일 점수 = 오늘 점수' 라는 가장 단순한 예측. ML 모델은 이걸 못 이기면 가치 없음 (위 skill 지표가 이 baseline 대비 우위)."
          >
            Naive
          </button>
@@ -1005,14 +1005,18 @@ export function ScoreTrend({
               a faint thin line for quick eyeball comparison with the
               GBM/OLS predicted line. Skill = 1 − MAE/naiveMAE. */}
           {showNaive && (
+            // Theme-aware grey via CSS var so it's visible on light AND
+            // dark backgrounds (previous rgba(255,255,255,0.45) was
+            // invisible on the light cream chart canvas).
             <Line
               type="monotone"
               dataKey="naive_predicted"
-              stroke="rgba(255,255,255,0.45)"
-              strokeWidth={1}
-              strokeDasharray="3 3"
+              stroke="var(--text-muted)"
+              strokeWidth={1.25}
+              strokeDasharray="4 3"
+              strokeOpacity={0.7}
               dot={false}
-              activeDot={false}
+              activeDot={{ r: 3 }}
               connectNulls
               name="naive_predicted"
               isAnimationActive={false}
