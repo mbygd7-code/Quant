@@ -88,8 +88,16 @@ def _patch_llm(monkeypatch: pytest.MonkeyPatch, *, priced_in: float = 0.82) -> N
         self: Any, ticker: str, bundle: Any, q1: Decimal, priced_in_v: Decimal,
         adjusted: Decimal, baseline: Any, final: Any, sev: int | None,
         ca: bool,
-    ) -> tuple[str, float, str]:
-        return ("narrative ok", 0.0, "claude-haiku-4-5")
+    ) -> tuple[str, float, str, str | None, str | None]:
+        # M4 narrative now returns 5-tuple: (narrative, cost, model,
+        # short_term, mid_term). Stubs provide harmless test values.
+        return (
+            "narrative ok",
+            0.0,
+            "claude-haiku-4-5",
+            "1주 단기 전망 stub",
+            "1개월 중기 전망 stub",
+        )
 
     monkeypatch.setattr(soros_mod.Soros, "_priced_in_score_m3", fake_priced_in)
     monkeypatch.setattr(soros_mod.Soros, "_narrative_m4", fake_narrative)

@@ -543,7 +543,15 @@ function QuotePill({ quote, tone }: { quote: VoterQuote; tone: 'positive' | 'neg
   );
 }
 
-function SorosSynthesis({ narrative }: { narrative: string }) {
+function SorosSynthesis({
+  narrative,
+  shortTerm,
+  midTerm,
+}: {
+  narrative: string;
+  shortTerm: string | null;
+  midTerm: string | null;
+}) {
   const parsed = parseSoros(narrative);
   const {
     headline,
@@ -643,6 +651,46 @@ function SorosSynthesis({ narrative }: { narrative: string }) {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Time-horizon forecasts — 1주 단기 / 1개월 중기. Mirrors the
+          legacy AI 퀀트 카드의 단기/중기 grid. Soros LLM produces these
+          as separate JSON fields stored in weights_snapshot. */}
+      {(shortTerm || midTerm) && (
+        <div className="grid gap-3 md:grid-cols-2 px-5 py-4">
+          {shortTerm && (
+            <div className="rounded-md border border-border-subtle/60 bg-bg-secondary/30 overflow-hidden">
+              <div className="px-3.5 py-2 border-b border-border-subtle/40 bg-bg-secondary/40 flex items-center gap-2">
+                <div className="h-1.5 w-1.5 rounded-full bg-brand-purple" />
+                <span className="text-[11px] uppercase tracking-[0.15em] text-brand-purple font-bold">
+                  단기 전망
+                </span>
+                <span className="text-[10px] text-txt-muted ml-auto font-mono">
+                  1주
+                </span>
+              </div>
+              <p className="px-3.5 py-3 text-[13px] text-txt-primary leading-relaxed">
+                {shortTerm}
+              </p>
+            </div>
+          )}
+          {midTerm && (
+            <div className="rounded-md border border-border-subtle/60 bg-bg-secondary/30 overflow-hidden">
+              <div className="px-3.5 py-2 border-b border-border-subtle/40 bg-bg-secondary/40 flex items-center gap-2">
+                <div className="h-1.5 w-1.5 rounded-full bg-brand-purple" />
+                <span className="text-[11px] uppercase tracking-[0.15em] text-brand-purple font-bold">
+                  중기 전망
+                </span>
+                <span className="text-[10px] text-txt-muted ml-auto font-mono">
+                  1개월
+                </span>
+              </div>
+              <p className="px-3.5 py-3 text-[13px] text-txt-primary leading-relaxed">
+                {midTerm}
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -963,7 +1011,20 @@ export function VoterBreakdownCard({ data }: { data: VoterBreakdown }) {
         </section>
 
         {/* ── Soros synthesis — structured ─────────────────────── */}
-        {data.narrative && <SorosSynthesis narrative={data.narrative} />}
+        {data.narrative && (
+          <SorosSynthesis
+            narrative={data.narrative}
+            // weights_snapshot stores time-horizon forecasts as strings
+            // via the Soros LLM's structured output (M4 schema). Older
+            // signals may not have them — coalesce to null in that case.
+            shortTerm={
+              (weights as Record<string, unknown>)['short_term'] as string | null ?? null
+            }
+            midTerm={
+              (weights as Record<string, unknown>)['mid_term'] as string | null ?? null
+            }
+          />
+        )}
       </CardContent>
     </Card>
   );

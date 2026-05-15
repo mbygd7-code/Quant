@@ -116,9 +116,28 @@ class SorosPricedIn(BaseModel):
 
 
 class SorosNarrative(BaseModel):
-    """Final synthesis narrative."""
+    """Final synthesis narrative.
+
+    Optional time-horizon fields (`short_term`, `mid_term`) let Soros
+    produce concrete 1-week and 1-month forecasts in addition to the
+    headline narrative — mirrors the legacy ``ai_commentary`` schema's
+    short_term/mid_term columns so the UI's analyst-report layout
+    (verdict + 단기 + 중기 + catalysts/risks) has data to render.
+
+    When the LLM omits these (older cache hits, parse failures), the
+    UI falls back to showing only the headline + the auto-extracted
+    voter quotes.
+    """
 
     narrative: str = Field(min_length=10)
+    short_term: str | None = Field(
+        default=None,
+        description="1주 단기 전망. 모멘텀·수급·이벤트 일정 위주.",
+    )
+    mid_term: str | None = Field(
+        default=None,
+        description="1개월 중기 전망. 펀더멘털·사이클·매크로 누적 효과.",
+    )
 
 
 @dataclass(frozen=True)
@@ -334,8 +353,14 @@ _NARRATIVE_SYSTEM_M4 = (
     "'100%')를 절대 사용하지 마세요. 다섯 분석가 의견을 모두 인용하고 "
     "(이름 명시), Taleb의 risk_score와 severity를 별도로 다루세요. "
     "Taleb이 severity 4 이상을 발행했다면 자동 제약 적용 여부를 명시. "
-    "응답은 반드시 다음 JSON 스키마: "
-    "{\"narrative\": \"<300자 이내 한국어 종합 평가>\"}"
+    "응답은 반드시 다음 JSON 스키마:\n"
+    "{\n"
+    "  \"narrative\": \"<300자 이내 한국어 종합 평가 — 분석가별 인용 + 최종 시그널 결론>\",\n"
+    "  \"short_term\": \"<1주 단기 전망 (80~120자). 모멘텀·수급·이벤트 일정 중심. "
+    "비교형 표현만 사용하고 매매 권유 금지>\",\n"
+    "  \"mid_term\": \"<1개월 중기 전망 (80~120자). 펀더멘털·사이클·매크로 누적 효과 중심. "
+    "비교형 표현만 사용하고 매매 권유 금지>\"\n"
+    "}"
 )
 
 _NARRATIVE_SYSTEM_M3 = (
@@ -729,7 +754,7 @@ class Soros:
             gated_grade, taleb_severity
         )
 
-        narrative, narr_cost, _narr_model = self._narrative_m4(
+        narrative, narr_cost, _narr_model, short_term, mid_term = self._narrative_m4(
             ticker,
             bundle,
             q1,
@@ -764,6 +789,8 @@ class Soros:
             "confidence_gate_applied": gate_applied,
             "taleb_severity": taleb_severity,
             "taleb_constraint_applied": constraint_applied,
+            "short_term": short_term,
+            "mid_term": mid_term,
             "milestone": "M4",
         }
 
@@ -882,7 +909,24 @@ class Soros:
         if parsed is None:
             raise RuntimeError("M4 narrative returned no parsed response")
         narrative = sanitize_narrative_safe(parsed.narrative.strip())
-        return narrative, result.cost_estimate_usd, result.model
+        short_term = (
+            sanitize_narrative_safe(parsed.short_term.strip())
+            if parsed.short_term else None
+        )
+        mid_term = (
+            sanitize_narrative_safe(parsed.mid_term.strip())
+            if parsed.mid_term else None
+        )
+        # Pack the time-horizon forecasts into the narrative envelope —
+        # the caller stores them in weights_snapshot so no schema change
+        # is needed. UI parses these back out of the snapshot.
+        return (
+            narrative,
+            result.cost_estimate_usd,
+            result.model,
+            short_term,
+            mid_term,
+        )
 
     # ── LLM calls ─────────────────────────────────────────────────
 
