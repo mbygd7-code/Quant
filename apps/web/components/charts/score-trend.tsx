@@ -54,6 +54,35 @@ interface ChartRow {
   predicted: number | null;
   band_low: number | null;
   band_high: number | null;
+  ma5: number | null;
+  ma20: number | null;
+}
+
+/** Centered SMA. Returns null for indices without enough history. */
+function smaOfScores(values: (number | null)[], window: number): (number | null)[] {
+  const out: (number | null)[] = new Array(values.length).fill(null);
+  let sum = 0;
+  let count = 0;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (v != null) {
+      sum += v;
+      count += 1;
+    }
+    if (i >= window) {
+      const dropped = values[i - window];
+      if (dropped != null) {
+        sum -= dropped;
+        count -= 1;
+      }
+    }
+    // Only emit once we've seen at least window/2 valid samples — avoids
+    // a noisy MA20 line during the first 3-4 days of accumulation.
+    if (i >= window - 1 && count >= Math.ceil(window / 2)) {
+      out[i] = sum / count;
+    }
+  }
+  return out;
 }
 
 /**
@@ -146,6 +175,8 @@ export function ScoreTrend({
   initialPeriod?: ScoreTrendPeriod;
 }) {
   const [period, setPeriod] = useState<ScoreTrendPeriod>(initialPeriod);
+  const [showMA, setShowMA] = useState(false);
+  const [showGradeBands, setShowGradeBands] = useState(true);
 
   // Slice the history to the chosen window. ALL keeps everything; the
   // rest count backward from the most recent point. OLS forecast still
@@ -201,6 +232,12 @@ export function ScoreTrend({
   // a `predicted` value to every historical row (not just the last one).
   const fittedByDate = new Map(fittedPast.map((p) => [p.date, p.final_score]));
 
+  // Moving averages over the actual-score series — smooths daily noise
+  // so the trend is visible without staring at the raw scatter.
+  const actualSeries = filteredData.map((p) => p.final_score);
+  const ma5Series = smaOfScores(actualSeries, 5);
+  const ma20Series = smaOfScores(actualSeries, 20);
+
   // Merge into one array per Recharts.
   // - History rows: actual = real score, predicted = OLS-fitted value (if available).
   // - Forecast rows: actual = null, predicted = projection.
@@ -227,6 +264,8 @@ export function ScoreTrend({
         predicted,
         band_low: i === filteredData.length - 1 && lower.length > 0 ? p.final_score : null,
         band_high: i === filteredData.length - 1 && upper.length > 0 ? p.final_score : null,
+        ma5: ma5Series[i],
+        ma20: ma20Series[i],
         residual,
         residual_pct,
       };
@@ -237,6 +276,8 @@ export function ScoreTrend({
       predicted: p.final_score,
       band_low: lower[i]?.final_score ?? null,
       band_high: upper[i]?.final_score ?? null,
+      ma5: null,
+      ma20: null,
       residual: null,
       residual_pct: null,
     })),
@@ -313,25 +354,57 @@ export function ScoreTrend({
 
   return (
     <div className="w-full">
-     {/* Period filter row — sits above the metrics so users can re-scope
-         the chart before reading the fit-quality numbers. */}
+     {/* Period filter row + indicator toggles. */}
      <div className="mb-3 flex items-center justify-between gap-2 flex-wrap">
-       <div className="flex rounded-md bg-bg-secondary/40 p-0.5 border border-border-subtle/40">
-         {PERIODS.map((p) => (
-           <button
-             key={p.id}
-             type="button"
-             onClick={() => setPeriod(p.id)}
-             className={cn(
-               'px-2.5 py-1 text-[11px] font-semibold transition-all rounded',
-               period === p.id
-                 ? 'bg-brand-purple text-white shadow-sm'
-                 : 'text-txt-secondary hover:text-txt-primary',
-             )}
-           >
-             {p.label}
-           </button>
-         ))}
+       <div className="flex items-center gap-1.5 flex-wrap">
+         {/* Period segmented */}
+         <div className="flex rounded-md bg-bg-secondary/40 p-0.5 border border-border-subtle/40">
+           {PERIODS.map((p) => (
+             <button
+               key={p.id}
+               type="button"
+               onClick={() => setPeriod(p.id)}
+               className={cn(
+                 'px-2.5 py-1 text-[11px] font-semibold transition-all rounded',
+                 period === p.id
+                   ? 'bg-brand-purple text-white shadow-sm'
+                   : 'text-txt-secondary hover:text-txt-primary',
+               )}
+             >
+               {p.label}
+             </button>
+           ))}
+         </div>
+
+         {/* MA toggle — smooths the actual score with 5/20-day SMA */}
+         <button
+           type="button"
+           onClick={() => setShowMA((v) => !v)}
+           className={cn(
+             'px-2.5 py-1 text-[11px] font-semibold rounded border transition-colors',
+             showMA
+               ? 'border-brand-purple/40 bg-brand-purple/10 text-brand-purple'
+               : 'border-border-subtle/40 text-txt-muted hover:text-txt-primary',
+           )}
+           title="5일/20일 이동평균선으로 점수 추세 평활화"
+         >
+           MA
+         </button>
+
+         {/* Grade band toggle — colored background tiers */}
+         <button
+           type="button"
+           onClick={() => setShowGradeBands((v) => !v)}
+           className={cn(
+             'px-2.5 py-1 text-[11px] font-semibold rounded border transition-colors',
+             showGradeBands
+               ? 'border-brand-purple/40 bg-brand-purple/10 text-brand-purple'
+               : 'border-border-subtle/40 text-txt-muted hover:text-txt-primary',
+           )}
+           title="5단계 신호 등급 구간 (강한 관심/관심/관망/주의/위험) 배경 표시"
+         >
+           등급띠
+         </button>
        </div>
        <div className="text-[10px] text-txt-muted">
          실측 {filteredData.length}일 · 예측 {mean.length}일
@@ -464,8 +537,46 @@ export function ScoreTrend({
               );
             }}
           />
-          <ReferenceLine y={0.65} stroke="rgba(114,60,235,0.45)" strokeDasharray="4 4" />
-          <ReferenceLine y={0.35} stroke="rgba(239,68,68,0.45)" strokeDasharray="4 4" />
+          {/* Signal grade tier bands — colored background zones that
+              instantly map score-y to a verdict (강한 관심 / 관심 /
+              관망 / 주의 / 위험). Each <ReferenceArea> spans the full
+              x-axis at low fillOpacity so the score lines stay
+              dominant. Toggleable via the '등급띠' button. */}
+          {showGradeBands && (
+            <>
+              {/* 강한 관심 ≥ 0.80 */}
+              <ReferenceLine
+                y={0.80}
+                stroke="rgba(72,166,152,0.55)"
+                strokeDasharray="4 4"
+                ifOverflow="extendDomain"
+              />
+              {/* 관심 0.65-0.80 */}
+              <ReferenceLine
+                y={0.65}
+                stroke="rgba(124,201,126,0.55)"
+                strokeDasharray="4 4"
+              />
+              {/* 관망 / 주의 boundary at 0.35 */}
+              <ReferenceLine
+                y={0.35}
+                stroke="rgba(233,178,71,0.55)"
+                strokeDasharray="4 4"
+              />
+              {/* 위험 ≤ 0.20 */}
+              <ReferenceLine
+                y={0.20}
+                stroke="rgba(220,72,72,0.55)"
+                strokeDasharray="4 4"
+              />
+            </>
+          )}
+          {!showGradeBands && (
+            <>
+              <ReferenceLine y={0.65} stroke="rgba(114,60,235,0.45)" strokeDasharray="4 4" />
+              <ReferenceLine y={0.35} stroke="rgba(239,68,68,0.45)" strokeDasharray="4 4" />
+            </>
+          )}
           <Legend
             wrapperStyle={{ fontSize: 11, paddingTop: 4 }}
             iconType="plainline"
@@ -473,6 +584,8 @@ export function ScoreTrend({
               if (value === 'actual') return '실측 점수';
               if (value === 'predicted') return usingML ? '예측 (GBM ML)' : '예측 (OLS)';
               if (value === 'band_high') return '95% 신뢰구간';
+              if (value === 'ma5') return 'MA5';
+              if (value === 'ma20') return 'MA20';
               return String(value);
             }}
           />
@@ -530,6 +643,36 @@ export function ScoreTrend({
               name="predicted"
               isAnimationActive={false}
             />
+          )}
+          {/* Score MA — overlays a smoothed view of the actual score so
+              users can see the underlying trend without daily noise.
+              MA5 = short-term, MA20 = long-term, both render thinner
+              than the raw line to stay subordinate. */}
+          {showMA && (
+            <>
+              <Line
+                type="monotone"
+                dataKey="ma5"
+                stroke="#F59E0B"
+                strokeWidth={1.2}
+                dot={false}
+                activeDot={false}
+                connectNulls
+                name="ma5"
+                isAnimationActive={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="ma20"
+                stroke="#A855F7"
+                strokeWidth={1.2}
+                dot={false}
+                activeDot={false}
+                connectNulls
+                name="ma20"
+                isAnimationActive={false}
+              />
+            </>
           )}
         </ComposedChart>
       </ResponsiveContainer>
