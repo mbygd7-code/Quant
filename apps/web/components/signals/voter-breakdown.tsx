@@ -139,119 +139,142 @@ function scoreIcon(score: number) {
  *  carries verdict + name + score on each row. */
 function VoterDistribution({ voters }: { voters: VoterRow[] }) {
   return (
-    <section>
-      <div className="flex items-center gap-2 mb-3">
-        <div className="h-px flex-1 bg-border-default/40" />
-        <span className="text-[10px] uppercase tracking-[0.15em] text-txt-muted font-semibold">
-          voter 분포
-        </span>
-        <div className="h-px flex-1 bg-border-default/40" />
-      </div>
-
-      {/* Help line — explains the centered-axis design at-a-glance */}
-      <div className="text-[11px] text-txt-muted mb-2 px-3 leading-relaxed">
-        각 voter의 -2.00 ~ +2.00 점수를 가운데 0(중립)을 기준으로 표시합니다.
-        막대가 <span className="text-status-success font-medium">오른쪽</span>이면 강세,{' '}
-        <span className="text-status-danger font-medium">왼쪽</span>이면 약세 신호.
-      </div>
-
-      {/* Axis scale labels — shown above the first row so the reader
-          maps the bar width to a numeric range without guessing. The
-          left/right columns are sized to match the data rows below
-          (name=80, domain=56) so the -2/0/+2 ticks line up with the
-          centered bar area. */}
-      <div className="flex items-center gap-3 px-3 mb-1.5">
-        <div className="w-20" />
-        <div className="w-14" />
-        <div className="flex-1 flex justify-between text-[10px] text-txt-muted font-mono tabular-nums">
-          <span>-2.00</span>
-          <span>-1.00</span>
-          <span className="font-bold text-txt-secondary">0.00</span>
-          <span>+1.00</span>
-          <span>+2.00</span>
+    <section className="rounded-lg border border-border-subtle/60 bg-bg-secondary/20">
+      {/* Section header — title + help on a tinted strip */}
+      <div className="px-5 py-3 border-b border-border-subtle/60 bg-bg-secondary/40 rounded-t-lg">
+        <div className="flex items-baseline justify-between gap-3 flex-wrap">
+          <h3 className="text-sm font-semibold tracking-wide flex items-center gap-2">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand-purple" />
+            voter 분포
+          </h3>
+          <div className="text-[12px] text-txt-secondary">
+            -2.00 ~ +2.00 · 가운데 <span className="font-semibold text-txt-primary">0</span>(중립) 기준 ·
+            <span className="text-status-success font-semibold"> 오른쪽 강세</span> /
+            <span className="text-status-danger font-semibold"> 왼쪽 약세</span>
+          </div>
         </div>
-        <div className="w-16" />
-        <div className="w-14" />
       </div>
 
-      <div className="space-y-1.5">
-        {voters.map((v) => {
-          const meta = VOTER_META[v.agent_name];
-          if (!meta) return null;
-          const color = scoreColor(v.score);
-          const verdict = scoreVerdict(v.score);
-          const Trend = scoreIcon(v.score);
-          const barPct = Math.min(100, (Math.abs(v.score) / 2) * 50);
-          return (
-            <div
-              key={v.agent_name}
-              className="flex items-center gap-3 px-3 py-1.5 rounded-sm hover:bg-bg-secondary/30 transition-colors"
-              title={`${meta.name} (${meta.realName}) ${v.score >= 0 ? '+' : ''}${v.score.toFixed(2)} — ${verdict}`}
-            >
-              <div className="w-20 text-xs font-semibold tabular-nums" style={{ color: meta.accent }}>
-                {meta.name}
-              </div>
-              <div className="text-[10px] text-txt-muted w-14 truncate" title={meta.philosophy}>
-                {meta.domain}
-              </div>
-              <div className="flex-1 relative h-3 rounded-full bg-bg-tertiary/30 overflow-hidden">
-                {/* Tick marks at -1, 0, +1 for visual reference */}
-                <div className="absolute left-1/4 top-0 bottom-0 w-px bg-border-default/20" />
-                <div className="absolute left-1/2 top-0 bottom-0 w-px bg-border-default/60" />
-                <div className="absolute left-3/4 top-0 bottom-0 w-px bg-border-default/20" />
-                {/* The voter's score bar — extends from center axis */}
+      {/* Chart body — has its own inner padding + axis row */}
+      <div className="px-5 py-4">
+        {/* Axis scale row — aligned to the bar column below.
+            Reserve widths match the data rows: name(96) + domain(72) +
+            bar(flex-1) + score(80) + verdict(80). */}
+        <div className="flex items-center gap-3 mb-2.5">
+          <div className="w-24" />
+          <div className="w-16" />
+          <div className="flex-1 flex justify-between text-[11px] text-txt-muted font-mono tabular-nums">
+            <span>-2.00</span>
+            <span>-1.00</span>
+            <span className="font-bold text-txt-secondary">0.00</span>
+            <span>+1.00</span>
+            <span>+2.00</span>
+          </div>
+          <div className="w-20" />
+          <div className="w-20" />
+        </div>
+
+        {/* Voter rows */}
+        <div className="space-y-2">
+          {voters.map((v) => {
+            const meta = VOTER_META[v.agent_name];
+            if (!meta) return null;
+            const color = scoreColor(v.score);
+            const verdict = scoreVerdict(v.score);
+            const Trend = scoreIcon(v.score);
+            const barPct = Math.min(100, (Math.abs(v.score) / 2) * 50);
+            return (
+              <div
+                key={v.agent_name}
+                className="flex items-center gap-3 py-2 px-1 rounded hover:bg-bg-secondary/50 transition-colors"
+                title={`${meta.name} (${meta.realName}) ${v.score >= 0 ? '+' : ''}${v.score.toFixed(2)} — ${verdict}`}
+              >
                 <div
-                  className={cn(
-                    'absolute top-0 bottom-0 rounded-full transition-all',
-                    v.score >= 0 ? 'left-1/2' : 'right-1/2',
-                  )}
-                  style={{ width: `${barPct}%`, background: color }}
-                />
+                  className="w-24 text-sm font-bold tabular-nums"
+                  style={{ color: meta.accent }}
+                >
+                  {meta.name}
+                </div>
+                <div
+                  className="text-[12px] text-txt-secondary w-16 truncate font-medium"
+                  title={meta.philosophy}
+                >
+                  {meta.domain}
+                </div>
+
+                {/* Bar with explicit grid lines aligned to axis ticks */}
+                <div className="flex-1 relative h-4 rounded-md bg-bg-tertiary/30 overflow-hidden border border-border-subtle/40">
+                  {/* Light background tier bands — left half red-ish, right half green-ish, very subtle */}
+                  <div className="absolute inset-y-0 left-0 right-1/2 bg-status-danger/[0.03]" />
+                  <div className="absolute inset-y-0 right-0 left-1/2 bg-status-success/[0.04]" />
+
+                  {/* Grid lines at -2.0 / -1.0 / 0.0 / +1.0 / +2.0 */}
+                  <div className="absolute left-0 top-0 bottom-0 w-px bg-border-default/40" />
+                  <div className="absolute left-1/4 top-0 bottom-0 w-px bg-border-default/30" />
+                  <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-border-default/80" />
+                  <div className="absolute left-3/4 top-0 bottom-0 w-px bg-border-default/30" />
+                  <div className="absolute right-0 top-0 bottom-0 w-px bg-border-default/40" />
+
+                  {/* The voter's score bar — extends from center */}
+                  <div
+                    className={cn(
+                      'absolute top-0.5 bottom-0.5 rounded-sm transition-all shadow-sm',
+                      v.score >= 0 ? 'left-1/2' : 'right-1/2',
+                    )}
+                    style={{
+                      width: `${barPct}%`,
+                      background: `linear-gradient(${v.score >= 0 ? 'to right' : 'to left'}, ${color}cc, ${color})`,
+                    }}
+                  />
+                </div>
+
+                <div
+                  className="flex items-center gap-1 text-sm font-mono tabular-nums w-20 justify-end font-bold"
+                  style={{ color }}
+                >
+                  <Trend className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    {v.score >= 0 ? '+' : ''}
+                    {v.score.toFixed(2)}
+                  </span>
+                </div>
+                <div
+                  className="text-[12px] w-20 text-right font-semibold"
+                  style={{ color }}
+                >
+                  {verdict}
+                </div>
               </div>
-              <div
-                className="flex items-center gap-1 text-xs font-mono tabular-nums w-16 justify-end"
-                style={{ color }}
-              >
-                <Trend className="h-3 w-3 shrink-0" />
-                <span className="font-semibold">
-                  {v.score >= 0 ? '+' : ''}
-                  {v.score.toFixed(2)}
-                </span>
-              </div>
-              <div
-                className="text-[10px] w-14 text-right font-medium"
-                style={{ color }}
-              >
-                {verdict}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
-      {/* Legend at the bottom — 5 score-band tiers as small colored chips */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 px-3 text-[10px]">
-        <span className="text-txt-muted">점수대:</span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full" style={{ background: 'rgb(72,166,152)' }} />
-          <span className="text-txt-secondary">강한 긍정 ≥+1.0</span>
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full" style={{ background: '#7CC97E' }} />
-          <span className="text-txt-secondary">긍정 +0.3~+1.0</span>
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full" style={{ background: 'rgb(170,170,170)' }} />
-          <span className="text-txt-secondary">중립 ±0.3</span>
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full" style={{ background: '#E9B247' }} />
-          <span className="text-txt-secondary">부정 -1.0~-0.3</span>
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full" style={{ background: 'rgb(220,72,72)' }} />
-          <span className="text-txt-secondary">강한 부정 ≤-1.0</span>
-        </span>
+      {/* Footer legend — 5 score-band tiers */}
+      <div className="px-5 py-2.5 border-t border-border-subtle/60 bg-bg-secondary/40 rounded-b-lg">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]">
+          <span className="text-txt-muted font-medium">점수대:</span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: 'rgb(72,166,152)' }} />
+            <span className="text-txt-secondary">강한 긍정 ≥ +1.0</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: '#7CC97E' }} />
+            <span className="text-txt-secondary">긍정 +0.3 ~ +1.0</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: 'rgb(170,170,170)' }} />
+            <span className="text-txt-secondary">중립 ±0.3</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: '#E9B247' }} />
+            <span className="text-txt-secondary">부정 -1.0 ~ -0.3</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: 'rgb(220,72,72)' }} />
+            <span className="text-txt-secondary">강한 부정 ≤ -1.0</span>
+          </span>
+        </div>
       </div>
     </section>
   );
