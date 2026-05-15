@@ -523,6 +523,96 @@ export function ScoreTrend({
       ? 1 - mae / naiveMae
       : null;
 
+  // ─── Score ↔ Price relationship metrics ──────────────────────────
+  // Only computed when price data is loaded. Answers "does the AI
+  // score actually relate to real price action?" — the key question
+  // a user asks when score and price lines diverge visually.
+  //
+  //   • scorePriceCorr   — Pearson on level series (score, price). −1..+1.
+  //                        Tells whether high-score days were also high-price days.
+  //   • scorePriceDirAcc — % of day-over-day moves where the SIGN of
+  //                        ΔScore matched the SIGN of ΔPrice. The
+  //                        "does score predict direction" metric.
+  //   • leadDays         — lag k (1..3) that maximises corr(score_t, price_{t+k}).
+  //                        Positive means score leads price by k days.
+  const priceMetrics = useMemo(() => {
+    const empty = {
+      scorePriceCorr: null as number | null,
+      scorePriceDirAcc: null as number | null,
+      leadDays: null as number | null,
+      leadCorr: null as number | null,
+      sampleSize: 0,
+    };
+    if (priceByDate.size === 0 || filteredData.length < 5) return empty;
+
+    // Aligned series: only days where BOTH score and price exist.
+    const pairs: Array<{ date: string; score: number; price: number }> = [];
+    for (const p of filteredData) {
+      const px = priceByDate.get(p.date.slice(0, 10));
+      if (px != null) pairs.push({ date: p.date, score: p.final_score, price: px });
+    }
+    if (pairs.length < 5) return empty;
+
+    const pearson = (xs: number[], ys: number[]): number | null => {
+      const n = Math.min(xs.length, ys.length);
+      if (n < 3) return null;
+      const mx = xs.slice(0, n).reduce((a, b) => a + b, 0) / n;
+      const my = ys.slice(0, n).reduce((a, b) => a + b, 0) / n;
+      let num = 0;
+      let dx2 = 0;
+      let dy2 = 0;
+      for (let i = 0; i < n; i++) {
+        const dx = xs[i] - mx;
+        const dy = ys[i] - my;
+        num += dx * dy;
+        dx2 += dx * dx;
+        dy2 += dy * dy;
+      }
+      const denom = Math.sqrt(dx2 * dy2);
+      return denom > 0 ? num / denom : null;
+    };
+
+    const scores = pairs.map((p) => p.score);
+    const prices = pairs.map((p) => p.price);
+    const scorePriceCorr = pearson(scores, prices);
+
+    // Directional accuracy on day-over-day moves.
+    let dirMatch = 0;
+    let dirTotal = 0;
+    for (let i = 1; i < pairs.length; i++) {
+      const dScore = pairs[i].score - pairs[i - 1].score;
+      const dPrice = pairs[i].price - pairs[i - 1].price;
+      // Skip days with near-zero score move (no directional signal).
+      if (Math.abs(dScore) < 0.01) continue;
+      dirTotal += 1;
+      if ((dScore > 0) === (dPrice > 0)) dirMatch += 1;
+    }
+    const scorePriceDirAcc = dirTotal >= 3 ? (dirMatch / dirTotal) * 100 : null;
+
+    // Lead-lag scan: try lag 0..3 (score leads price by k days), pick max |corr|.
+    let bestLag = 0;
+    let bestCorr = scorePriceCorr ?? 0;
+    if (pairs.length >= 8) {
+      for (let k = 1; k <= 3; k++) {
+        if (pairs.length - k < 5) break;
+        const sLag = scores.slice(0, pairs.length - k);
+        const pLag = prices.slice(k);
+        const c = pearson(sLag, pLag);
+        if (c !== null && Math.abs(c) > Math.abs(bestCorr)) {
+          bestCorr = c;
+          bestLag = k;
+        }
+      }
+    }
+    return {
+      scorePriceCorr,
+      scorePriceDirAcc,
+      leadDays: bestLag > 0 ? bestLag : null,
+      leadCorr: bestLag > 0 ? bestCorr : null,
+      sampleSize: pairs.length,
+    };
+  }, [priceByDate, filteredData]);
+
   return (
     <div className="w-full">
      {/* Period filter row + indicator toggles. */}
@@ -727,6 +817,74 @@ export function ScoreTrend({
                  ? '보통'
                  : '낮음'}{' '}
              ({Math.round(reliability)})
+           </span>
+         )}
+       </div>
+     )}
+
+     {/* Score ↔ Price relationship metrics — only when 주가 비교 ON.
+         Answers "do the AI score and real price actually move together?"
+         which is the question users ask when the two lines diverge. */}
+     {showPrice && priceMetrics.scorePriceCorr !== null && (
+       <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[color:var(--text-secondary)] rounded-md bg-status-info/[0.04] border border-status-info/15 px-3 py-1.5">
+         <span className="text-status-info font-semibold">
+           점수 ↔ 주가 ({priceMetrics.sampleSize}일):
+         </span>
+         <span title="Pearson 상관계수. +1: 완벽 동조, 0: 무관, −1: 정반대. |값| ≥ 0.5면 의미 있음.">
+           상관계수{' '}
+           <span
+             className="font-mono tabular-nums font-medium"
+             style={{
+               color:
+                 Math.abs(priceMetrics.scorePriceCorr) >= 0.5
+                   ? 'rgb(72,166,152)'
+                   : Math.abs(priceMetrics.scorePriceCorr) < 0.2
+                     ? 'rgb(220,72,72)'
+                     : 'var(--text-primary)',
+             }}
+           >
+             {priceMetrics.scorePriceCorr >= 0 ? '+' : ''}
+             {priceMetrics.scorePriceCorr.toFixed(2)}
+           </span>
+         </span>
+         {priceMetrics.scorePriceDirAcc !== null && (
+           <span title="점수가 오른 다음날 주가도 올랐는지의 비율. 50%는 동전 던지기 수준.">
+             방향 일치{' '}
+             <span
+               className="font-mono tabular-nums font-medium"
+               style={{
+                 color:
+                   priceMetrics.scorePriceDirAcc >= 60
+                     ? 'rgb(72,166,152)'
+                     : priceMetrics.scorePriceDirAcc < 50
+                       ? 'rgb(220,72,72)'
+                       : 'var(--text-primary)',
+               }}
+             >
+               {priceMetrics.scorePriceDirAcc.toFixed(0)}%
+             </span>
+           </span>
+         )}
+         {priceMetrics.leadDays !== null && priceMetrics.leadCorr !== null && (
+           <span title="점수가 N일 앞서 주가를 예측했을 때의 최고 상관도. 선행성이 있으면 모델 가치 ↑.">
+             선행성{' '}
+             <span
+               className="font-mono tabular-nums font-medium"
+               style={{
+                 color:
+                   Math.abs(priceMetrics.leadCorr) >= 0.5
+                     ? 'rgb(72,166,152)'
+                     : 'var(--text-primary)',
+               }}
+             >
+               +{priceMetrics.leadDays}일 ({priceMetrics.leadCorr >= 0 ? '+' : ''}
+               {priceMetrics.leadCorr.toFixed(2)})
+             </span>
+           </span>
+         )}
+         {Math.abs(priceMetrics.scorePriceCorr) < 0.2 && (
+           <span className="text-status-warning text-[10px] ml-auto">
+             ⚠ 점수와 주가가 거의 무관함 — 모델 재학습 검토
            </span>
          )}
        </div>
