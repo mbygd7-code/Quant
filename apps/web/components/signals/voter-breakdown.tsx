@@ -110,12 +110,16 @@ const VOTER_META: Record<string, VoterMeta> = {
 
 // ─── Color + verdict utilities ─────────────────────────────────────
 
+/** Score-band → solid hex color. Hex (not rgb()) so we can append an
+ *  alpha suffix like `${color}cc` for gradients without producing
+ *  invalid CSS (`rgb(...)cc` is malformed; `#RRGGBBcc` is the standard
+ *  8-digit form). All bands hex-formatted for consistency. */
 function scoreColor(score: number): string {
-  if (score >= 1.0)   return 'rgb(72,166,152)';   // green/success
-  if (score >= 0.3)   return '#7CC97E';            // light green
-  if (score >= -0.3)  return 'rgb(170,170,170)';   // grey/neutral
-  if (score >= -1.0)  return '#E9B247';            // amber
-  return 'rgb(220,72,72)';                          // red
+  if (score >= 1.0)   return '#48A698';   // green/success
+  if (score >= 0.3)   return '#7CC97E';   // light green
+  if (score >= -0.3)  return '#AAAAAA';   // grey/neutral
+  if (score >= -1.0)  return '#E9B247';   // amber
+  return '#DC4848';                        // red
 }
 
 function scoreVerdict(score: number): string {
@@ -255,7 +259,7 @@ function VoterDistribution({ voters }: { voters: VoterRow[] }) {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]">
           <span className="text-txt-muted font-medium">점수대:</span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: 'rgb(72,166,152)' }} />
+            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: '#48A698' }} />
             <span className="text-txt-secondary">강한 긍정 ≥ +1.0</span>
           </span>
           <span className="inline-flex items-center gap-1.5">
@@ -263,7 +267,7 @@ function VoterDistribution({ voters }: { voters: VoterRow[] }) {
             <span className="text-txt-secondary">긍정 +0.3 ~ +1.0</span>
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: 'rgb(170,170,170)' }} />
+            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: '#AAAAAA' }} />
             <span className="text-txt-secondary">중립 ±0.3</span>
           </span>
           <span className="inline-flex items-center gap-1.5">
@@ -271,7 +275,7 @@ function VoterDistribution({ voters }: { voters: VoterRow[] }) {
             <span className="text-txt-secondary">부정 -1.0 ~ -0.3</span>
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: 'rgb(220,72,72)' }} />
+            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: '#DC4848' }} />
             <span className="text-txt-secondary">강한 부정 ≤ -1.0</span>
           </span>
         </div>
