@@ -566,8 +566,9 @@ export function StockChart({
                 </>
               )}
 
-              {/* Horizontal crosshair — follows mouse Y, fainter than
-                  vertical line, price label at the right edge. */}
+              {/* Horizontal crosshair — d3 scale.invert with manual
+                  linear-interpolation fallback so it works regardless
+                  of Recharts' yAxisMap key shape. */}
               <Customized
                 component={(rechartProps: unknown) => {
                   if (cursorY == null) return null;
@@ -575,18 +576,38 @@ export function StockChart({
                     yAxisMap?: Record<string, { scale?: unknown }>;
                     offset?: { top?: number; left?: number; width?: number; height?: number };
                   };
-                  const yAxis = rp.yAxisMap?.price;
                   const offset = rp.offset;
-                  if (!yAxis?.scale || !offset) return null;
-                  const invertFn = (yAxis.scale as { invert?: (y: number) => number }).invert;
-                  if (typeof invertFn !== 'function') return null;
-                  const price = invertFn(cursorY);
-                  if (!Number.isFinite(price)) return null;
+                  if (!offset) return null;
                   const top = offset.top ?? 0;
                   const left = offset.left ?? 0;
                   const width = offset.width ?? 0;
                   const height = offset.height ?? 0;
+                  if (height <= 0) return null;
                   if (cursorY < top - 2 || cursorY > top + height + 2) return null;
+
+                  let price: number | null = null;
+                  const entries = rp.yAxisMap ? Object.values(rp.yAxisMap) : [];
+                  for (const ax of entries) {
+                    const sc = (ax as { scale?: unknown }).scale as
+                      | { invert?: (y: number) => number }
+                      | undefined;
+                    if (sc && typeof sc.invert === 'function') {
+                      const v = sc.invert(cursorY);
+                      if (Number.isFinite(v)) {
+                        price = v;
+                        break;
+                      }
+                    }
+                  }
+                  if (price == null && periodHigh != null && periodLow != null) {
+                    const pad = (periodHigh - periodLow) * 0.05;
+                    const yMax = periodHigh + pad;
+                    const yMin = Math.max(0, periodLow - pad);
+                    const ratio = (cursorY - top) / height;
+                    price = yMax - ratio * (yMax - yMin);
+                  }
+                  if (price == null || !Number.isFinite(price)) return null;
+
                   const x1 = left;
                   const x2 = left + width;
                   const text = fmt(price);
@@ -610,7 +631,7 @@ export function StockChart({
                         height={16}
                         rx={3}
                         fill="rgb(114,60,235)"
-                        fillOpacity={0.92}
+                        fillOpacity={0.95}
                       />
                       <text
                         x={x2 - 1 + labelW / 2}

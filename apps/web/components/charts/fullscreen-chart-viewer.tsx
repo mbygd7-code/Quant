@@ -1070,32 +1070,57 @@ export function FullscreenChartViewer({
               )}
 
               {/* Horizontal crosshair — follows the mouse Y position.
-                  More transparent than the vertical (Tooltip cursor)
-                  by design so the vertical guide stays dominant.
-                  Right-edge price badge mirrors the live-price badge
-                  in style but uses brand-purple so users can tell at
-                  a glance whether they're reading 'now' or 'cursor'. */}
+                  Tries the d3 scale's invert() first (most accurate),
+                  falls back to linear interpolation using the data
+                  high/low when Recharts' yAxisMap shape isn't what we
+                  expect (which is what was happening — the previous
+                  attempt returned null because the .invert lookup
+                  silently failed across the version we ship). */}
               <Customized
                 component={(rechartProps: unknown) => {
                   if (cursorY == null) return null;
                   const rp = rechartProps as {
-                    yAxisMap?: Record<string, { scale?: (v: number) => number & { invert?: (y: number) => number } }>;
+                    yAxisMap?: Record<string, { scale?: unknown }>;
                     offset?: { top?: number; left?: number; width?: number; height?: number };
                   };
-                  const yAxis = rp.yAxisMap?.price;
                   const offset = rp.offset;
-                  if (!yAxis?.scale || !offset) return null;
-                  // d3 scale: invert maps pixel-Y → data value.
-                  const invertFn = (yAxis.scale as unknown as { invert?: (y: number) => number }).invert;
-                  if (typeof invertFn !== 'function') return null;
-                  const price = invertFn(cursorY);
-                  if (!Number.isFinite(price)) return null;
+                  if (!offset) return null;
                   const top = offset.top ?? 0;
                   const left = offset.left ?? 0;
                   const width = offset.width ?? 0;
                   const height = offset.height ?? 0;
-                  // Hide when cursor is outside the inner plot area.
+                  if (height <= 0) return null;
+                  // Bounds check — don't render outside the plot area.
                   if (cursorY < top - 2 || cursorY > top + height + 2) return null;
+
+                  // Try d3 scale.invert (exact price). Iterate every
+                  // entry in yAxisMap so it works whether the price
+                  // axis key is 'price', '0', or anything else.
+                  let price: number | null = null;
+                  const entries = rp.yAxisMap ? Object.values(rp.yAxisMap) : [];
+                  for (const ax of entries) {
+                    const sc = (ax as { scale?: unknown }).scale as
+                      | { invert?: (y: number) => number }
+                      | undefined;
+                    if (sc && typeof sc.invert === 'function') {
+                      const v = sc.invert(cursorY);
+                      if (Number.isFinite(v)) {
+                        price = v;
+                        break;
+                      }
+                    }
+                  }
+                  // Fallback: linear interpolation from periodHigh/Low
+                  // with ~5% padding (Recharts' default 'auto' padding).
+                  if (price == null && periodHigh != null && periodLow != null) {
+                    const pad = (periodHigh - periodLow) * 0.05;
+                    const yMax = periodHigh + pad;
+                    const yMin = Math.max(0, periodLow - pad);
+                    const ratio = (cursorY - top) / height;
+                    price = yMax - ratio * (yMax - yMin);
+                  }
+                  if (price == null || !Number.isFinite(price)) return null;
+
                   const x1 = left;
                   const x2 = left + width;
                   const text = fmt(price);
@@ -1108,7 +1133,7 @@ export function FullscreenChartViewer({
                         y1={cursorY}
                         y2={cursorY}
                         stroke="rgb(114,60,235)"
-                        strokeOpacity={0.42}     // intentionally fainter than the vertical (0.85)
+                        strokeOpacity={0.42}
                         strokeWidth={1}
                         strokeDasharray="4 3"
                       />
@@ -1119,7 +1144,7 @@ export function FullscreenChartViewer({
                         height={18}
                         rx={3}
                         fill="rgb(114,60,235)"
-                        fillOpacity={0.92}
+                        fillOpacity={0.95}
                       />
                       <text
                         x={x2 - 1 + labelW / 2}
