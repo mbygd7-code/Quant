@@ -128,10 +128,22 @@ export function StockChart({
 
   const data: ChartRow[] = useMemo(() => {
     if (raw.length === 0) return [];
-    const closes = raw.map((c) => c.close);
+    // Filter out malformed rows BEFORE computing MA — otherwise NaN/
+    // undefined OHLC propagate into the moving averages and the candle
+    // shape arithmetic crashes. 1D intraday feeds occasionally include
+    // gap rows with missing fields.
+    const valid = raw.filter(
+      (c) =>
+        Number.isFinite(c.open) &&
+        Number.isFinite(c.high) &&
+        Number.isFinite(c.low) &&
+        Number.isFinite(c.close),
+    );
+    if (valid.length === 0) return [];
+    const closes = valid.map((c) => c.close);
     const ma20 = sma(closes, 20);
     const ma60 = sma(closes, 60);
-    return raw.map((c, i) => {
+    return valid.map((c, i) => {
       const date =
         c.date ?? (c.t ? new Date(c.t).toISOString().slice(0, period === '1d' ? 16 : 10) : '');
       const isUp = c.close >= c.open;
@@ -172,11 +184,17 @@ export function StockChart({
   const upColor = variant === 'kr' ? '#F26D6D' : '#3DD68C';
   const downColor = variant === 'kr' ? '#5BA8F2' : '#F26D6D';
   const lineColor = isPeriodUp === false ? downColor : upColor;
-  const fmt = (v: number) =>
-    variant === 'kr'
+  // Defensive formatters — 1D intraday data sometimes arrives with
+  // undefined OHLC fields (gap candles, circuit breakers, etc.). The
+  // chart shouldn't crash; show '—' for missing values.
+  const fmt = (v: number | null | undefined): string => {
+    if (v == null || !Number.isFinite(v)) return '—';
+    return variant === 'kr'
       ? v.toLocaleString('ko-KR')
       : `$${v.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
-  const fmtVol = (v: number) => {
+  };
+  const fmtVol = (v: number | null | undefined): string => {
+    if (v == null || !Number.isFinite(v)) return '—';
     if (v >= 1e8) return `${(v / 1e8).toFixed(1)}억`;
     if (v >= 1e4) return `${(v / 1e4).toFixed(1)}만`;
     return v.toLocaleString();
