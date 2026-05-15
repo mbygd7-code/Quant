@@ -37,15 +37,71 @@ interface NaverMinuteCandle {
 
 type NaverCandle = NaverDailyCandle | NaverMinuteCandle;
 
-type Period = '1d' | '1w' | '1m' | '3m' | '1y';
+type Period = '1d' | '1w' | '1w_intra' | '1m' | '3m' | '1y';
 
-const PERIOD_MAP: Record<Period, { resolution: 'minute' | 'day' | 'week' | 'month'; bars: number; calendarMult: number }> = {
-  '1d': { resolution: 'minute', bars: 78, calendarMult: 1 },     // ~6.5h × 5min bars
-  '1w': { resolution: 'day', bars: 5, calendarMult: 1.6 },
-  '1m': { resolution: 'day', bars: 22, calendarMult: 1.6 },
-  '3m': { resolution: 'day', bars: 65, calendarMult: 1.6 },
-  '1y': { resolution: 'day', bars: 252, calendarMult: 1.6 },
+const PERIOD_MAP: Record<Period, {
+  resolution: 'minute' | 'day' | 'week' | 'month';
+  bars: number;
+  calendarMult: number;
+  /** When set, post-process minute bars into N-minute buckets so
+   *  multi-day intraday views (1W) get professional 30-min granularity
+   *  instead of 65×5min = 390 bars which would be unreadably dense. */
+  aggregateMinutes?: number;
+  /** Multi-day minute span — skip the single-day fallback loop and
+   *  fetch one wide window covering ~9 calendar days. */
+  intradayMultiDay?: boolean;
+}> = {
+  '1d':        { resolution: 'minute', bars: 78, calendarMult: 1 },     // ~6.5h × 5min bars
+  '1w':        { resolution: 'day', bars: 5, calendarMult: 1.6 },        // legacy 1W = 5 daily candles
+  // Pro 1W: 30-min intraday × 5 trading days = 13 × 5 = 65 bars.
+  // Matches TradingView / Bloomberg convention for "5D / 1W" view —
+  // enough intraday granularity to see opening drives, lunch lulls,
+  // and closing auctions without becoming a 400-bar wall of noise.
+  '1w_intra':  { resolution: 'minute', bars: 65, calendarMult: 1, aggregateMinutes: 30, intradayMultiDay: true },
+  '1m':        { resolution: 'day', bars: 22, calendarMult: 1.6 },
+  '3m':        { resolution: 'day', bars: 65, calendarMult: 1.6 },
+  '1y':        { resolution: 'day', bars: 252, calendarMult: 1.6 },
 };
+
+/** Aggregate raw minute candles into N-minute buckets keyed by
+ *  YYYYMMDDHHMM (bucket start). Assumes input is in chronological
+ *  order — NAVER returns oldest-first which is what we get. */
+function aggregateMinuteCandles(
+  bars: NaverMinuteCandle[],
+  minutes: number,
+): NaverMinuteCandle[] {
+  const buckets = new Map<string, NaverMinuteCandle>();
+  const order: string[] = [];
+  for (const c of bars) {
+    const ld = c.localDateTime;
+    if (!ld || ld.length < 12) continue;
+    const m = parseInt(ld.slice(10, 12), 10);
+    if (!Number.isFinite(m)) continue;
+    const bucketMin = Math.floor(m / minutes) * minutes;
+    const key = `${ld.slice(0, 10)}${String(bucketMin).padStart(2, '0')}00`;
+    const existing = buckets.get(key);
+    if (!existing) {
+      buckets.set(key, {
+        localDateTime: key,
+        // Open of the bucket = open of the first (chronologically) bar.
+        openPrice: c.openPrice,
+        highPrice: c.highPrice,
+        lowPrice: c.lowPrice,
+        // Close gets overwritten by every subsequent bar in the bucket,
+        // ending at the bucket's last bar — correct OHLC semantics.
+        currentPrice: c.currentPrice,
+        accumulatedTradingVolume: c.accumulatedTradingVolume,
+      });
+      order.push(key);
+    } else {
+      existing.highPrice = Math.max(existing.highPrice, c.highPrice);
+      existing.lowPrice = Math.min(existing.lowPrice, c.lowPrice);
+      existing.currentPrice = c.currentPrice;
+      existing.accumulatedTradingVolume += c.accumulatedTradingVolume;
+    }
+  }
+  return order.map((k) => buckets.get(k)!);
+}
 
 export async function GET(req: NextRequest) {
   const ticker = (req.nextUrl.searchParams.get('ticker') ?? '').trim().toUpperCase();
@@ -87,7 +143,20 @@ export async function GET(req: NextRequest) {
     let arr: NaverCandle[] | null = null;
     let intradayDateUsed: string | null = null;
 
-    if (cfg.resolution === 'minute') {
+    if (cfg.resolution === 'minute' && cfg.intradayMultiDay) {
+      // Multi-day intraday (1W view) — fetch ONE wide window covering
+      // ~9 calendar days (>5 trading days even with a long weekend +
+      // holiday). Then aggregate 5-min raw bars into 30-min buckets.
+      const end = new Date();
+      const start = new Date();
+      start.setDate(end.getDate() - 9);
+      start.setHours(9, 0, 0, 0);
+      const raw = (await fetchWindow(start, end)) ?? [];
+      const minuteBars = raw.filter((c): c is NaverMinuteCandle => 'localDateTime' in c);
+      arr = cfg.aggregateMinutes
+        ? aggregateMinuteCandles(minuteBars, cfg.aggregateMinutes)
+        : minuteBars;
+    } else if (cfg.resolution === 'minute') {
       // 1D intraday — try today first. If empty (weekend / pre-market /
       // public holiday), walk back up to 5 calendar days to find the
       // most recent trading day. This keeps the chart populated even

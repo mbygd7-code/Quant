@@ -135,9 +135,9 @@ function rsi(closes: number[], period = 14): (number | null)[] {
 // API supports up to '1y'; for longer periods we fall back to 1y data
 // (server will be extended in a follow-up). User sees the slice we have.
 const PERIOD_TO_API: Record<FsPeriod, string> = {
-  '1d': '1d',
-  '5d': '1w',     // 5 trading days ≈ 1W feed
-  '1w': '1w',
+  '1d': '1d',          // intraday 5-min, single day
+  '5d': '1w_intra',    // intraday 30-min × 5 trading days = 65 bars
+  '1w': '1w_intra',    // same as 5D — 30-min intraday view
   '1m': '1m',
   '3m': '3m',
   '6m': '1y',
@@ -146,6 +146,11 @@ const PERIOD_TO_API: Record<FsPeriod, string> = {
   '5y': '1y',
   all: '1y',
 };
+
+/** Periods that return intraday/multi-day-intraday data and need
+ *  custom X-axis tick logic so day boundaries render as MM-DD labels
+ *  instead of HH:MM clutter or compressed scientific notation. */
+const INTRADAY_PERIODS = new Set<FsPeriod>(['1d', '5d', '1w']);
 
 const PERIODS: { id: FsPeriod; label: string; hint?: string }[] = [
   { id: '1d', label: '1D' },
@@ -281,7 +286,7 @@ export function FullscreenChartViewer({
       const firstClose = cmpValid[0]?.close;
       if (firstClose && firstClose > 0) {
         for (const c of cmpValid) {
-          const d = c.date ?? (c.t ? new Date(c.t).toISOString().slice(0, period === '1d' ? 16 : 10) : '');
+          const d = c.date ?? (c.t ? new Date(c.t).toISOString().slice(0, INTRADAY_PERIODS.has(period) ? 16 : 10) : '');
           cmpMap.set(d, ((c.close - firstClose) / firstClose) * 100);
         }
       }
@@ -289,7 +294,7 @@ export function FullscreenChartViewer({
     const firstClose = closes[0];
 
     return valid.map((c, i): Row => {
-      const date = c.date ?? (c.t ? new Date(c.t).toISOString().slice(0, period === '1d' ? 16 : 10) : '');
+      const date = c.date ?? (c.t ? new Date(c.t).toISOString().slice(0, INTRADAY_PERIODS.has(period) ? 16 : 10) : '');
       return {
         date,
         open: c.open,
@@ -332,6 +337,57 @@ export function FullscreenChartViewer({
     () => data.reduce((acc, d) => acc + (Number.isFinite(d.volume) ? d.volume : 0), 0),
     [data],
   );
+
+  // Day-boundary ticks for intraday views.
+  // 1W (30-min intraday) has 65 bars but only ~5 trading days — we want
+  // exactly one X-axis label per day, anchored on the first bar of each
+  // day. Without explicit `ticks`, Recharts would either label every
+  // 30-min slot (cluttered) or pick arbitrary indices.
+  // For 1D (single-day 5-min), we want hourly labels — so we use a
+  // different stride.
+  const intradayTicks = useMemo(() => {
+    if (!INTRADAY_PERIODS.has(period) || data.length === 0) return undefined;
+    if (period === '1d') {
+      // 1D: one tick per hour. Bar timestamps look like 'YYYY-MM-DD HH:MM'.
+      const seen = new Set<string>();
+      const out: string[] = [];
+      for (const row of data) {
+        const hour = row.date.slice(0, 13);  // 'YYYY-MM-DD HH'
+        if (!seen.has(hour)) {
+          seen.add(hour);
+          out.push(row.date);
+        }
+      }
+      return out;
+    }
+    // 1W / 5D: one tick per trading day, anchored on first bar of that day.
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const row of data) {
+      const day = row.date.slice(0, 10);
+      if (!seen.has(day)) {
+        seen.add(day);
+        out.push(row.date);
+      }
+    }
+    return out;
+  }, [period, data]);
+
+  // tickFormatter: strip time portion for intraday multi-day views;
+  // 1D shows HH:MM; daily views show MM-DD as-is.
+  const xTickFormatter = (v: string): string => {
+    if (!v) return '';
+    if (period === '1d') {
+      // 'YYYY-MM-DD HH:MM' → 'HH:MM'
+      return v.length >= 16 ? v.slice(11, 16) : v;
+    }
+    if (INTRADAY_PERIODS.has(period)) {
+      // 'YYYY-MM-DD HH:MM' → 'MM-DD'
+      return v.length >= 10 ? v.slice(5, 10) : v;
+    }
+    // daily — original behaviour ('YYYY-MM-DD' shown shortened)
+    return v.length >= 10 ? v.slice(5, 10) : v;
+  };
 
   // Palette — KR red=up, US green=up (Korean trading convention).
   const upColor = variant === 'kr' ? '#F26D6D' : '#3DD68C';
@@ -569,6 +625,8 @@ export function FullscreenChartViewer({
                 tickLine={false}
                 interval="preserveStartEnd"
                 minTickGap={50}
+                ticks={intradayTicks}
+                tickFormatter={xTickFormatter}
                 hide
               />
               <YAxis
@@ -736,7 +794,7 @@ export function FullscreenChartViewer({
             <ResponsiveContainer width="100%" height={volumeHeight}>
               <ComposedChart data={data} syncId="fs-chart" margin={{ top: 0, right: 64, bottom: 4, left: 8 }}>
                 <CartesianGrid stroke="var(--border-subtle)" strokeOpacity="0.3" vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={50} hide={showRsi} />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={50} ticks={intradayTicks} tickFormatter={xTickFormatter} hide={showRsi} />
                 <YAxis yAxisId="volume" domain={[0, 'auto']} tick={{ fontSize: 9, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} width={64} orientation="right" tickFormatter={(v) => fmtVol(Number(v))} tickCount={3} />
                 <Tooltip cursor={{ stroke: 'var(--border-default)', strokeOpacity: 0.6, strokeDasharray: '3 3' }} content={() => null} />
                 <Bar
@@ -756,7 +814,7 @@ export function FullscreenChartViewer({
             <ResponsiveContainer width="100%" height={rsiHeight}>
               <ComposedChart data={data} syncId="fs-chart" margin={{ top: 4, right: 64, bottom: 8, left: 8 }}>
                 <CartesianGrid stroke="var(--border-subtle)" strokeOpacity="0.3" vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={50} />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={50} ticks={intradayTicks} tickFormatter={xTickFormatter} />
                 <YAxis yAxisId="rsi" domain={[0, 100]} ticks={[30, 50, 70]} tick={{ fontSize: 9, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} width={64} orientation="right" />
                 <Tooltip cursor={{ stroke: 'var(--border-default)', strokeOpacity: 0.6, strokeDasharray: '3 3' }} content={() => null} />
                 <ReferenceLine yAxisId="rsi" y={70} stroke="rgba(220,72,72,0.5)" strokeDasharray="3 3" />
