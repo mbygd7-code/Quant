@@ -71,6 +71,9 @@ interface Row {
   comparePct: number | null;
   closePct: number;          // % vs first close in period (own series)
   isUp: boolean;
+  /** Volume metrics for the resizable volume pane. */
+  volMa20: number | null;    // 20-day SMA of volume
+  obv: number;               // On-Balance Volume cumulative
   /** [low, high] tuple — Recharts uses this to position the candle
    *  Bar across its true Y range. Without a range dataKey the bar
    *  would render from 0..high which is meaningless for OHLC. */
@@ -369,6 +372,67 @@ export function FullscreenChartViewer({
   // internal API entirely so it works regardless of version.
   const priceContainerRef = useRef<HTMLDivElement>(null);
   const [cursorY, setCursorY] = useState<number | null>(null);
+
+  // ── Resizable volume pane ──────────────────────────────────
+  // Pros use a draggable divider between price and volume so they
+  // can expand the volume area when they want more detail (volume
+  // MA, OBV, up/down ratio) and collapse it when they just need a
+  // glance. Height persisted to localStorage so user prefs survive
+  // navigation. min/max bounded to keep the chart usable.
+  const VOLUME_HEIGHT_KEY = 'chart:fs:volume-h';
+  const VOLUME_MIN = 60;
+  const VOLUME_MAX = 500;
+  const [volumeHeight, setVolumeHeight] = useState<number>(() => {
+    if (typeof window === 'undefined') return 110;
+    try {
+      const raw = window.localStorage.getItem(VOLUME_HEIGHT_KEY);
+      const v = raw ? parseInt(raw, 10) : NaN;
+      return Number.isFinite(v) && v >= VOLUME_MIN && v <= VOLUME_MAX ? v : 110;
+    } catch {
+      return 110;
+    }
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(VOLUME_HEIGHT_KEY, String(volumeHeight));
+    } catch {
+      /* quota / disabled — silent */
+    }
+  }, [volumeHeight]);
+  const [isDraggingVolume, setIsDraggingVolume] = useState(false);
+  const volumeDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  useEffect(() => {
+    if (!isDraggingVolume) return;
+    const onMove = (e: MouseEvent) => {
+      if (!volumeDragRef.current) return;
+      // Handle sits above the volume pane: dragging UP grows volume,
+      // dragging DOWN shrinks it. delta is positive when moving down,
+      // so subtract from start height.
+      const delta = e.clientY - volumeDragRef.current.startY;
+      const next = Math.max(
+        VOLUME_MIN,
+        Math.min(VOLUME_MAX, volumeDragRef.current.startHeight - delta),
+      );
+      setVolumeHeight(next);
+    };
+    const onUp = () => {
+      setIsDraggingVolume(false);
+      volumeDragRef.current = null;
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    const prevSelect = document.body.style.userSelect;
+    const prevCursor = document.body.style.cursor;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'ns-resize';
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.userSelect = prevSelect;
+      document.body.style.cursor = prevCursor;
+    };
+  }, [isDraggingVolume]);
   useEffect(() => {
     setRecents(loadRecents());
   }, []);
@@ -489,12 +553,29 @@ export function FullscreenChartViewer({
     if (valid.length === 0) return [];
 
     const closes = valid.map((c) => c.close);
+    const volumesRaw = valid.map((c) => c.volume ?? 0);
     const ma5 = sma(closes, 5);
     const ma20 = sma(closes, 20);
     const ma60 = sma(closes, 60);
     const ma120 = sma(closes, 120);
     const { upper: bbU, lower: bbL } = bollinger(closes, 20, 2);
     const rsiSeries = rsi(closes, 14);
+    // Volume MA20 — average volume baseline. Bars rising above this
+    // line signal unusually heavy participation (breakout / capitulation).
+    const volMa20Series = sma(volumesRaw, 20);
+    // On-Balance Volume (OBV) — cumulative running total that adds
+    // volume on up days and subtracts on down days. Divergence between
+    // OBV and price is one of the oldest accumulation/distribution
+    // signals (Granville, 1963).
+    const obvSeries: number[] = new Array(valid.length).fill(0);
+    let obvAcc = 0;
+    for (let i = 0; i < valid.length; i++) {
+      if (i > 0) {
+        if (valid[i].close > valid[i - 1].close) obvAcc += volumesRaw[i];
+        else if (valid[i].close < valid[i - 1].close) obvAcc -= volumesRaw[i];
+      }
+      obvSeries[i] = obvAcc;
+    }
 
     // Compare overlay normalised to % return so different price
     // scales (e.g. ₩45k stock vs ^KS11 = 2600) can share a Y axis.
@@ -533,6 +614,8 @@ export function FullscreenChartViewer({
         closePct: firstClose > 0 ? ((c.close - firstClose) / firstClose) * 100 : 0,
         isUp: c.close >= c.open,
         wick: [c.low, c.high] as [number, number],
+        volMa20: volMa20Series[i],
+        obv: obvSeries[i],
       };
     });
   }, [raw, compareRaw, period]);
@@ -557,6 +640,32 @@ export function FullscreenChartViewer({
     () => data.reduce((acc, d) => acc + (Number.isFinite(d.volume) ? d.volume : 0), 0),
     [data],
   );
+
+  // ── Volume-pane statistics (powers the progressive disclosure) ──
+  // Computed once per data change. Fields used at each tier:
+  //   tier 0 (height ≥ 90):  avg, relativeVol (last vs avg)
+  //   tier 1 (height ≥ 150): + upPct / downPct (매수/매도 비율)
+  //   tier 2 (height ≥ 220): + OBV trend (compute Δ over window)
+  const volumeStats = useMemo(() => {
+    if (data.length === 0) return null;
+    const vols = data.map((d) => d.volume).filter((v) => Number.isFinite(v) && v > 0);
+    if (vols.length === 0) return null;
+    const total = vols.reduce((a, b) => a + b, 0);
+    const avg = total / vols.length;
+    const lastV = data[data.length - 1].volume;
+    const relativeVol = avg > 0 ? lastV / avg : 0;
+    let upVol = 0;
+    let downVol = 0;
+    for (const d of data) {
+      if (d.isUp) upVol += d.volume;
+      else downVol += d.volume;
+    }
+    const upTotal = upVol + downVol;
+    const upPct = upTotal > 0 ? (upVol / upTotal) * 100 : 50;
+    // OBV change over window — positive = accumulation, negative = distribution.
+    const obvDelta = data[data.length - 1].obv - data[0].obv;
+    return { total, avg, lastV, relativeVol, upVol, downVol, upPct, obvDelta };
+  }, [data]);
 
   // Day-boundary ticks for intraday views.
   // 1W (30-min intraday) has 65 bars but only ~5 trading days — we want
@@ -628,8 +737,10 @@ export function FullscreenChartViewer({
   };
 
   // ── Render ───────────────────────────────────────────────────
+  // priceHeight is the height of the price PANE. volumeHeight comes
+  // from the resizable state declared above — user can drag the
+  // divider between price & volume to expand the volume area.
   const priceHeight = showRsi && showVolume ? 480 : showRsi || showVolume ? 540 : 620;
-  const volumeHeight = 110;
   const rsiHeight = 110;
 
   const compareLabel = compareEnabled && compareResolved
@@ -1172,24 +1283,214 @@ export function FullscreenChartViewer({
           })()}
           </div>
 
-          {/* Volume pane */}
+          {/* Volume pane — resizable via drag handle above. Renders
+              progressively richer content as the pane grows:
+                ≥ 90px:  bars + stats badge (평균/상대 거래량)
+                ≥ 150px: + Volume MA(20) overlay + 매수/매도 비율
+                ≥ 220px: + OBV (On-Balance Volume) trend line
+              This mirrors the pattern in TradingView / Bloomberg
+              where each pane has an independent resize handle. */}
           {showVolume && (
-            <ResponsiveContainer width="100%" height={volumeHeight}>
-              <ComposedChart data={data} syncId="fs-chart" margin={{ top: 0, right: 64, bottom: 4, left: 8 }}>
-                <CartesianGrid stroke="var(--border-subtle)" strokeOpacity="0.3" vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={50} ticks={intradayTicks} tickFormatter={xTickFormatter} hide={showRsi} />
-                <YAxis yAxisId="volume" domain={[0, 'auto']} tick={{ fontSize: 9, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} width={64} orientation="right" tickFormatter={(v) => fmtVol(Number(v))} tickCount={3} />
-                <Tooltip cursor={CROSSHAIR_CURSOR} content={() => null} />
-                <Bar
-                  yAxisId="volume"
-                  dataKey="volume"
-                  shape={(props: unknown) => (
-                    <VolumeShape {...(props as VolumeShapeProps)} upColor={upColor} downColor={downColor} />
+            <>
+              {/* Drag handle — sits between price and volume panes */}
+              <div
+                role="separator"
+                aria-orientation="horizontal"
+                aria-valuenow={volumeHeight}
+                aria-valuemin={VOLUME_MIN}
+                aria-valuemax={VOLUME_MAX}
+                aria-label="거래량 페인 높이 조절"
+                title="드래그하여 거래량 페인 높이 조절 (위로: 확장, 아래로: 축소)"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  volumeDragRef.current = {
+                    startY: e.clientY,
+                    startHeight: volumeHeight,
+                  };
+                  setIsDraggingVolume(true);
+                }}
+                onDoubleClick={() => setVolumeHeight(110)}      // reset to default
+                className={cn(
+                  'group relative h-2 -my-px cursor-ns-resize z-10 select-none',
+                  'flex items-center justify-center',
+                  'transition-colors',
+                  isDraggingVolume && 'bg-brand-purple/15',
+                )}
+              >
+                {/* Subtle separator line + grip dots that appear on hover */}
+                <div
+                  className={cn(
+                    'absolute inset-x-0 top-1/2 -translate-y-1/2 h-px',
+                    'bg-border-subtle/50 group-hover:bg-brand-purple/60',
+                    isDraggingVolume && 'bg-brand-purple h-0.5',
+                    'transition-all',
                   )}
-                  isAnimationActive={false}
                 />
-              </ComposedChart>
-            </ResponsiveContainer>
+                <div
+                  className={cn(
+                    'relative flex items-center gap-0.5 px-2 py-0.5 rounded-md',
+                    'bg-bg-secondary/90 border border-border-subtle/40',
+                    'opacity-0 group-hover:opacity-100 transition-opacity',
+                    isDraggingVolume && 'opacity-100 border-brand-purple/50',
+                  )}
+                >
+                  <span className="block w-0.5 h-0.5 rounded-full bg-txt-muted" />
+                  <span className="block w-0.5 h-0.5 rounded-full bg-txt-muted" />
+                  <span className="block w-0.5 h-0.5 rounded-full bg-txt-muted" />
+                </div>
+              </div>
+
+              {/* Volume container — relative so we can overlay the
+                  stats badge in the top-left corner. */}
+              <div className="relative">
+                {/* Stats overlay (progressive disclosure) */}
+                {volumeStats && volumeHeight >= 90 && (
+                  <div className="pointer-events-none absolute top-1 left-2 z-10 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[10px]">
+                    <span className="text-txt-muted">
+                      평균 거래량{' '}
+                      <span className="font-mono text-txt-primary tabular-nums">
+                        {fmtVol(volumeStats.avg)}
+                      </span>
+                    </span>
+                    <span className="text-txt-muted">
+                      상대{' '}
+                      <span
+                        className="font-mono font-semibold tabular-nums"
+                        style={{
+                          color:
+                            volumeStats.relativeVol >= 1.5
+                              ? '#F26D6D'   // 평소 1.5배 이상 = 강세
+                              : volumeStats.relativeVol >= 1.0
+                                ? 'var(--text-primary)'
+                                : 'var(--text-muted)',
+                        }}
+                        title="당일 거래량 / 기간 평균. 1.5배 이상이면 이례적 거래"
+                      >
+                        {volumeStats.relativeVol.toFixed(2)}x
+                      </span>
+                    </span>
+                    {volumeHeight >= 150 && (
+                      <>
+                        <span className="text-txt-muted">
+                          매수{' '}
+                          <span
+                            className="font-mono font-semibold tabular-nums"
+                            style={{ color: upColor }}
+                            title="기간 내 상승일의 거래량 합 비율"
+                          >
+                            {volumeStats.upPct.toFixed(0)}%
+                          </span>
+                        </span>
+                        <span className="text-txt-muted">
+                          매도{' '}
+                          <span
+                            className="font-mono font-semibold tabular-nums"
+                            style={{ color: downColor }}
+                          >
+                            {(100 - volumeStats.upPct).toFixed(0)}%
+                          </span>
+                        </span>
+                      </>
+                    )}
+                    {volumeHeight >= 220 && (
+                      <span className="text-txt-muted">
+                        OBV Δ{' '}
+                        <span
+                          className="font-mono font-semibold tabular-nums"
+                          style={{
+                            color: volumeStats.obvDelta >= 0 ? upColor : downColor,
+                          }}
+                          title="기간 OBV 변화량. 양수=매집(상승 거래량 우세), 음수=분배"
+                        >
+                          {volumeStats.obvDelta >= 0 ? '+' : ''}
+                          {fmtVol(volumeStats.obvDelta)}
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* MA20 / OBV legend bar — only shows when those overlays render */}
+                {(volumeHeight >= 150 || volumeHeight >= 220) && (
+                  <div className="pointer-events-none absolute top-1 right-16 z-10 flex items-center gap-3 text-[9px]">
+                    {volumeHeight >= 150 && (
+                      <span className="flex items-center gap-1 text-txt-muted">
+                        <span className="inline-block w-3 h-0.5" style={{ background: '#FFA94D' }} />
+                        Volume MA20
+                      </span>
+                    )}
+                    {volumeHeight >= 220 && (
+                      <span className="flex items-center gap-1 text-txt-muted">
+                        <span className="inline-block w-3 h-0.5" style={{ background: '#A855F7' }} />
+                        OBV
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <ResponsiveContainer width="100%" height={volumeHeight}>
+                  <ComposedChart
+                    data={data}
+                    syncId="fs-chart"
+                    margin={{ top: volumeStats && volumeHeight >= 90 ? 22 : 4, right: 64, bottom: 4, left: 8 }}
+                  >
+                    <CartesianGrid stroke="var(--border-subtle)" strokeOpacity="0.3" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={50} ticks={intradayTicks} tickFormatter={xTickFormatter} hide={showRsi} />
+                    <YAxis yAxisId="volume" domain={[0, 'auto']} tick={{ fontSize: 9, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} width={64} orientation="right" tickFormatter={(v) => fmtVol(Number(v))} tickCount={3} />
+                    {/* Secondary axis for OBV — appears only when its
+                        overlay is drawn, on the LEFT to not crowd the
+                        volume Y axis on the right. */}
+                    {volumeHeight >= 220 && (
+                      <YAxis
+                        yAxisId="obv"
+                        orientation="left"
+                        width={56}
+                        domain={['auto', 'auto']}
+                        tick={{ fontSize: 9, fill: '#A855F7' }}
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={(v) => fmtVol(Number(v))}
+                        tickCount={3}
+                      />
+                    )}
+                    <Tooltip cursor={CROSSHAIR_CURSOR} content={() => null} />
+                    <Bar
+                      yAxisId="volume"
+                      dataKey="volume"
+                      shape={(props: unknown) => (
+                        <VolumeShape {...(props as VolumeShapeProps)} upColor={upColor} downColor={downColor} />
+                      )}
+                      isAnimationActive={false}
+                    />
+                    {/* Volume MA20 — only when pane is tall enough */}
+                    {volumeHeight >= 150 && (
+                      <Line
+                        yAxisId="volume"
+                        type="monotone"
+                        dataKey="volMa20"
+                        stroke="#FFA94D"
+                        strokeWidth={1.3}
+                        dot={false}
+                        connectNulls
+                        isAnimationActive={false}
+                      />
+                    )}
+                    {/* OBV — accumulation/distribution running total */}
+                    {volumeHeight >= 220 && (
+                      <Line
+                        yAxisId="obv"
+                        type="monotone"
+                        dataKey="obv"
+                        stroke="#A855F7"
+                        strokeWidth={1.3}
+                        dot={false}
+                        isAnimationActive={false}
+                      />
+                    )}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </>
           )}
 
           {/* RSI pane */}
