@@ -757,6 +757,15 @@ export function FullscreenChartViewer({
   // divider between price & volume to expand the volume area.
   const priceHeight = showRsi && showVolume ? 480 : showRsi || showVolume ? 540 : 620;
   const rsiHeight = 110;
+  // L/XL volume pane adds an OBV YAxis on the LEFT (width 56). Without
+  // matching margin on the other panes, the volume pane's inner plot
+  // area starts 56px further right than the price/RSI panes — so the
+  // syncId vertical crosshair lands at different X coordinates between
+  // panes for the same data index. Bumping every pane's left margin
+  // to the same value when OBV is active keeps all inner-area ranges
+  // aligned, which is what syncId actually needs to line up cursors.
+  const obvAxisShown = showVolume && volumeHeight >= 220;
+  const sharedLeftMargin = obvAxisShown ? 64 : 8;
 
   const compareLabel = compareEnabled && compareResolved
     ? compareResolved.label
@@ -1053,7 +1062,7 @@ export function FullscreenChartViewer({
             <ComposedChart
               data={data}
               syncId="fs-chart"
-              margin={{ top: 12, right: 64, bottom: 0, left: 8 }}
+              margin={{ top: 12, right: 64, bottom: 0, left: sharedLeftMargin }}
             >
               <CartesianGrid stroke="var(--border-subtle)" strokeOpacity="0.5" strokeDasharray="2 4" />
               <XAxis
@@ -1237,7 +1246,10 @@ export function FullscreenChartViewer({
           {cursorY != null && periodHigh != null && periodLow != null && (() => {
             const MARGIN_TOP = 12;
             const MARGIN_RIGHT = 64;
-            const MARGIN_LEFT = 8;
+            // Match the chart's dynamic margin.left so the horizontal
+            // crosshair line starts exactly at the inner plot edge,
+            // not 56px to the left of it when OBV axis is active.
+            const MARGIN_LEFT = sharedLeftMargin;
             const containerH = priceContainerRef.current?.clientHeight ?? priceHeight;
             const containerW = priceContainerRef.current?.clientWidth ?? 0;
             const innerH = containerH - MARGIN_TOP;        // bottom margin is 0
@@ -1491,7 +1503,18 @@ export function FullscreenChartViewer({
                   <ComposedChart
                     data={data}
                     syncId="fs-chart"
-                    margin={{ top: volumeStats && volumeHeight >= 90 ? 22 : 4, right: 64, bottom: 4, left: 8 }}
+                    // When OBV axis is active (L/XL), the left YAxis
+                    // consumes 56px from the chart's left edge. We set
+                    // margin.left=8 here because the OBV YAxis below
+                    // already reserves its own 56px; total left
+                    // consumption = 8 + 56 = 64 which matches the
+                    // other panes' sharedLeftMargin.
+                    margin={{
+                      top: volumeStats && volumeHeight >= 90 ? 22 : 4,
+                      right: 64,
+                      bottom: 4,
+                      left: obvAxisShown ? 8 : sharedLeftMargin,
+                    }}
                   >
                     <CartesianGrid stroke="var(--border-subtle)" strokeOpacity="0.3" vertical={false} />
                     <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={50} ticks={intradayTicks} tickFormatter={xTickFormatter} hide={showRsi} />
@@ -1555,7 +1578,7 @@ export function FullscreenChartViewer({
           {/* RSI pane */}
           {showRsi && (
             <ResponsiveContainer width="100%" height={rsiHeight}>
-              <ComposedChart data={data} syncId="fs-chart" margin={{ top: 4, right: 64, bottom: 8, left: 8 }}>
+              <ComposedChart data={data} syncId="fs-chart" margin={{ top: 4, right: 64, bottom: 8, left: sharedLeftMargin }}>
                 <CartesianGrid stroke="var(--border-subtle)" strokeOpacity="0.3" vertical={false} />
                 <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={50} ticks={intradayTicks} tickFormatter={xTickFormatter} />
                 <YAxis yAxisId="rsi" domain={[0, 100]} ticks={[30, 50, 70]} tick={{ fontSize: 9, fill: 'var(--txt-muted)' }} axisLine={false} tickLine={false} width={64} orientation="right" />
