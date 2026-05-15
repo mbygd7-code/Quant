@@ -414,6 +414,7 @@ export default async function KrStockDetail({ params }: Props) {
           </CardHeader>
           <CardContent>
             <ScoreTrend
+              ticker={meta.ticker}
               data={detail.scoreHistory.map((p) => ({ date: p.date, final_score: p.final_score }))}
               mlPredictions={detail.predictions.map((p) => ({
                 target_date: p.target_date,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Area,
   ComposedChart,
@@ -56,6 +56,10 @@ interface ChartRow {
   band_high: number | null;
   ma5: number | null;
   ma20: number | null;
+  /** Normalized price (0..1) over the visible window — for the
+   *  optional 'compare with stock price' overlay. Null when no
+   *  price data exists for that day. */
+  price_norm: number | null;
 }
 
 /** Centered SMA. Returns null for indices without enough history. */
@@ -164,11 +168,13 @@ function buildForecast(
 }
 
 export function ScoreTrend({
+  ticker,
   data,
   showForecast = true,
   mlPredictions,
   initialPeriod = '1M',
 }: {
+  ticker?: string;
   data: Point[];
   showForecast?: boolean;
   mlPredictions?: MLPrediction[];
@@ -177,6 +183,44 @@ export function ScoreTrend({
   const [period, setPeriod] = useState<ScoreTrendPeriod>(initialPeriod);
   const [showMA, setShowMA] = useState(false);
   const [showGradeBands, setShowGradeBands] = useState(true);
+  const [showPrice, setShowPrice] = useState(false);
+
+  // Price overlay — fetch daily closes for the same ticker so users
+  // can compare AI score motion with actual stock movement. We map
+  // period → kr-chart period (close enough — kr-chart uses 1m/3m etc.
+  // and we slice client-side by date afterward).
+  const [priceByDate, setPriceByDate] = useState<Map<string, number>>(
+    () => new Map(),
+  );
+  useEffect(() => {
+    if (!ticker || !showPrice) return;
+    let cancelled = false;
+    const krPeriod =
+      period === '1W' ? '1m'  // 1W: just slice from 1M data
+      : period === '1M' ? '1m'
+      : period === '3M' ? '3m'
+      : period === '6M' ? '1y'
+      : period === '1Y' ? '1y'
+      : '1y';
+    fetch(`/api/kr-chart?ticker=${ticker}&period=${krPeriod}`, { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((j: { candles?: Array<{ date: string; close: number }> }) => {
+        if (cancelled) return;
+        const m = new Map<string, number>();
+        for (const c of j.candles ?? []) {
+          // The score data uses ISO date strings ('YYYY-MM-DD');
+          // kr-chart returns the same for daily resolution.
+          if (c.date && c.close != null) m.set(c.date.slice(0, 10), c.close);
+        }
+        setPriceByDate(m);
+      })
+      .catch(() => {
+        if (!cancelled) setPriceByDate(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker, showPrice, period]);
 
   // Slice the history to the chosen window. ALL keeps everything; the
   // rest count backward from the most recent point. OLS forecast still
@@ -238,6 +282,44 @@ export function ScoreTrend({
   const ma5Series = smaOfScores(actualSeries, 5);
   const ma20Series = smaOfScores(actualSeries, 20);
 
+  // Price normalisation — map price values within the visible window
+  // to 0..1 so the overlay shares the score Y-axis without a second
+  // axis. Captures the SHAPE of price motion, which is what the
+  // user wants when comparing with score motion (not absolute level).
+  const priceNormByDate = useMemo(() => {
+    if (priceByDate.size === 0 || filteredData.length === 0) {
+      return new Map<string, number>();
+    }
+    const prices: number[] = [];
+    for (const p of filteredData) {
+      const v = priceByDate.get(p.date.slice(0, 10));
+      if (v != null) prices.push(v);
+    }
+    if (prices.length === 0) return new Map<string, number>();
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const range = max - min || 1;
+    const m = new Map<string, number>();
+    for (const p of filteredData) {
+      const v = priceByDate.get(p.date.slice(0, 10));
+      if (v != null) m.set(p.date, (v - min) / range);
+    }
+    return m;
+  }, [priceByDate, filteredData]);
+
+  // Annualised volatility of the score series — daily stdev × √252.
+  // Capped at the standard 0~1 score range so a freshly-spiking
+  // series doesn't overstate its own variability.
+  const scoreVolatility = useMemo(() => {
+    if (actualSeries.length < 5) return null;
+    const valid = actualSeries.filter((v): v is number => v != null);
+    if (valid.length < 5) return null;
+    const mean = valid.reduce((a, b) => a + b, 0) / valid.length;
+    const variance = valid.reduce((acc, v) => acc + (v - mean) ** 2, 0) / valid.length;
+    const dailyStd = Math.sqrt(variance);
+    return Math.min(1, dailyStd * Math.sqrt(252));
+  }, [actualSeries]);
+
   // Merge into one array per Recharts.
   // - History rows: actual = real score, predicted = OLS-fitted value (if available).
   // - Forecast rows: actual = null, predicted = projection.
@@ -266,6 +348,7 @@ export function ScoreTrend({
         band_high: i === filteredData.length - 1 && upper.length > 0 ? p.final_score : null,
         ma5: ma5Series[i],
         ma20: ma20Series[i],
+        price_norm: priceNormByDate.get(p.date) ?? null,
         residual,
         residual_pct,
       };
@@ -278,6 +361,7 @@ export function ScoreTrend({
       band_high: upper[i]?.final_score ?? null,
       ma5: null,
       ma20: null,
+      price_norm: null,
       residual: null,
       residual_pct: null,
     })),
@@ -405,9 +489,50 @@ export function ScoreTrend({
          >
            등급띠
          </button>
+
+         {/* Price overlay toggle — fetches daily closes for ticker */}
+         {ticker && (
+           <button
+             type="button"
+             onClick={() => setShowPrice((v) => !v)}
+             className={cn(
+               'px-2.5 py-1 text-[11px] font-semibold rounded border transition-colors',
+               showPrice
+                 ? 'border-status-info/40 bg-status-info/10 text-status-info'
+                 : 'border-border-subtle/40 text-txt-muted hover:text-txt-primary',
+             )}
+             title="실제 종목 가격 변동을 점수 차트 위에 normalize해서 overlay (점수 vs 실제 주가)"
+           >
+             주가 비교
+           </button>
+         )}
        </div>
-       <div className="text-[10px] text-txt-muted">
-         실측 {filteredData.length}일 · 예측 {mean.length}일
+       <div className="flex items-center gap-3">
+         {/* Volatility badge */}
+         {scoreVolatility !== null && (
+           <span
+             className="text-[10px] text-txt-muted"
+             title="점수 시계열의 연환산 변동성 (daily stdev × √252). 높을수록 신호 변동이 심함."
+           >
+             변동성{' '}
+             <span
+               className="font-mono tabular-nums font-medium"
+               style={{
+                 color:
+                   scoreVolatility >= 0.6
+                     ? 'rgb(220,72,72)'
+                     : scoreVolatility >= 0.3
+                       ? 'rgb(233,178,71)'
+                       : 'var(--text-primary)',
+               }}
+             >
+               {(scoreVolatility * 100).toFixed(1)}%
+             </span>
+           </span>
+         )}
+         <div className="text-[10px] text-txt-muted">
+           실측 {filteredData.length}일 · 예측 {mean.length}일
+         </div>
        </div>
      </div>
 
@@ -586,6 +711,7 @@ export function ScoreTrend({
               if (value === 'band_high') return '95% 신뢰구간';
               if (value === 'ma5') return 'MA5';
               if (value === 'ma20') return 'MA20';
+              if (value === 'price_norm') return '주가 (정규화)';
               return String(value);
             }}
           />
@@ -673,6 +799,24 @@ export function ScoreTrend({
                 isAnimationActive={false}
               />
             </>
+          )}
+
+          {/* Price overlay — normalized to the score Y axis (0..1)
+              within the visible window. Lets users SEE whether AI
+              score motion correlates with actual stock movement. */}
+          {showPrice && (
+            <Line
+              type="monotone"
+              dataKey="price_norm"
+              stroke="rgb(91,168,242)"
+              strokeWidth={1.5}
+              strokeOpacity={0.85}
+              dot={false}
+              activeDot={{ r: 3, fill: 'rgb(91,168,242)' }}
+              connectNulls
+              name="price_norm"
+              isAnimationActive={false}
+            />
           )}
         </ComposedChart>
       </ResponsiveContainer>
