@@ -5,7 +5,6 @@ import {
   Bar,
   CartesianGrid,
   ComposedChart,
-  Label,
   Line,
   ReferenceLine,
   ResponsiveContainer,
@@ -473,7 +472,9 @@ export function StockChart({
                 />
               )}
 
-              {/* Moving averages */}
+              {/* Moving averages — labels NOT shown at the right edge
+                  to keep the y-axis gutter readable. MA values are
+                  already in the stats bar header + legend strip. */}
               {showMA && (
                 <>
                   <Line
@@ -485,18 +486,7 @@ export function StockChart({
                     dot={false}
                     isAnimationActive={false}
                     connectNulls
-                  >
-                    {/* Right-edge label — TradingView convention */}
-                    {last?.ma20 != null && (
-                      <Label
-                        value="MA20"
-                        position="right"
-                        fill="#F59E0B"
-                        fontSize={9}
-                        fontWeight={600}
-                      />
-                    )}
-                  </Line>
+                  />
                   <Line
                     yAxisId="price"
                     type="monotone"
@@ -506,73 +496,113 @@ export function StockChart({
                     dot={false}
                     isAnimationActive={false}
                     connectNulls
-                  >
-                    {last?.ma60 != null && (
-                      <Label
-                        value="MA60"
-                        position="right"
-                        fill="#A855F7"
-                        fontSize={9}
-                        fontWeight={600}
-                      />
-                    )}
-                  </Line>
+                  />
                 </>
               )}
 
-              {/* Last price reference line */}
+              {/* Last price reference line — line only, value goes
+                  inside the chart via a labeled badge component below
+                  so it doesn't collide with Y-axis tick text. */}
               {last && (
                 <ReferenceLine
                   yAxisId="price"
                   y={last.close}
                   stroke={lineColor}
                   strokeDasharray="2 3"
-                  strokeOpacity={0.5}
-                >
-                  <Label
-                    value={fmt(last.close)}
-                    position="right"
-                    fill={lineColor}
-                    fontSize={10}
-                    fontWeight={700}
-                  />
-                </ReferenceLine>
+                  strokeOpacity={0.6}
+                  ifOverflow="extendDomain"
+                  label={({ viewBox }: { viewBox?: { x?: number; y?: number; width?: number } }) => {
+                    // Custom badge — pill bg with the price. Rendered
+                    // overlapping the right axis so the user sees the
+                    // 'live price marker' immediately, but visually
+                    // distinct from the regular tick labels.
+                    const x = (viewBox?.x ?? 0) + (viewBox?.width ?? 0);
+                    const y = viewBox?.y ?? 0;
+                    const text = fmt(last.close);
+                    const w = Math.max(56, text.length * 7 + 12);
+                    return (
+                      <g transform={`translate(${x - 2}, ${y - 8})`}>
+                        <rect
+                          width={w}
+                          height={16}
+                          rx={3}
+                          ry={3}
+                          fill={lineColor}
+                          fillOpacity={0.95}
+                        />
+                        <text
+                          x={w / 2}
+                          y={11}
+                          textAnchor="middle"
+                          fill="#FFFFFF"
+                          fontSize={10}
+                          fontWeight={700}
+                          style={{ fontFamily: 'ui-monospace, monospace' }}
+                        >
+                          {text}
+                        </text>
+                      </g>
+                    );
+                  }}
+                />
               )}
 
-              {/* Period high/low reference lines */}
+              {/* Period high/low reference lines — label on the LEFT
+                  edge with a subtle 'H/L' pill so it never competes
+                  with the right-side current-price marker. */}
               {showRange && periodHigh != null && (
                 <ReferenceLine
                   yAxisId="price"
                   y={periodHigh}
                   stroke="rgb(72,166,152)"
-                  strokeOpacity={0.4}
+                  strokeOpacity={0.45}
                   strokeDasharray="6 3"
-                >
-                  <Label
-                    value={`H ${fmt(periodHigh)}`}
-                    position="left"
-                    fill="rgb(72,166,152)"
-                    fontSize={9}
-                    fontWeight={600}
-                  />
-                </ReferenceLine>
+                  label={({ viewBox }: { viewBox?: { x?: number; y?: number } }) => {
+                    const x = viewBox?.x ?? 0;
+                    const y = viewBox?.y ?? 0;
+                    return (
+                      <g transform={`translate(${x + 4}, ${y - 6})`}>
+                        <text
+                          x={0}
+                          y={4}
+                          fill="rgb(72,166,152)"
+                          fontSize={9}
+                          fontWeight={700}
+                          style={{ fontFamily: 'ui-monospace, monospace' }}
+                        >
+                          H {fmt(periodHigh)}
+                        </text>
+                      </g>
+                    );
+                  }}
+                />
               )}
               {showRange && periodLow != null && (
                 <ReferenceLine
                   yAxisId="price"
                   y={periodLow}
                   stroke="rgb(220,72,72)"
-                  strokeOpacity={0.4}
+                  strokeOpacity={0.45}
                   strokeDasharray="6 3"
-                >
-                  <Label
-                    value={`L ${fmt(periodLow)}`}
-                    position="left"
-                    fill="rgb(220,72,72)"
-                    fontSize={9}
-                    fontWeight={600}
-                  />
-                </ReferenceLine>
+                  label={({ viewBox }: { viewBox?: { x?: number; y?: number } }) => {
+                    const x = viewBox?.x ?? 0;
+                    const y = viewBox?.y ?? 0;
+                    return (
+                      <g transform={`translate(${x + 4}, ${y + 12})`}>
+                        <text
+                          x={0}
+                          y={0}
+                          fill="rgb(220,72,72)"
+                          fontSize={9}
+                          fontWeight={700}
+                          style={{ fontFamily: 'ui-monospace, monospace' }}
+                        >
+                          L {fmt(periodLow)}
+                        </text>
+                      </g>
+                    );
+                  }}
+                />
               )}
             </ComposedChart>
           </ResponsiveContainer>
