@@ -22,13 +22,12 @@
  */
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Area,
   Bar,
   CartesianGrid,
   ComposedChart,
-  Customized,
   Line,
   ReferenceLine,
   ResponsiveContainer,
@@ -360,11 +359,15 @@ export function FullscreenChartViewer({
   const [recents, setRecents] = useState<RecentCompare[]>([]);
   const [recentsOpen, setRecentsOpen] = useState(false);
 
-  // Mouse-Y tracker for the horizontal crosshair line + price label.
-  // Recharts' built-in Tooltip cursor only draws a vertical line; we
-  // add a horizontal trace via `Customized` to mimic TradingView /
-  // Bloomberg behaviour where the right edge shows the price under
-  // the mouse. Reset to null on mouseleave so the line disappears.
+  // Mouse-Y tracker for the horizontal crosshair. Recharts 3.x
+  // changed the internal architecture so `Customized` no longer
+  // receives `yAxisMap`/`offset` in the shape older versions used —
+  // forced us to drop the in-SVG approach. Instead we wrap the price
+  // pane in a `relative` div, capture native mouse coordinates, and
+  // render an absolutely-positioned overlay on top of the chart with
+  // the horizontal line + price badge. This bypasses Recharts'
+  // internal API entirely so it works regardless of version.
+  const priceContainerRef = useRef<HTMLDivElement>(null);
   const [cursorY, setCursorY] = useState<number | null>(null);
   useEffect(() => {
     setRecents(loadRecents());
@@ -905,25 +908,26 @@ export function FullscreenChartViewer({
         </div>
       ) : (
         <div className="space-y-0">
-          {/* Price pane */}
+          {/* Price pane — wrapped in a `relative` div so we can paint
+              a DOM crosshair overlay on top regardless of Recharts'
+              internal API. */}
+          <div
+            ref={priceContainerRef}
+            className="relative"
+            onMouseMove={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const y = e.clientY - rect.top;
+              if (Number.isFinite(y) && y >= 0 && y <= rect.height) {
+                setCursorY(y);
+              }
+            }}
+            onMouseLeave={() => setCursorY(null)}
+          >
           <ResponsiveContainer width="100%" height={priceHeight}>
             <ComposedChart
               data={data}
               syncId="fs-chart"
               margin={{ top: 12, right: 64, bottom: 0, left: 8 }}
-              onMouseMove={(state: unknown) => {
-                // Track chartY whenever the mouse is over the chart —
-                // NOT only when the Tooltip considers a data point
-                // active. Previously the `isTooltipActive` requirement
-                // hid the crosshair in dead space between candles,
-                // which is exactly where users need the horizontal
-                // guide to read a precise price level off the y-axis.
-                const s = state as { chartY?: number } | null;
-                if (s && typeof s.chartY === 'number' && Number.isFinite(s.chartY)) {
-                  setCursorY(s.chartY);
-                }
-              }}
-              onMouseLeave={() => setCursorY(null)}
             >
               <CartesianGrid stroke="var(--border-subtle)" strokeOpacity="0.5" strokeDasharray="2 4" />
               <XAxis
@@ -1069,98 +1073,6 @@ export function FullscreenChartViewer({
                 />
               )}
 
-              {/* Horizontal crosshair — follows the mouse Y position.
-                  Tries the d3 scale's invert() first (most accurate),
-                  falls back to linear interpolation using the data
-                  high/low when Recharts' yAxisMap shape isn't what we
-                  expect (which is what was happening — the previous
-                  attempt returned null because the .invert lookup
-                  silently failed across the version we ship). */}
-              <Customized
-                component={(rechartProps: unknown) => {
-                  if (cursorY == null) return null;
-                  const rp = rechartProps as {
-                    yAxisMap?: Record<string, { scale?: unknown }>;
-                    offset?: { top?: number; left?: number; width?: number; height?: number };
-                  };
-                  const offset = rp.offset;
-                  if (!offset) return null;
-                  const top = offset.top ?? 0;
-                  const left = offset.left ?? 0;
-                  const width = offset.width ?? 0;
-                  const height = offset.height ?? 0;
-                  if (height <= 0) return null;
-                  // Bounds check — don't render outside the plot area.
-                  if (cursorY < top - 2 || cursorY > top + height + 2) return null;
-
-                  // Try d3 scale.invert (exact price). Iterate every
-                  // entry in yAxisMap so it works whether the price
-                  // axis key is 'price', '0', or anything else.
-                  let price: number | null = null;
-                  const entries = rp.yAxisMap ? Object.values(rp.yAxisMap) : [];
-                  for (const ax of entries) {
-                    const sc = (ax as { scale?: unknown }).scale as
-                      | { invert?: (y: number) => number }
-                      | undefined;
-                    if (sc && typeof sc.invert === 'function') {
-                      const v = sc.invert(cursorY);
-                      if (Number.isFinite(v)) {
-                        price = v;
-                        break;
-                      }
-                    }
-                  }
-                  // Fallback: linear interpolation from periodHigh/Low
-                  // with ~5% padding (Recharts' default 'auto' padding).
-                  if (price == null && periodHigh != null && periodLow != null) {
-                    const pad = (periodHigh - periodLow) * 0.05;
-                    const yMax = periodHigh + pad;
-                    const yMin = Math.max(0, periodLow - pad);
-                    const ratio = (cursorY - top) / height;
-                    price = yMax - ratio * (yMax - yMin);
-                  }
-                  if (price == null || !Number.isFinite(price)) return null;
-
-                  const x1 = left;
-                  const x2 = left + width;
-                  const text = fmt(price);
-                  const labelW = Math.max(72, text.length * 7 + 14);
-                  return (
-                    <g pointerEvents="none">
-                      <line
-                        x1={x1}
-                        x2={x2}
-                        y1={cursorY}
-                        y2={cursorY}
-                        stroke="rgb(114,60,235)"
-                        strokeOpacity={0.42}
-                        strokeWidth={1}
-                        strokeDasharray="4 3"
-                      />
-                      <rect
-                        x={x2 - 1}
-                        y={cursorY - 9}
-                        width={labelW}
-                        height={18}
-                        rx={3}
-                        fill="rgb(114,60,235)"
-                        fillOpacity={0.95}
-                      />
-                      <text
-                        x={x2 - 1 + labelW / 2}
-                        y={cursorY + 4}
-                        textAnchor="middle"
-                        fill="#FFFFFF"
-                        fontSize={11}
-                        fontWeight={700}
-                        style={{ fontFamily: 'ui-monospace, monospace' }}
-                      >
-                        {text}
-                      </text>
-                    </g>
-                  );
-                }}
-              />
 
               {/* Live price badge */}
               {last && (
@@ -1189,6 +1101,69 @@ export function FullscreenChartViewer({
               )}
             </ComposedChart>
           </ResponsiveContainer>
+
+          {/* DOM-level crosshair overlay — positioned absolutely on top
+              of the price chart. Uses native mouse coordinates so it
+              works regardless of Recharts version internals. Price is
+              computed from periodHigh/Low + the chart's known margin
+              (top: 12, bottom: 0). Line spans the plot area, label
+              sits flush against the right Y-axis. */}
+          {cursorY != null && periodHigh != null && periodLow != null && (() => {
+            const MARGIN_TOP = 12;
+            const MARGIN_RIGHT = 64;
+            const MARGIN_LEFT = 8;
+            const containerH = priceContainerRef.current?.clientHeight ?? priceHeight;
+            const containerW = priceContainerRef.current?.clientWidth ?? 0;
+            const innerH = containerH - MARGIN_TOP;        // bottom margin is 0
+            if (innerH <= 0) return null;
+            // Don't render when cursor is in the margin band.
+            if (cursorY < MARGIN_TOP - 2 || cursorY > containerH) return null;
+            const ratio = Math.max(0, Math.min(1, (cursorY - MARGIN_TOP) / innerH));
+            // Mirror Recharts' default 'auto' domain padding (~5%).
+            const pad = (periodHigh - periodLow) * 0.05;
+            const yMax = periodHigh + pad;
+            const yMin = Math.max(0, periodLow - pad);
+            const price = yMax - ratio * (yMax - yMin);
+            const text = fmt(price);
+            return (
+              <div
+                className="pointer-events-none absolute inset-0"
+                aria-hidden
+              >
+                {/* Horizontal dashed line (fainter than the vertical) */}
+                <div
+                  className="absolute"
+                  style={{
+                    top: cursorY,
+                    left: MARGIN_LEFT,
+                    right: MARGIN_RIGHT,
+                    height: 0,
+                    borderTop: '1px dashed rgba(114,60,235,0.5)',
+                  }}
+                />
+                {/* Price badge flush against the right Y-axis */}
+                <div
+                  className="absolute font-mono font-bold tabular-nums"
+                  style={{
+                    top: cursorY - 9,
+                    right: 0,
+                    minWidth: 72,
+                    height: 18,
+                    padding: '0 8px',
+                    lineHeight: '18px',
+                    fontSize: 11,
+                    color: '#FFFFFF',
+                    background: 'rgba(114,60,235,0.96)',
+                    borderRadius: 3,
+                    textAlign: 'center',
+                  }}
+                >
+                  {text}
+                </div>
+              </div>
+            );
+          })()}
+          </div>
 
           {/* Volume pane */}
           {showVolume && (

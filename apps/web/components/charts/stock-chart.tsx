@@ -1,12 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bar,
   CartesianGrid,
   ComposedChart,
-  Customized,
   Line,
   ReferenceLine,
   ResponsiveContainer,
@@ -91,9 +90,11 @@ export function StockChart({
   const [showVolume, setShowVolume] = useState(true);
   const [showRange, setShowRange] = useState(true);
 
-  // Mouse-Y tracker for the horizontal crosshair — matches the
-  // fullscreen viewer's behaviour so the compact chart on the stock
-  // detail page also surfaces the price at the cursor's Y position.
+  // Mouse-Y tracker for the horizontal crosshair. Tracked on a
+  // wrapping div via native onMouseMove (not Recharts state) because
+  // Recharts 3.x reshaped the Customized props such that the in-SVG
+  // approach silently returns null.
+  const priceContainerRef = useRef<HTMLDivElement>(null);
   const [cursorY, setCursorY] = useState<number | null>(null);
 
   const [raw, setRaw] = useState<RawCandle[]>([]);
@@ -458,22 +459,26 @@ export function StockChart({
         </div>
       ) : (
         <div className="space-y-0">
-          {/* Price pane */}
+          {/* Price pane — wrapped so we can paint the crosshair via
+              a DOM overlay (Recharts 3 Customized API doesn't expose
+              the bits we need). */}
+          <div
+            ref={priceContainerRef}
+            className="relative"
+            onMouseMove={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const y = e.clientY - rect.top;
+              if (Number.isFinite(y) && y >= 0 && y <= rect.height) {
+                setCursorY(y);
+              }
+            }}
+            onMouseLeave={() => setCursorY(null)}
+          >
           <ResponsiveContainer width="100%" height={Math.round(height * (showVolume ? 0.78 : 1))}>
             <ComposedChart
               data={data}
               syncId="stock-chart"
               margin={{ top: 8, right: 56, bottom: showVolume ? 0 : 8, left: 0 }}
-              onMouseMove={(state: unknown) => {
-                // Track chartY whenever mouse is over the chart, not
-                // only on active data points — otherwise the crosshair
-                // vanishes in the gaps between candles.
-                const s = state as { chartY?: number } | null;
-                if (s && typeof s.chartY === 'number' && Number.isFinite(s.chartY)) {
-                  setCursorY(s.chartY);
-                }
-              }}
-              onMouseLeave={() => setCursorY(null)}
             >
               <CartesianGrid
                 stroke="var(--border-subtle)"
@@ -566,88 +571,6 @@ export function StockChart({
                 </>
               )}
 
-              {/* Horizontal crosshair — d3 scale.invert with manual
-                  linear-interpolation fallback so it works regardless
-                  of Recharts' yAxisMap key shape. */}
-              <Customized
-                component={(rechartProps: unknown) => {
-                  if (cursorY == null) return null;
-                  const rp = rechartProps as {
-                    yAxisMap?: Record<string, { scale?: unknown }>;
-                    offset?: { top?: number; left?: number; width?: number; height?: number };
-                  };
-                  const offset = rp.offset;
-                  if (!offset) return null;
-                  const top = offset.top ?? 0;
-                  const left = offset.left ?? 0;
-                  const width = offset.width ?? 0;
-                  const height = offset.height ?? 0;
-                  if (height <= 0) return null;
-                  if (cursorY < top - 2 || cursorY > top + height + 2) return null;
-
-                  let price: number | null = null;
-                  const entries = rp.yAxisMap ? Object.values(rp.yAxisMap) : [];
-                  for (const ax of entries) {
-                    const sc = (ax as { scale?: unknown }).scale as
-                      | { invert?: (y: number) => number }
-                      | undefined;
-                    if (sc && typeof sc.invert === 'function') {
-                      const v = sc.invert(cursorY);
-                      if (Number.isFinite(v)) {
-                        price = v;
-                        break;
-                      }
-                    }
-                  }
-                  if (price == null && periodHigh != null && periodLow != null) {
-                    const pad = (periodHigh - periodLow) * 0.05;
-                    const yMax = periodHigh + pad;
-                    const yMin = Math.max(0, periodLow - pad);
-                    const ratio = (cursorY - top) / height;
-                    price = yMax - ratio * (yMax - yMin);
-                  }
-                  if (price == null || !Number.isFinite(price)) return null;
-
-                  const x1 = left;
-                  const x2 = left + width;
-                  const text = fmt(price);
-                  const labelW = Math.max(56, text.length * 7 + 12);
-                  return (
-                    <g pointerEvents="none">
-                      <line
-                        x1={x1}
-                        x2={x2}
-                        y1={cursorY}
-                        y2={cursorY}
-                        stroke="rgb(114,60,235)"
-                        strokeOpacity={0.42}
-                        strokeWidth={1}
-                        strokeDasharray="4 3"
-                      />
-                      <rect
-                        x={x2 - 1}
-                        y={cursorY - 8}
-                        width={labelW}
-                        height={16}
-                        rx={3}
-                        fill="rgb(114,60,235)"
-                        fillOpacity={0.95}
-                      />
-                      <text
-                        x={x2 - 1 + labelW / 2}
-                        y={cursorY + 3}
-                        textAnchor="middle"
-                        fill="#FFFFFF"
-                        fontSize={10}
-                        fontWeight={700}
-                        style={{ fontFamily: 'ui-monospace, monospace' }}
-                      >
-                        {text}
-                      </text>
-                    </g>
-                  );
-                }}
-              />
 
               {/* Last price reference line — line only, value goes
                   inside the chart via a labeled badge component below
@@ -755,6 +678,60 @@ export function StockChart({
               )}
             </ComposedChart>
           </ResponsiveContainer>
+
+          {/* DOM crosshair overlay — horizontal dashed line + price
+              badge at the right Y-axis. Margins are hardcoded to
+              match the ComposedChart margin prop above. */}
+          {cursorY != null && periodHigh != null && periodLow != null && (() => {
+            const MARGIN_TOP = 8;
+            const MARGIN_RIGHT = 56;
+            const MARGIN_LEFT = 0;
+            const MARGIN_BOTTOM = showVolume ? 0 : 8;
+            const containerH = priceContainerRef.current?.clientHeight
+              ?? Math.round(height * (showVolume ? 0.78 : 1));
+            const innerH = containerH - MARGIN_TOP - MARGIN_BOTTOM;
+            if (innerH <= 0) return null;
+            if (cursorY < MARGIN_TOP - 2 || cursorY > containerH - MARGIN_BOTTOM + 2) return null;
+            const ratio = Math.max(0, Math.min(1, (cursorY - MARGIN_TOP) / innerH));
+            const pad = (periodHigh - periodLow) * 0.05;
+            const yMax = periodHigh + pad;
+            const yMin = Math.max(0, periodLow - pad);
+            const price = yMax - ratio * (yMax - yMin);
+            const text = fmt(price);
+            return (
+              <div className="pointer-events-none absolute inset-0" aria-hidden>
+                <div
+                  className="absolute"
+                  style={{
+                    top: cursorY,
+                    left: MARGIN_LEFT,
+                    right: MARGIN_RIGHT,
+                    height: 0,
+                    borderTop: '1px dashed rgba(114,60,235,0.5)',
+                  }}
+                />
+                <div
+                  className="absolute font-mono font-bold tabular-nums"
+                  style={{
+                    top: cursorY - 8,
+                    right: 0,
+                    minWidth: 56,
+                    height: 16,
+                    padding: '0 6px',
+                    lineHeight: '16px',
+                    fontSize: 10,
+                    color: '#FFFFFF',
+                    background: 'rgba(114,60,235,0.96)',
+                    borderRadius: 3,
+                    textAlign: 'center',
+                  }}
+                >
+                  {text}
+                </div>
+              </div>
+            );
+          })()}
+          </div>
 
           {/* Volume pane — separated for proper proportion */}
           {showVolume && (
