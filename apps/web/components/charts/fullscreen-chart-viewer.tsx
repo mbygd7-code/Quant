@@ -394,6 +394,38 @@ export function FullscreenChartViewer({
   const volumeContainerRef = useRef<HTMLDivElement>(null);
   const [volumeCursorY, setVolumeCursorY] = useState<number | null>(null);
 
+  // ── Measure-tool drag selection on the price pane ────────────
+  // Click-and-drag horizontally to highlight a price range. The
+  // selection covers the full pane height and surfaces stats in a
+  // floating badge: 봉 개수, % 변동, 구간 H/L. Standard TradingView
+  // 'Measure' workflow without requiring a tool-mode switch.
+  const [dragSelection, setDragSelection] = useState<{
+    startX: number;
+    currentX: number;
+    active: boolean;
+  } | null>(null);
+  // Finalize the drag if mouseup fires outside the chart (e.g. user
+  // drags past the viewport edge then releases). Window-level
+  // listener only attached while a drag is active.
+  useEffect(() => {
+    if (!dragSelection?.active) return;
+    const onUp = () => {
+      setDragSelection((prev) => (prev ? { ...prev, active: false } : null));
+    };
+    window.addEventListener('mouseup', onUp);
+    return () => window.removeEventListener('mouseup', onUp);
+  }, [dragSelection?.active]);
+  // Escape clears any persisted selection so the user doesn't have
+  // to drag a 0-width rectangle to dismiss it.
+  useEffect(() => {
+    if (!dragSelection) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDragSelection(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dragSelection]);
+
   // ── Resizable volume pane ──────────────────────────────────
   // Pros use a draggable divider between price and volume so they
   // can expand the volume area when they want more detail (volume
@@ -1070,18 +1102,51 @@ export function FullscreenChartViewer({
         >
           {/* Price pane — wrapped in a `relative` div so we can paint
               a DOM crosshair overlay on top regardless of Recharts'
-              internal API. */}
+              internal API. Also hosts the click-drag measure tool. */}
           <div
             ref={priceContainerRef}
-            className="relative"
+            className="relative select-none"
+            onMouseDown={(e) => {
+              // Only primary button starts a selection.
+              if (e.button !== 0) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              const x = e.clientX - rect.left;
+              setDragSelection({ startX: x, currentX: x, active: true });
+            }}
             onMouseMove={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               const y = e.clientY - rect.top;
+              const x = e.clientX - rect.left;
               if (Number.isFinite(y) && y >= 0 && y <= rect.height) {
                 setCursorY(y);
               }
+              if (dragSelection?.active) {
+                setDragSelection((prev) =>
+                  prev ? { ...prev, currentX: x } : null,
+                );
+              }
             }}
-            onMouseLeave={() => setCursorY(null)}
+            onMouseUp={(e) => {
+              if (!dragSelection) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              const x = e.clientX - rect.left;
+              const width = Math.abs(x - dragSelection.startX);
+              if (width < 4) {
+                // Treat as plain click (no drag) — clear any prior selection.
+                setDragSelection(null);
+              } else {
+                setDragSelection({
+                  ...dragSelection,
+                  currentX: x,
+                  active: false,
+                });
+              }
+            }}
+            onMouseLeave={() => {
+              setCursorY(null);
+              // If user was mid-drag and left the chart, freeze the
+              // selection at the current X (window mouseup will end it).
+            }}
           >
           <ResponsiveContainer width="100%" height={priceHeight}>
             <ComposedChart
@@ -1329,6 +1394,90 @@ export function FullscreenChartViewer({
                   }}
                 >
                   {text}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Measure-tool drag selection — horizontal range rectangle
+              spanning the full pane height. Top-center badge shows
+              bars in range, price Δ, % Δ, and segment H/L. Esc clears.
+              Brand-purple tint at low opacity stays subtle over the
+              candles but obvious enough to read at a glance. */}
+          {dragSelection && data.length > 0 && (() => {
+            const containerW = priceContainerRef.current?.clientWidth ?? 0;
+            const left = Math.min(dragSelection.startX, dragSelection.currentX);
+            const right = Math.max(dragSelection.startX, dragSelection.currentX);
+            const width = right - left;
+            if (width < 4) return null;
+            // Map X positions → data indices using the chart's
+            // known inner-area bounds. Bars are evenly distributed.
+            const innerLeft = sharedLeftMargin;
+            const innerRight = Math.max(innerLeft + 1, containerW - 64);
+            const innerWidth = innerRight - innerLeft;
+            const xToIdx = (x: number) => {
+              const ratio = Math.max(0, Math.min(1, (x - innerLeft) / innerWidth));
+              return Math.round(ratio * (data.length - 1));
+            };
+            const startIdx = Math.min(xToIdx(left), xToIdx(right));
+            const endIdx = Math.max(xToIdx(left), xToIdx(right));
+            const startRow = data[startIdx];
+            const endRow = data[endIdx];
+            const bars = endIdx - startIdx + 1;
+            const priceDelta = endRow.close - startRow.close;
+            const pricePct = startRow.close > 0
+              ? (priceDelta / startRow.close) * 100
+              : 0;
+            // Range H/L within the selection.
+            let segHigh = -Infinity;
+            let segLow = Infinity;
+            for (let i = startIdx; i <= endIdx; i++) {
+              if (data[i].high > segHigh) segHigh = data[i].high;
+              if (data[i].low < segLow) segLow = data[i].low;
+            }
+            const deltaColor = priceDelta >= 0 ? upColor : downColor;
+            return (
+              <div
+                className="pointer-events-none absolute inset-y-0 z-30"
+                style={{ left, width }}
+              >
+                {/* Tinted rectangle */}
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background: 'rgba(114,60,235,0.10)',
+                    borderLeft: '1px dashed rgba(114,60,235,0.7)',
+                    borderRight: '1px dashed rgba(114,60,235,0.7)',
+                  }}
+                />
+                {/* Stats badge — top-center, floats above the candles */}
+                <div
+                  className="absolute top-2 left-1/2 -translate-x-1/2 flex items-baseline gap-2 px-2.5 py-1 rounded-md bg-bg-secondary/95 backdrop-blur-sm border border-brand-purple/40 shadow-md text-[10px] tabular-nums whitespace-nowrap"
+                >
+                  <span className="text-txt-muted">
+                    <span className="text-txt-primary font-semibold">{bars}</span>봉
+                  </span>
+                  <span className="text-txt-muted">·</span>
+                  <span
+                    className="font-mono font-semibold"
+                    style={{ color: deltaColor }}
+                  >
+                    {priceDelta >= 0 ? '▲ +' : '▼ '}
+                    {fmt(priceDelta)} ({priceDelta >= 0 ? '+' : ''}
+                    {pricePct.toFixed(2)}%)
+                  </span>
+                  <span className="text-txt-muted">·</span>
+                  <span className="text-txt-muted">
+                    H <span className="font-mono text-status-success">{fmt(segHigh)}</span>
+                  </span>
+                  <span className="text-txt-muted">
+                    L <span className="font-mono text-status-danger">{fmt(segLow)}</span>
+                  </span>
+                  {!dragSelection.active && (
+                    <span className="text-txt-muted ml-1 opacity-70">
+                      (Esc 해제)
+                    </span>
+                  )}
                 </div>
               </div>
             );
