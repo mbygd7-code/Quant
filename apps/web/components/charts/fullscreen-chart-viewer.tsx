@@ -1057,7 +1057,17 @@ export function FullscreenChartViewer({
           <div className="text-xs text-txt-muted">선택한 기간의 데이터를 불러올 수 없습니다.</div>
         </div>
       ) : (
-        <div className="space-y-0">
+        <div
+          className={cn(
+            'space-y-0',
+            // Card-style wrapper so the price / volume / RSI panes
+            // read as ONE composed chart but with clear internal
+            // section boundaries. Border + rounded corners frame the
+            // whole stack; subtle bg lifts it slightly off the page.
+            'rounded-lg border border-border-subtle/40 bg-bg-secondary/[0.04]',
+            'shadow-sm overflow-hidden',
+          )}
+        >
           {/* Price pane — wrapped in a `relative` div so we can paint
               a DOM crosshair overlay on top regardless of Recharts'
               internal API. */}
@@ -1353,17 +1363,31 @@ export function FullscreenChartViewer({
                 }}
                 onDoubleClick={() => setVolumeHeight(110)}      // reset to default
                 className={cn(
-                  'group relative h-2 -my-px cursor-ns-resize z-10 select-none',
+                  'group relative h-3 cursor-ns-resize z-10 select-none',
                   'flex items-center justify-center',
+                  'bg-bg-tertiary/[0.12]',
                   'transition-colors',
                   isDraggingVolume && 'bg-brand-purple/15',
                 )}
               >
-                {/* Subtle separator line + grip dots that appear on hover */}
+                {/* Visible separator line (always on) + grip dots on hover.
+                    Previously the line was 1px subtle which made the
+                    section boundary too soft. Now it's a clean horizontal
+                    rule that doubles as the drag affordance. */}
                 <div
                   className={cn(
-                    'absolute inset-x-0 top-1/2 -translate-y-1/2 h-px',
-                    'bg-border-subtle/50 group-hover:bg-brand-purple/60',
+                    'absolute inset-x-0 top-0 h-px',
+                    'bg-border-default/60',
+                    'group-hover:bg-brand-purple/70',
+                    isDraggingVolume && 'bg-brand-purple h-0.5',
+                    'transition-all',
+                  )}
+                />
+                <div
+                  className={cn(
+                    'absolute inset-x-0 bottom-0 h-px',
+                    'bg-border-default/60',
+                    'group-hover:bg-brand-purple/70',
                     isDraggingVolume && 'bg-brand-purple h-0.5',
                     'transition-all',
                   )}
@@ -1385,10 +1409,15 @@ export function FullscreenChartViewer({
               {/* Volume container — `group` so the tier-selector
                   appears only on hover; `relative` so overlays
                   position correctly. Native onMouseMove captures the
-                  Y for the volume-pane horizontal crosshair. */}
+                  Y for the volume-pane horizontal crosshair. Subtle
+                  darker bg differentiates from the price pane above. */}
               <div
                 ref={volumeContainerRef}
-                className="relative group"
+                className={cn(
+                  'relative group',
+                  'bg-bg-tertiary/[0.18]',
+                  'border-t border-border-subtle/50',
+                )}
                 onMouseMove={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const y = e.clientY - rect.top;
@@ -1661,8 +1690,11 @@ export function FullscreenChartViewer({
             </>
           )}
 
-          {/* RSI pane */}
+          {/* RSI pane — distinct subtle bg + top border so the
+              momentum oscillator reads as its own section rather
+              than visually bleeding into the volume bars above. */}
           {showRsi && (
+            <div className="border-t-2 border-border-default/50 bg-bg-tertiary/[0.10]">
             <ResponsiveContainer width="100%" height={rsiHeight}>
               <ComposedChart data={data} syncId="fs-chart" margin={{ top: 4, right: 64, bottom: 8, left: sharedLeftMargin }}>
                 <CartesianGrid stroke="var(--border-subtle)" strokeOpacity="0.3" vertical={false} />
@@ -1674,6 +1706,7 @@ export function FullscreenChartViewer({
                 <Line yAxisId="rsi" type="monotone" dataKey="rsi" stroke="#A855F7" strokeWidth={1.4} dot={false} connectNulls isAnimationActive={false} />
               </ComposedChart>
             </ResponsiveContainer>
+            </div>
           )}
         </div>
       )}
