@@ -268,11 +268,11 @@ async function resolveCompare(
     const label = await resolveLabel(q);
     return { symbol: q, label, market: 'kr' };
   }
-  // ASCII-only short string → likely US symbol (SPY, AAPL).
-  if (/^[A-Za-z]{1,5}$/.test(q)) {
-    return { symbol: upper, label: upper, market: 'us' };
-  }
-  // Anything else (Korean name, longer text) → autocomplete search.
+  // For anything else (Korean text, 'naver', 'kakao', etc.) try the
+  // NAVER autocomplete first — it covers Korean stocks by both 한글
+  // and Latin queries (e.g. 'naver' resolves to NAVER Corp 035420).
+  // Only fall back to the US chart when the search returns nothing
+  // AND the input looks like a US-style ticker.
   try {
     const r = await fetch(`/api/stocks/search?q=${encodeURIComponent(q)}`);
     const j = (await r.json()) as { items?: Array<{ ticker?: string; name?: string }> };
@@ -282,6 +282,10 @@ async function resolveCompare(
     }
   } catch {
     /* fall through */
+  }
+  // US-style ticker fallback (e.g. SPY, AAPL).
+  if (/^[A-Za-z]{1,5}$/.test(q)) {
+    return { symbol: upper, label: upper, market: 'us' };
   }
   return null;
 }
@@ -908,11 +912,15 @@ export function FullscreenChartViewer({
               syncId="fs-chart"
               margin={{ top: 12, right: 64, bottom: 0, left: 8 }}
               onMouseMove={(state: unknown) => {
-                const s = state as { chartY?: number; isTooltipActive?: boolean } | null;
-                if (s && typeof s.chartY === 'number' && s.isTooltipActive) {
+                // Track chartY whenever the mouse is over the chart —
+                // NOT only when the Tooltip considers a data point
+                // active. Previously the `isTooltipActive` requirement
+                // hid the crosshair in dead space between candles,
+                // which is exactly where users need the horizontal
+                // guide to read a precise price level off the y-axis.
+                const s = state as { chartY?: number } | null;
+                if (s && typeof s.chartY === 'number' && Number.isFinite(s.chartY)) {
                   setCursorY(s.chartY);
-                } else {
-                  setCursorY(null);
                 }
               }}
               onMouseLeave={() => setCursorY(null)}

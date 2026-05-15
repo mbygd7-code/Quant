@@ -465,11 +465,12 @@ export function StockChart({
               syncId="stock-chart"
               margin={{ top: 8, right: 56, bottom: showVolume ? 0 : 8, left: 0 }}
               onMouseMove={(state: unknown) => {
-                const s = state as { chartY?: number; isTooltipActive?: boolean } | null;
-                if (s && typeof s.chartY === 'number' && s.isTooltipActive) {
+                // Track chartY whenever mouse is over the chart, not
+                // only on active data points — otherwise the crosshair
+                // vanishes in the gaps between candles.
+                const s = state as { chartY?: number } | null;
+                if (s && typeof s.chartY === 'number' && Number.isFinite(s.chartY)) {
                   setCursorY(s.chartY);
-                } else {
-                  setCursorY(null);
                 }
               }}
               onMouseLeave={() => setCursorY(null)}
