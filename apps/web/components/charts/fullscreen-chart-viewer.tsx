@@ -388,6 +388,12 @@ export function FullscreenChartViewer({
   const priceContainerRef = useRef<HTMLDivElement>(null);
   const [cursorY, setCursorY] = useState<number | null>(null);
 
+  // Volume pane has its own independent crosshair tracker. Same DOM
+  // overlay pattern as the price pane but the right-edge badge shows
+  // the volume value at that Y (formatted via fmtVol, e.g. 184.8만).
+  const volumeContainerRef = useRef<HTMLDivElement>(null);
+  const [volumeCursorY, setVolumeCursorY] = useState<number | null>(null);
+
   // ── Resizable volume pane ──────────────────────────────────
   // Pros use a draggable divider between price and volume so they
   // can expand the volume area when they want more detail (volume
@@ -653,6 +659,15 @@ export function FullscreenChartViewer({
   const periodOpen = data[0]?.open ?? null;
   const periodVolumeSum = useMemo(
     () => data.reduce((acc, d) => acc + (Number.isFinite(d.volume) ? d.volume : 0), 0),
+    [data],
+  );
+  // Max single-bar volume in the window — powers the volume-pane
+  // crosshair's Y→volume inversion. Recharts pads 'auto' domain by
+  // ~5%, so we mirror that when computing the value at the cursor.
+  const periodVolumeMax = useMemo(
+    () => (data.length === 0
+      ? null
+      : Math.max(...data.map((d) => (Number.isFinite(d.volume) ? d.volume : 0)))),
     [data],
   );
 
@@ -1369,8 +1384,20 @@ export function FullscreenChartViewer({
 
               {/* Volume container — `group` so the tier-selector
                   appears only on hover; `relative` so overlays
-                  position correctly. */}
-              <div className="relative group">
+                  position correctly. Native onMouseMove captures the
+                  Y for the volume-pane horizontal crosshair. */}
+              <div
+                ref={volumeContainerRef}
+                className="relative group"
+                onMouseMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const y = e.clientY - rect.top;
+                  if (Number.isFinite(y) && y >= 0 && y <= rect.height) {
+                    setVolumeCursorY(y);
+                  }
+                }}
+                onMouseLeave={() => setVolumeCursorY(null)}
+              >
                 {/* Quick-resize tier selector — appears at top-center
                     on hover. Click any tier to jump straight to that
                     size; for fine tuning the drag handle above still
@@ -1571,6 +1598,65 @@ export function FullscreenChartViewer({
                     )}
                   </ComposedChart>
                 </ResponsiveContainer>
+
+                {/* Volume-pane horizontal crosshair — DOM overlay
+                    mirroring the price pane's pattern. Right-edge pill
+                    shows the volume value at the cursor (formatted via
+                    fmtVol so big numbers come out as '184.8만' /
+                    '1.2억' instead of raw digits). */}
+                {volumeCursorY != null && periodVolumeMax != null && (() => {
+                  const MARGIN_TOP = volumeStats && volumeHeight >= 90 ? 22 : 4;
+                  const MARGIN_BOTTOM = 4;
+                  const MARGIN_RIGHT = 64;
+                  // Total left consumption (margin + optional OBV YAxis) —
+                  // see sharedLeftMargin notes above. Either S/M (no OBV,
+                  // margin.left = sharedLeftMargin) or L/XL (margin.left = 8,
+                  // OBV YAxis width = 56) sums to the same number.
+                  const MARGIN_LEFT = sharedLeftMargin;
+                  const containerH = volumeContainerRef.current?.clientHeight ?? volumeHeight;
+                  const innerTop = MARGIN_TOP;
+                  const innerBottom = containerH - MARGIN_BOTTOM;
+                  const innerH = innerBottom - innerTop;
+                  if (innerH <= 0) return null;
+                  if (volumeCursorY < innerTop - 2 || volumeCursorY > innerBottom + 2) return null;
+                  const ratio = Math.max(0, Math.min(1, (volumeCursorY - innerTop) / innerH));
+                  // Volume axis: 0 at bottom, max (+5% pad) at top.
+                  const yMax = periodVolumeMax * 1.05;
+                  const volumeVal = Math.max(0, yMax * (1 - ratio));
+                  const text = fmtVol(volumeVal);
+                  return (
+                    <div className="pointer-events-none absolute inset-0" aria-hidden>
+                      <div
+                        className="absolute"
+                        style={{
+                          top: volumeCursorY,
+                          left: MARGIN_LEFT,
+                          right: MARGIN_RIGHT,
+                          height: 0,
+                          borderTop: '1px dashed rgba(114,60,235,0.5)',
+                        }}
+                      />
+                      <div
+                        className="absolute font-mono font-bold tabular-nums"
+                        style={{
+                          top: volumeCursorY - 8,
+                          right: 0,
+                          minWidth: 56,
+                          height: 16,
+                          padding: '0 6px',
+                          lineHeight: '16px',
+                          fontSize: 10,
+                          color: '#FFFFFF',
+                          background: 'rgba(114,60,235,0.96)',
+                          borderRadius: 3,
+                          textAlign: 'center',
+                        }}
+                      >
+                        {text}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </>
           )}
