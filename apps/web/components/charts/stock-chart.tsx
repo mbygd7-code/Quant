@@ -748,7 +748,9 @@ function CandleShape(p: CandleShapeProps) {
   const cx = p.x + p.width / 2;
   const color = p.payload.isUp ? p.upColor : p.downColor;
 
-  const w = Math.min(14, Math.max(4, p.width * 0.88));
+  // Cap raised from 14 → 28 so 1M / 1W views fill the column properly
+  // instead of leaving large gaps between candles on wider cards.
+  const w = Math.min(28, Math.max(4, p.width * 0.82));
   const bodyX = cx - w / 2;
 
   const { open, close, low, high } = p.payload;

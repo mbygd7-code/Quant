@@ -833,7 +833,12 @@ function CandleShape(p: CandleShapeProps) {
   if (p.x == null || p.y == null || p.width == null || p.height == null || !p.payload) return null;
   const cx = p.x + p.width / 2;
   const color = p.payload.isUp ? p.upColor : p.downColor;
-  const w = Math.min(16, Math.max(4, p.width * 0.88));
+  // Candle body widens proportionally with the column. Cap raised from
+  // 16 → 40 so the 1M view (~20 daily candles across a 1400px canvas =
+  // ~70px columns) no longer leaves huge whitespace gaps between bars.
+  // Daily candles now visually 'connect' on monthly views while
+  // intraday/yearly views still scale down to legible widths.
+  const w = Math.min(40, Math.max(4, p.width * 0.78));
   const bodyX = cx - w / 2;
   const { open, close, low, high } = p.payload;
   const wickRange = high - low;
@@ -843,9 +848,21 @@ function CandleShape(p: CandleShapeProps) {
   const bodyBottom = px(Math.min(open, close));
   const bodyH = Math.max(2, bodyBottom - bodyTop);
   const r = Math.min(2, w / 4);
+  // Wick scales with column width too — a thin wick on a fat body
+  // looks dated; pros use ~1/8 of body width.
+  const wickW = Math.max(1.5, Math.min(3, w / 8));
   return (
     <g>
-      <line x1={cx} x2={cx} y1={p.y} y2={p.y + p.height} stroke={color} strokeWidth={1.5} strokeLinecap="round" opacity={0.95} />
+      <line
+        x1={cx}
+        x2={cx}
+        y1={p.y}
+        y2={p.y + p.height}
+        stroke={color}
+        strokeWidth={wickW}
+        strokeLinecap="round"
+        opacity={0.95}
+      />
       <rect x={bodyX} y={bodyTop} width={w} height={bodyH} rx={r} ry={r} fill={color} fillOpacity={0.92} stroke={color} strokeWidth={1} />
     </g>
   );
@@ -862,10 +879,12 @@ interface VolumeShapeProps {
 }
 function VolumeShape(p: VolumeShapeProps) {
   if (p.x == null || p.y == null || p.width == null || p.height == null || !p.payload) return null;
-  const w = Math.max(1, p.width * 0.7);
+  // Match the candle body width logic so volume bars align with their
+  // price bars (especially noticeable on 1M views with fat candles).
+  const w = Math.min(40, Math.max(1, p.width * 0.78));
   const offset = (p.width - w) / 2;
   const color = p.payload.isUp ? p.upColor : p.downColor;
-  return <rect x={p.x + offset} y={p.y} width={w} height={p.height} fill={color} fillOpacity={0.45} />;
+  return <rect x={p.x + offset} y={p.y} width={w} height={p.height} fill={color} fillOpacity={0.5} />;
 }
 
 function FullscreenTooltip({
