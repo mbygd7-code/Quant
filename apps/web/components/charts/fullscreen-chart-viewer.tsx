@@ -1450,32 +1450,52 @@ export function FullscreenChartViewer({
                     borderRight: '1px dashed rgba(114,60,235,0.7)',
                   }}
                 />
-                {/* Stats badge — top-center, floats above the candles */}
+                {/* Stats badge — top-center, floats above the candles.
+                    Bigger font + stronger contrast than the initial
+                    version so the numbers are scannable at a glance
+                    even against a busy candle background. */}
                 <div
-                  className="absolute top-2 left-1/2 -translate-x-1/2 flex items-baseline gap-2 px-2.5 py-1 rounded-md bg-bg-secondary/95 backdrop-blur-sm border border-brand-purple/40 shadow-md text-[10px] tabular-nums whitespace-nowrap"
+                  className="absolute top-3 left-1/2 -translate-x-1/2 flex items-baseline gap-3 px-3.5 py-2 rounded-lg bg-bg-secondary/98 backdrop-blur-md border border-brand-purple/60 shadow-lg text-[13px] tabular-nums whitespace-nowrap font-medium"
+                  style={{
+                    boxShadow:
+                      '0 4px 12px rgba(0,0,0,0.18), 0 0 0 1px rgba(114,60,235,0.15)',
+                  }}
                 >
-                  <span className="text-txt-muted">
-                    <span className="text-txt-primary font-semibold">{bars}</span>봉
+                  <span className="text-txt-secondary">
+                    <span className="text-txt-primary font-bold text-[15px]">
+                      {bars}
+                    </span>
+                    <span className="ml-0.5">봉</span>
                   </span>
-                  <span className="text-txt-muted">·</span>
+                  <span className="text-txt-muted text-[11px]">|</span>
                   <span
-                    className="font-mono font-semibold"
+                    className="font-mono font-bold text-[14px] inline-flex items-baseline gap-1"
                     style={{ color: deltaColor }}
                   >
-                    {priceDelta >= 0 ? '▲ +' : '▼ '}
-                    {fmt(priceDelta)} ({priceDelta >= 0 ? '+' : ''}
-                    {pricePct.toFixed(2)}%)
+                    <span aria-hidden>{priceDelta >= 0 ? '▲' : '▼'}</span>
+                    {priceDelta >= 0 ? '+' : ''}
+                    {fmt(priceDelta)}
+                    <span className="opacity-90 text-[12px]">
+                      ({priceDelta >= 0 ? '+' : ''}
+                      {pricePct.toFixed(2)}%)
+                    </span>
                   </span>
-                  <span className="text-txt-muted">·</span>
-                  <span className="text-txt-muted">
-                    H <span className="font-mono text-status-success">{fmt(segHigh)}</span>
+                  <span className="text-txt-muted text-[11px]">|</span>
+                  <span className="text-txt-secondary">
+                    <span className="text-[11px] mr-0.5">H</span>
+                    <span className="font-mono font-bold text-[13px] text-status-success">
+                      {fmt(segHigh)}
+                    </span>
                   </span>
-                  <span className="text-txt-muted">
-                    L <span className="font-mono text-status-danger">{fmt(segLow)}</span>
+                  <span className="text-txt-secondary">
+                    <span className="text-[11px] mr-0.5">L</span>
+                    <span className="font-mono font-bold text-[13px] text-status-danger">
+                      {fmt(segLow)}
+                    </span>
                   </span>
                   {!dragSelection.active && (
-                    <span className="text-txt-muted ml-1 opacity-70">
-                      (Esc 해제)
+                    <span className="text-txt-muted text-[10px] ml-1 opacity-80 italic">
+                      Esc로 해제
                     </span>
                   )}
                 </div>
