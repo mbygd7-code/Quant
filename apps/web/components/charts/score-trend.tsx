@@ -46,6 +46,9 @@ interface MLPrediction {
   predicted_score: number;
   lower_95: number | null;
   upper_95: number | null;
+  /** Optional model identifier — surfaces honestly in the legend.
+   *  e.g. 'gbr_r1' vs 'v1' vs 'OLS-fallback'. */
+  model_version?: string | null;
 }
 
 interface ChartRow {
@@ -60,6 +63,14 @@ interface ChartRow {
    *  optional 'compare with stock price' overlay. Null when no
    *  price data exists for that day. */
   price_norm: number | null;
+  /** Raw stock close (KRW) — surfaced in tooltip only. */
+  price_raw: number | null;
+  /** % change from the first available price in the window. */
+  price_return: number | null;
+  /** Naive 'predict = yesterday's score' baseline. Pinned in
+   *  tooltip + drawn as a faint reference line. Lets users see
+   *  whether the GBM/OLS predictor beats a no-skill baseline. */
+  naive_predicted: number | null;
 }
 
 /** Centered SMA. Returns null for indices without enough history. */
@@ -184,6 +195,7 @@ export function ScoreTrend({
   const [showMA, setShowMA] = useState(false);
   const [showGradeBands, setShowGradeBands] = useState(true);
   const [showPrice, setShowPrice] = useState(false);
+  const [showNaive, setShowNaive] = useState(false);
 
   // Price overlay — fetch daily closes for the same ticker so users
   // can compare AI score motion with actual stock movement. We map
@@ -272,6 +284,14 @@ export function ScoreTrend({
     }
   }
 
+  // Honest legend label: read the actual model_version (e.g. 'gbr_r1')
+  // from the predictions when usingML; fall back to 'OLS 외삽' for the
+  // in-browser linear fit. Prevents the misleading 'GBM ML' label when
+  // the predictions are actually OLS.
+  const modelLabel = usingML
+    ? `예측 (${mlPredictions?.[0]?.model_version ?? 'ML'})`
+    : '예측 (OLS 외삽)';
+
   // Build a date-keyed lookup for the fitted-past series so we can attach
   // a `predicted` value to every historical row (not just the last one).
   const fittedByDate = new Map(fittedPast.map((p) => [p.date, p.final_score]));
@@ -291,9 +311,11 @@ export function ScoreTrend({
   //     touch the y-axis extremes)
   //   • priceReturnByDate — % change from window's first price, for
   //     the tooltip and the new 'period return' badge
-  const { priceNormByDate, priceWindowReturn } = useMemo(() => {
+  const { priceNormByDate, priceRawByDate, priceReturnByDate, priceWindowReturn } = useMemo(() => {
     const emptyResult = {
       priceNormByDate: new Map<string, number>(),
+      priceRawByDate: new Map<string, number>(),
+      priceReturnByDate: new Map<string, number>(),
       priceWindowReturn: null as number | null,
     };
     if (priceByDate.size === 0 || filteredData.length === 0) return emptyResult;
@@ -310,13 +332,19 @@ export function ScoreTrend({
     const start = prices[0];
     const end = prices[prices.length - 1];
     const norm = new Map<string, number>();
+    const raw = new Map<string, number>();
+    const ret = new Map<string, number>();
     for (const s of samples) {
       // Inset to 0.05..0.95 so the line doesn't sit on the X-axis or top edge.
       norm.set(s.date, 0.05 + ((s.price - min) / range) * 0.90);
+      raw.set(s.date, s.price);
+      ret.set(s.date, ((s.price - start) / start) * 100);
     }
     const windowReturn = ((end - start) / start) * 100;
     return {
       priceNormByDate: norm,
+      priceRawByDate: raw,
+      priceReturnByDate: ret,
       priceWindowReturn: windowReturn,
     };
   }, [priceByDate, filteredData]);
@@ -357,6 +385,10 @@ export function ScoreTrend({
         predicted !== null && predicted !== 0
           ? ((p.final_score - predicted) / predicted) * 100
           : null;
+      // Naive baseline: predict today = yesterday's score. The
+      // simplest possible 'predictor' a real model must beat to add
+      // any value. For day 0 of the window, leave null.
+      const naive = i > 0 ? filteredData[i - 1].final_score : null;
       return {
         date: p.date,
         actual: p.final_score,
@@ -366,6 +398,9 @@ export function ScoreTrend({
         ma5: ma5Series[i],
         ma20: ma20Series[i],
         price_norm: priceNormByDate.get(p.date) ?? null,
+        price_raw: priceRawByDate.get(p.date) ?? null,
+        price_return: priceReturnByDate.get(p.date) ?? null,
+        naive_predicted: naive,
         residual,
         residual_pct,
       };
@@ -379,6 +414,9 @@ export function ScoreTrend({
       ma5: null,
       ma20: null,
       price_norm: null,
+      price_raw: null,
+      price_return: null,
+      naive_predicted: null,
       residual: null,
       residual_pct: null,
     })),
@@ -453,6 +491,28 @@ export function ScoreTrend({
           ? 'medium'
           : 'low';
 
+  // Naive-baseline MAE — how much error does 'predict = yesterday'
+  // produce on the same overlap? A useful predictor must beat this.
+  const naiveMae = useMemo(() => {
+    if (filteredData.length < 2) return null;
+    let sum = 0;
+    let count = 0;
+    for (let i = 1; i < filteredData.length; i++) {
+      const cur = filteredData[i].final_score;
+      const prev = filteredData[i - 1].final_score;
+      sum += Math.abs(cur - prev);
+      count += 1;
+    }
+    return count > 0 ? sum / count : null;
+  }, [filteredData]);
+
+  // Skill score — positive means GBM beats naive, negative means worse.
+  // Formula: 1 − (modelMAE / naiveMAE). Standard meteorological skill.
+  const skillScore =
+    mae != null && naiveMae != null && naiveMae > 0
+      ? 1 - mae / naiveMae
+      : null;
+
   return (
     <div className="w-full">
      {/* Period filter row + indicator toggles. */}
@@ -523,6 +583,21 @@ export function ScoreTrend({
              주가 비교
            </button>
          )}
+
+         {/* Naive baseline toggle */}
+         <button
+           type="button"
+           onClick={() => setShowNaive((v) => !v)}
+           className={cn(
+             'px-2.5 py-1 text-[11px] font-semibold rounded border transition-colors',
+             showNaive
+               ? 'border-brand-purple/40 bg-brand-purple/10 text-brand-purple'
+               : 'border-border-subtle/40 text-txt-muted hover:text-txt-primary',
+           )}
+           title="순진한 baseline: '내일 점수 = 오늘 점수'. 모델이 이걸 못 이기면 가치 없음."
+         >
+           Naive
+         </button>
        </div>
        <div className="flex items-center gap-3 flex-wrap">
          {/* Price window-return badge — only shown when 주가 비교 ON */}
@@ -604,6 +679,25 @@ export function ScoreTrend({
              </span>
            </span>
          )}
+         {skillScore !== null && (
+           <span title="모델 MAE vs naive baseline MAE. 양수 = 모델이 naive를 이김, 음수 = 모델 무용.">
+             skill{' '}
+             <span
+               className="font-mono tabular-nums font-medium"
+               style={{
+                 color:
+                   skillScore >= 0.2
+                     ? 'rgb(72,166,152)'
+                     : skillScore < 0
+                       ? 'rgb(220,72,72)'
+                       : 'var(--text-primary)',
+               }}
+             >
+               {skillScore >= 0 ? '+' : ''}
+               {(skillScore * 100).toFixed(0)}%
+             </span>
+           </span>
+         )}
          {reliability !== null && reliabilityTier && (
            <span
              className={cn(
@@ -681,6 +775,11 @@ export function ScoreTrend({
                   <div style={{ marginBottom: 4, color: 'var(--text-secondary)' }}>{label}</div>
                   <div>실측: <b>{fmt(row.actual)}</b></div>
                   <div>예측: <b>{fmt(row.predicted)}</b></div>
+                  {row.naive_predicted !== null && (
+                    <div style={{ color: 'var(--text-secondary)', fontSize: 11 }}>
+                      Naive: {fmt(row.naive_predicted)}
+                    </div>
+                  )}
                   {row.residual !== null && (
                     <>
                       <div>
@@ -694,6 +793,40 @@ export function ScoreTrend({
                   {row.band_low !== null && row.band_high !== null && (
                     <div style={{ color: 'var(--text-secondary)', marginTop: 2 }}>
                       95% 구간: {fmt(row.band_low)} ~ {fmt(row.band_high)}
+                    </div>
+                  )}
+                  {/* Price block — shown only when 주가 비교 ON */}
+                  {row.price_raw !== null && (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        paddingTop: 6,
+                        borderTop: '1px solid var(--border-subtle)',
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
+                      <div>
+                        종가:{' '}
+                        <b style={{ color: 'var(--text-primary)' }}>
+                          {row.price_raw.toLocaleString('ko-KR')}원
+                        </b>
+                      </div>
+                      {row.price_return !== null && (
+                        <div>
+                          기간 수익률:{' '}
+                          <b
+                            style={{
+                              color:
+                                row.price_return >= 0
+                                  ? 'rgb(72,166,152)'
+                                  : 'rgb(220,72,72)',
+                            }}
+                          >
+                            {row.price_return >= 0 ? '+' : ''}
+                            {row.price_return.toFixed(2)}%
+                          </b>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -745,7 +878,8 @@ export function ScoreTrend({
             iconType="plainline"
             formatter={(value) => {
               if (value === 'actual') return '실측 점수';
-              if (value === 'predicted') return usingML ? '예측 (GBM ML)' : '예측 (OLS)';
+              if (value === 'predicted') return modelLabel;
+              if (value === 'naive_predicted') return '순진 baseline (어제=오늘)';
               if (value === 'band_high') return '95% 신뢰구간';
               if (value === 'ma5') return 'MA5';
               if (value === 'ma20') return 'MA20';
@@ -853,6 +987,24 @@ export function ScoreTrend({
               activeDot={{ r: 3, fill: 'rgb(91,168,242)' }}
               connectNulls
               name="price_norm"
+              isAnimationActive={false}
+            />
+          )}
+
+          {/* Naive baseline — 'predict = yesterday's actual'. Drawn as
+              a faint thin line for quick eyeball comparison with the
+              GBM/OLS predicted line. Skill = 1 − MAE/naiveMAE. */}
+          {showNaive && (
+            <Line
+              type="monotone"
+              dataKey="naive_predicted"
+              stroke="rgba(255,255,255,0.45)"
+              strokeWidth={1}
+              strokeDasharray="3 3"
+              dot={false}
+              activeDot={false}
+              connectNulls
+              name="naive_predicted"
               isAnimationActive={false}
             />
           )}

@@ -421,6 +421,7 @@ export default async function KrStockDetail({ params }: Props) {
                 predicted_score: p.predicted_score,
                 lower_95: p.lower_95,
                 upper_95: p.upper_95,
+                model_version: p.model_version,
               }))}
             />
           </CardContent>
