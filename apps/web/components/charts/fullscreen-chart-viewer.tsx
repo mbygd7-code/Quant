@@ -848,9 +848,15 @@ export function FullscreenChartViewer({
   // ── Snap helper used by the magnetic crosshair (Space held) ──
   // Given a mouse position within the price container, returns the
   // snapped {x, y}:
-  //   • x → center of the nearest candle (column)
-  //   • y → whichever of that candle's open / close / high / low
-  //         price levels is closest to the cursor Y
+  //   • idx → SLOT-based candle index — matches Recharts' own
+  //           Tooltip cursor calculation so the vertical line and
+  //           the Y snap always reference the same candle. (The old
+  //           Math.round(ratio × N-1) calc disagreed with Recharts at
+  //           slot boundaries, causing the Y snap to use a different
+  //           candle than the one under the vertical line.)
+  //   • x → center of that slot (candle center column).
+  //   • y → whichever of THAT candle's open / close / high / low
+  //         price levels is closest to the cursor Y.
   // Falls back to passing through when data is unavailable.
   const snapToCandle = (
     rawX: number,
@@ -867,8 +873,13 @@ export function FullscreenChartViewer({
     const innerRight = Math.max(innerLeft + 1, containerW - MARGIN_RIGHT);
     const innerWidth = innerRight - innerLeft;
     const innerHeight = Math.max(1, containerH - MARGIN_TOP);
-    const ratio = Math.max(0, Math.min(1, (rawX - innerLeft) / innerWidth));
-    const idx = Math.round(ratio * (data.length - 1));
+    // Slot-based index: each candle occupies a fixed slot of width
+    // (innerWidth / N), Recharts hover detection uses the same model.
+    const slot = innerWidth / data.length;
+    const idx = Math.max(
+      0,
+      Math.min(data.length - 1, Math.floor((rawX - innerLeft) / slot)),
+    );
     const candle = data[idx];
     // Recharts ~5% padding on auto domain → mirror it.
     const pad = (periodHigh - periodLow) * 0.05;
@@ -891,8 +902,9 @@ export function FullscreenChartViewer({
         bestDist = d;
       }
     }
-    const snappedX =
-      innerLeft + (idx / Math.max(1, data.length - 1)) * innerWidth;
+    // Snapped X = center of the slot (matches CandleShape's `cx`
+    // which Recharts uses for the candle center column).
+    const snappedX = innerLeft + (idx + 0.5) * slot;
     return { x: snappedX, y: snappedY, idx };
   };
 
@@ -1531,15 +1543,22 @@ export function FullscreenChartViewer({
             const right = Math.max(dragSelection.startX, dragSelection.currentX);
             const width = right - left;
             if (width < 4) return null;
-            // Map X positions → data indices using the chart's
-            // known inner-area bounds. Bars are evenly distributed.
+            // Map X positions → data indices using the SAME slot-
+            // based formula Recharts uses for hover detection (and
+            // that snapToCandle uses for the magnetic snap). Keeps
+            // measurements consistent with the visible vertical line.
             const innerLeft = sharedLeftMargin;
             const innerRight = Math.max(innerLeft + 1, containerW - 64);
             const innerWidth = innerRight - innerLeft;
-            const xToIdx = (x: number) => {
-              const ratio = Math.max(0, Math.min(1, (x - innerLeft) / innerWidth));
-              return Math.round(ratio * (data.length - 1));
-            };
+            const slot = innerWidth / data.length;
+            const xToIdx = (x: number) =>
+              Math.max(
+                0,
+                Math.min(
+                  data.length - 1,
+                  Math.floor((x - innerLeft) / slot),
+                ),
+              );
             const startIdx = Math.min(xToIdx(left), xToIdx(right));
             const endIdx = Math.max(xToIdx(left), xToIdx(right));
             const startRow = data[startIdx];
