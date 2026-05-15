@@ -195,9 +195,18 @@ export default async function KrStockDetail({ params }: Props) {
             <h1 className="font-heading text-2xl font-semibold tracking-tight">{meta.name}</h1>
             <Badge variant="outline">{meta.market}</Badge>
             {meta.sector && <Badge variant="outline">{meta.sector}</Badge>}
+            {/* "관심주식 등록" — semantic clash with the AI signal grade
+                "관심" (BUY). Use a star icon + "★ 내 관심주식 등록" so a
+                user reading "관심" + "관망" doesn't mistake one for
+                the other. */}
             {meta.inWatchlist && (
-              <Badge variant="outline" className="border-status-success/40 text-status-success">
-                관심주식
+              <Badge
+                variant="outline"
+                className="border-status-warning/40 text-status-warning gap-1"
+                title="이 종목은 시스템 마스터 watchlist에 등록되어 있어 매일 자동 분석됩니다"
+              >
+                <span aria-hidden>★</span>
+                마스터 등록
               </Badge>
             )}
           </div>
