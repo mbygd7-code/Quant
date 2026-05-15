@@ -419,76 +419,262 @@ function VoterCard({
 
 // ─── Soros synthesis — parse into structured sections ──────────────
 
-interface ParsedSoros {
-  headline: string | null;
-  body: string;
+interface VoterQuote {
+  /** Detected voter name (Korean form, capitalized). */
+  agent: string;
+  /** Score parsed from the parenthesised number, e.g. '+1.5' from 'Dow(+1.5)'. */
+  score: number;
+  /** The full sentence containing the voter mention. */
+  sentence: string;
 }
 
-/** Lightweight parse of the Soros narrative.
- *  The LLM produces one long Korean paragraph ending with a conclusion
- *  sentence like '...최종 시그널은 HOLD.'. We extract that last sentence
- *  as the headline and keep the rest as the body, formatted with
- *  inline line breaks at sentence boundaries. */
+interface ParsedSoros {
+  /** Final-grade conclusion sentence (e.g. '...최종 시그널은 HOLD.'). */
+  headline: string | null;
+  /** Sentences mentioning a specific voter, split by sentiment via score sign. */
+  positiveQuotes: VoterQuote[];
+  negativeQuotes: VoterQuote[];
+  neutralQuotes: VoterQuote[];
+  /** Sentences that don't mention a voter — typically Q1/Q2 calc summary. */
+  computationSentences: string[];
+}
+
+const VOTER_NAMES = ['Graham', 'Dow', 'Turing', 'Shiller', 'Keynes', 'Taleb', 'Simons'];
+
+/** Parse the Soros narrative into structured fragments.
+ *  The Soros LLM emits a free-form Korean paragraph but follows a
+ *  consistent shape: per-voter quotes ('Dow(+1.5)는...'), a calculation
+ *  fragment ('priced_in 0.72 반영 후 0.08점으로 수렴'), and a final
+ *  grade sentence ('최종 시그널은 HOLD.'). We split on Korean periods
+ *  and use simple regex to bucket each sentence. */
 function parseSoros(narrative: string): ParsedSoros {
   const trimmed = narrative.trim();
-  // Split on '.' followed by space or end; keep the dot.
   const sentences = trimmed
-    .split(/(?<=[\.\!\?])\s+/)
+    .split(/(?<=[.!?])\s+/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
-  if (sentences.length <= 1) {
-    return { headline: null, body: trimmed };
-  }
-  // Pick the LAST sentence that contains a grade keyword as the headline;
-  // fall back to the last sentence overall.
+
+  // Pick the LAST sentence containing a grade keyword as the headline.
   const gradeKeywords = ['HOLD', 'BUY', 'CAUTION', 'RISK', '시그널은', '최종'];
-  let headlineIdx = sentences.length - 1;
+  let headlineIdx = -1;
   for (let i = sentences.length - 1; i >= 0; i--) {
     if (gradeKeywords.some((kw) => sentences[i].includes(kw))) {
       headlineIdx = i;
       break;
     }
   }
-  const headline = sentences[headlineIdx];
-  const body = sentences
-    .filter((_, idx) => idx !== headlineIdx)
-    .join(' ');
-  return { headline, body };
+  const headline = headlineIdx >= 0 ? sentences[headlineIdx] : null;
+
+  // For the remaining sentences, extract voter mentions.
+  // Pattern: VoterName(±score점?)는/은 ... — score may have decimals.
+  const voterRegex = new RegExp(
+    `(${VOTER_NAMES.join('|')})\\s*\\(\\s*([+-]?\\d+(?:\\.\\d+)?)`,
+    'i',
+  );
+  const positiveQuotes: VoterQuote[] = [];
+  const negativeQuotes: VoterQuote[] = [];
+  const neutralQuotes: VoterQuote[] = [];
+  const computationSentences: string[] = [];
+
+  sentences.forEach((sent, idx) => {
+    if (idx === headlineIdx) return;
+    const m = sent.match(voterRegex);
+    if (m) {
+      const agent = m[1];
+      const score = Number(m[2]);
+      const quote: VoterQuote = { agent, score, sentence: sent };
+      if (score >= 0.3) positiveQuotes.push(quote);
+      else if (score <= -0.3) negativeQuotes.push(quote);
+      else neutralQuotes.push(quote);
+    } else {
+      computationSentences.push(sent);
+    }
+  });
+
+  return {
+    headline,
+    positiveQuotes,
+    negativeQuotes,
+    neutralQuotes,
+    computationSentences,
+  };
+}
+
+/** Color-tinted quote pill used inside the 지지 요인 / 주의 요인 lists. */
+function QuotePill({ quote, tone }: { quote: VoterQuote; tone: 'positive' | 'negative' | 'neutral' }) {
+  const meta = VOTER_META[quote.agent.toLowerCase()];
+  const accent = meta?.accent ?? '#888';
+  const Icon = meta?.icon;
+  const toneColor =
+    tone === 'positive' ? '#48A698'
+    : tone === 'negative' ? '#DC4848'
+    : '#AAAAAA';
+  return (
+    <li className="flex gap-2.5 items-start">
+      <div
+        className="h-6 w-6 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+        style={{ background: `${accent}1F`, color: accent }}
+      >
+        {Icon ? <Icon className="h-3 w-3" /> : null}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-2 mb-0.5">
+          <span className="text-[13px] font-bold" style={{ color: accent }}>
+            {quote.agent}
+          </span>
+          <span
+            className="text-[11px] font-mono tabular-nums font-semibold"
+            style={{ color: toneColor }}
+          >
+            {quote.score >= 0 ? '+' : ''}
+            {quote.score.toFixed(2)}
+          </span>
+          {meta && (
+            <span className="text-[10px] text-txt-muted">
+              {meta.domain}
+            </span>
+          )}
+        </div>
+        <p className="text-[13px] text-txt-primary leading-relaxed">
+          {quote.sentence}
+        </p>
+      </div>
+    </li>
+  );
 }
 
 function SorosSynthesis({ narrative }: { narrative: string }) {
-  const { headline, body } = parseSoros(narrative);
+  const parsed = parseSoros(narrative);
+  const {
+    headline,
+    positiveQuotes,
+    negativeQuotes,
+    neutralQuotes,
+    computationSentences,
+  } = parsed;
+
+  // Verdict tone — color the headline border based on the grade keyword.
+  const verdictTone = (() => {
+    if (!headline) return '#A06CD5';  // brand-purple fallback
+    if (headline.includes('STRONG_BUY') || headline.includes('강한 관심')) return '#48A698';
+    if (headline.includes('BUY') || headline.includes('관심')) return '#7CC97E';
+    if (headline.includes('CAUTION') || headline.includes('주의')) return '#E9B247';
+    if (headline.includes('RISK') || headline.includes('위험')) return '#DC4848';
+    return '#AAAAAA';  // HOLD / 관망
+  })();
+
   return (
     <section className="rounded-lg border border-brand-purple/30 bg-gradient-to-br from-brand-purple/5 via-brand-purple/3 to-transparent overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-brand-purple/20 bg-brand-purple/5">
-        <div className="h-7 w-7 rounded-full bg-gradient-brand flex items-center justify-center shrink-0">
-          <Sparkles className="h-3.5 w-3.5 text-white" />
+      {/* Header strip */}
+      <div className="flex items-center gap-2.5 px-5 py-3 border-b border-brand-purple/20 bg-brand-purple/5">
+        <div className="h-8 w-8 rounded-full bg-gradient-brand flex items-center justify-center shrink-0">
+          <Sparkles className="h-4 w-4 text-white" />
         </div>
         <div className="flex-1">
-          <div className="text-[10px] uppercase tracking-[0.15em] text-brand-purple font-bold">
+          <div className="text-[11px] uppercase tracking-[0.15em] text-brand-purple font-bold">
             Soros 종합
           </div>
-          <div className="text-[10px] text-txt-muted">
+          <div className="text-[11px] text-txt-secondary">
             5인 voter 의견 + priced_in + Taleb 게이트의 메타 분석
           </div>
         </div>
       </div>
 
-      {/* Headline (extracted final-grade conclusion) */}
+      {/* Verdict headline — large, color-bordered, like the old AI 퀀트 카드 헤드라인 */}
       {headline && (
-        <div className="px-4 pt-3.5">
-          <div className="flex gap-2 text-sm font-medium text-brand-purple leading-relaxed">
-            <span className="shrink-0">▍</span>
-            <span>{headline}</span>
+        <div className="px-5 pt-4">
+          <div
+            className="rounded-md border-l-4 px-4 py-3 bg-bg-secondary/40"
+            style={{ borderLeftColor: verdictTone }}
+          >
+            <div
+              className="text-[10px] uppercase tracking-[0.15em] mb-1 font-bold"
+              style={{ color: verdictTone }}
+            >
+              최종 결론
+            </div>
+            <p className="text-base font-semibold text-txt-primary leading-snug">
+              {headline}
+            </p>
           </div>
         </div>
       )}
 
-      {/* Body — main analysis with comfortable typography */}
-      {body && (
-        <div className="px-4 py-3.5 text-sm text-txt-primary leading-relaxed">
-          {body}
+      {/* Two-column 지지/주의 요인 — mirrors the old 카탈리스트/리스크 grid */}
+      {(positiveQuotes.length > 0 || negativeQuotes.length > 0) && (
+        <div className="grid gap-4 md:grid-cols-2 px-5 py-4">
+          {positiveQuotes.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-5 w-5 rounded-full bg-status-success/15 flex items-center justify-center">
+                  <ArrowUp className="h-3 w-3" style={{ color: '#48A698' }} />
+                </div>
+                <span
+                  className="text-[11px] uppercase tracking-[0.15em] font-bold"
+                  style={{ color: '#48A698' }}
+                >
+                  지지 요인 ({positiveQuotes.length})
+                </span>
+              </div>
+              <ul className="space-y-3">
+                {positiveQuotes.map((q, i) => (
+                  <QuotePill key={i} quote={q} tone="positive" />
+                ))}
+              </ul>
+            </div>
+          )}
+          {negativeQuotes.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-5 w-5 rounded-full bg-status-danger/15 flex items-center justify-center">
+                  <ArrowDown className="h-3 w-3" style={{ color: '#DC4848' }} />
+                </div>
+                <span
+                  className="text-[11px] uppercase tracking-[0.15em] font-bold"
+                  style={{ color: '#DC4848' }}
+                >
+                  주의 요인 ({negativeQuotes.length})
+                </span>
+              </div>
+              <ul className="space-y-3">
+                {negativeQuotes.map((q, i) => (
+                  <QuotePill key={i} quote={q} tone="negative" />
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Neutral quotes — collapsed strip when present */}
+      {neutralQuotes.length > 0 && (
+        <div className="px-5 pb-3">
+          <div className="rounded-md border border-border-subtle/40 bg-bg-secondary/30 px-3 py-2">
+            <div className="text-[10px] uppercase tracking-[0.15em] text-txt-muted mb-2 font-bold">
+              중립 의견 ({neutralQuotes.length})
+            </div>
+            <ul className="space-y-2">
+              {neutralQuotes.map((q, i) => (
+                <QuotePill key={i} quote={q} tone="neutral" />
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {/* Calculation sentences — the priced_in / weighted-sum trail.
+          Smaller text in a dedicated 'fine print' strip so users can
+          audit the math without it competing with the analysis above. */}
+      {computationSentences.length > 0 && (
+        <div className="px-5 pb-4">
+          <div className="rounded-md border border-border-subtle/60 bg-bg-tertiary/20 px-3 py-2">
+            <div className="text-[10px] uppercase tracking-[0.15em] text-txt-muted mb-1 font-bold">
+              계산 흐름
+            </div>
+            <p className="text-[12px] text-txt-secondary leading-relaxed">
+              {computationSentences.join(' ')}
+            </p>
+          </div>
         </div>
       )}
     </section>
