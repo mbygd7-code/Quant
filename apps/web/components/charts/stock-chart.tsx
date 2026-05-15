@@ -6,6 +6,7 @@ import {
   Bar,
   CartesianGrid,
   ComposedChart,
+  Customized,
   Line,
   ReferenceLine,
   ResponsiveContainer,
@@ -89,6 +90,11 @@ export function StockChart({
   const [showMA, setShowMA] = useState(true);
   const [showVolume, setShowVolume] = useState(true);
   const [showRange, setShowRange] = useState(true);
+
+  // Mouse-Y tracker for the horizontal crosshair — matches the
+  // fullscreen viewer's behaviour so the compact chart on the stock
+  // detail page also surfaces the price at the cursor's Y position.
+  const [cursorY, setCursorY] = useState<number | null>(null);
 
   const [raw, setRaw] = useState<RawCandle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -458,6 +464,15 @@ export function StockChart({
               data={data}
               syncId="stock-chart"
               margin={{ top: 8, right: 56, bottom: showVolume ? 0 : 8, left: 0 }}
+              onMouseMove={(state: unknown) => {
+                const s = state as { chartY?: number; isTooltipActive?: boolean } | null;
+                if (s && typeof s.chartY === 'number' && s.isTooltipActive) {
+                  setCursorY(s.chartY);
+                } else {
+                  setCursorY(null);
+                }
+              }}
+              onMouseLeave={() => setCursorY(null)}
             >
               <CartesianGrid
                 stroke="var(--border-subtle)"
@@ -549,6 +564,68 @@ export function StockChart({
                   />
                 </>
               )}
+
+              {/* Horizontal crosshair — follows mouse Y, fainter than
+                  vertical line, price label at the right edge. */}
+              <Customized
+                component={(rechartProps: unknown) => {
+                  if (cursorY == null) return null;
+                  const rp = rechartProps as {
+                    yAxisMap?: Record<string, { scale?: unknown }>;
+                    offset?: { top?: number; left?: number; width?: number; height?: number };
+                  };
+                  const yAxis = rp.yAxisMap?.price;
+                  const offset = rp.offset;
+                  if (!yAxis?.scale || !offset) return null;
+                  const invertFn = (yAxis.scale as { invert?: (y: number) => number }).invert;
+                  if (typeof invertFn !== 'function') return null;
+                  const price = invertFn(cursorY);
+                  if (!Number.isFinite(price)) return null;
+                  const top = offset.top ?? 0;
+                  const left = offset.left ?? 0;
+                  const width = offset.width ?? 0;
+                  const height = offset.height ?? 0;
+                  if (cursorY < top - 2 || cursorY > top + height + 2) return null;
+                  const x1 = left;
+                  const x2 = left + width;
+                  const text = fmt(price);
+                  const labelW = Math.max(56, text.length * 7 + 12);
+                  return (
+                    <g pointerEvents="none">
+                      <line
+                        x1={x1}
+                        x2={x2}
+                        y1={cursorY}
+                        y2={cursorY}
+                        stroke="rgb(114,60,235)"
+                        strokeOpacity={0.42}
+                        strokeWidth={1}
+                        strokeDasharray="4 3"
+                      />
+                      <rect
+                        x={x2 - 1}
+                        y={cursorY - 8}
+                        width={labelW}
+                        height={16}
+                        rx={3}
+                        fill="rgb(114,60,235)"
+                        fillOpacity={0.92}
+                      />
+                      <text
+                        x={x2 - 1 + labelW / 2}
+                        y={cursorY + 3}
+                        textAnchor="middle"
+                        fill="#FFFFFF"
+                        fontSize={10}
+                        fontWeight={700}
+                        style={{ fontFamily: 'ui-monospace, monospace' }}
+                      >
+                        {text}
+                      </text>
+                    </g>
+                  );
+                }}
+              />
 
               {/* Last price reference line — line only, value goes
                   inside the chart via a labeled badge component below

@@ -28,6 +28,7 @@ import {
   Bar,
   CartesianGrid,
   ComposedChart,
+  Customized,
   Line,
   ReferenceLine,
   ResponsiveContainer,
@@ -354,6 +355,13 @@ export function FullscreenChartViewer({
   // re-saved whenever a new compare is activated.
   const [recents, setRecents] = useState<RecentCompare[]>([]);
   const [recentsOpen, setRecentsOpen] = useState(false);
+
+  // Mouse-Y tracker for the horizontal crosshair line + price label.
+  // Recharts' built-in Tooltip cursor only draws a vertical line; we
+  // add a horizontal trace via `Customized` to mimic TradingView /
+  // Bloomberg behaviour where the right edge shows the price under
+  // the mouse. Reset to null on mouseleave so the line disappears.
+  const [cursorY, setCursorY] = useState<number | null>(null);
   useEffect(() => {
     setRecents(loadRecents());
   }, []);
@@ -895,7 +903,20 @@ export function FullscreenChartViewer({
         <div className="space-y-0">
           {/* Price pane */}
           <ResponsiveContainer width="100%" height={priceHeight}>
-            <ComposedChart data={data} syncId="fs-chart" margin={{ top: 12, right: 64, bottom: 0, left: 8 }}>
+            <ComposedChart
+              data={data}
+              syncId="fs-chart"
+              margin={{ top: 12, right: 64, bottom: 0, left: 8 }}
+              onMouseMove={(state: unknown) => {
+                const s = state as { chartY?: number; isTooltipActive?: boolean } | null;
+                if (s && typeof s.chartY === 'number' && s.isTooltipActive) {
+                  setCursorY(s.chartY);
+                } else {
+                  setCursorY(null);
+                }
+              }}
+              onMouseLeave={() => setCursorY(null)}
+            >
               <CartesianGrid stroke="var(--border-subtle)" strokeOpacity="0.5" strokeDasharray="2 4" />
               <XAxis
                 dataKey="date"
@@ -1039,6 +1060,74 @@ export function FullscreenChartViewer({
                   label={{ value: `L ${fmt(periodLow)}`, position: 'insideBottomLeft', fill: 'rgb(220,72,72)', fontSize: 10, fontWeight: 700 }}
                 />
               )}
+
+              {/* Horizontal crosshair — follows the mouse Y position.
+                  More transparent than the vertical (Tooltip cursor)
+                  by design so the vertical guide stays dominant.
+                  Right-edge price badge mirrors the live-price badge
+                  in style but uses brand-purple so users can tell at
+                  a glance whether they're reading 'now' or 'cursor'. */}
+              <Customized
+                component={(rechartProps: unknown) => {
+                  if (cursorY == null) return null;
+                  const rp = rechartProps as {
+                    yAxisMap?: Record<string, { scale?: (v: number) => number & { invert?: (y: number) => number } }>;
+                    offset?: { top?: number; left?: number; width?: number; height?: number };
+                  };
+                  const yAxis = rp.yAxisMap?.price;
+                  const offset = rp.offset;
+                  if (!yAxis?.scale || !offset) return null;
+                  // d3 scale: invert maps pixel-Y → data value.
+                  const invertFn = (yAxis.scale as unknown as { invert?: (y: number) => number }).invert;
+                  if (typeof invertFn !== 'function') return null;
+                  const price = invertFn(cursorY);
+                  if (!Number.isFinite(price)) return null;
+                  const top = offset.top ?? 0;
+                  const left = offset.left ?? 0;
+                  const width = offset.width ?? 0;
+                  const height = offset.height ?? 0;
+                  // Hide when cursor is outside the inner plot area.
+                  if (cursorY < top - 2 || cursorY > top + height + 2) return null;
+                  const x1 = left;
+                  const x2 = left + width;
+                  const text = fmt(price);
+                  const labelW = Math.max(72, text.length * 7 + 14);
+                  return (
+                    <g pointerEvents="none">
+                      <line
+                        x1={x1}
+                        x2={x2}
+                        y1={cursorY}
+                        y2={cursorY}
+                        stroke="rgb(114,60,235)"
+                        strokeOpacity={0.42}     // intentionally fainter than the vertical (0.85)
+                        strokeWidth={1}
+                        strokeDasharray="4 3"
+                      />
+                      <rect
+                        x={x2 - 1}
+                        y={cursorY - 9}
+                        width={labelW}
+                        height={18}
+                        rx={3}
+                        fill="rgb(114,60,235)"
+                        fillOpacity={0.92}
+                      />
+                      <text
+                        x={x2 - 1 + labelW / 2}
+                        y={cursorY + 4}
+                        textAnchor="middle"
+                        fill="#FFFFFF"
+                        fontSize={11}
+                        fontWeight={700}
+                        style={{ fontFamily: 'ui-monospace, monospace' }}
+                      >
+                        {text}
+                      </text>
+                    </g>
+                  );
+                }}
+              />
 
               {/* Live price badge */}
               {last && (
