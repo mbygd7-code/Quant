@@ -326,17 +326,27 @@ export function ScoreTrend({
     }
     if (samples.length === 0) return emptyResult;
     const prices = samples.map((s) => s.price);
-    const min = Math.min(...prices);
-    const max = Math.max(...prices);
-    const range = max - min || 1;
     const start = prices[0];
     const end = prices[prices.length - 1];
+
+    // PROPORTIONAL-MOVE normalisation (replaces the previous min-max
+    // stretch). User insight: a 3% price move was filling the whole
+    // y-axis because min-max scaled the smallest range to 0..1. Now
+    // we anchor the overlay to the SCORE's starting value and apply
+    // the price's % change at each step:
+    //   overlay[i] = scoreStart × (1 + (price[i]/price[0] − 1))
+    // So a 0% price move leaves the line flat at scoreStart, a -12%
+    // move drops it ~12% from scoreStart, etc. Same proportional
+    // semantics as the score motion so the comparison is honest.
+    // Clamped to [0.01, 0.99] so extreme moves don't escape the axis.
+    const scoreStart = filteredData[0]?.final_score ?? 0.5;
     const norm = new Map<string, number>();
     const raw = new Map<string, number>();
     const ret = new Map<string, number>();
     for (const s of samples) {
-      // Inset to 0.05..0.95 so the line doesn't sit on the X-axis or top edge.
-      norm.set(s.date, 0.05 + ((s.price - min) / range) * 0.90);
+      const priceRatio = s.price / start;
+      const overlay = scoreStart * priceRatio;
+      norm.set(s.date, Math.max(0.01, Math.min(0.99, overlay)));
       raw.set(s.date, s.price);
       ret.set(s.date, ((s.price - start) / start) * 100);
     }
