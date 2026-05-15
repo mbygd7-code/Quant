@@ -282,42 +282,59 @@ export function ScoreTrend({
   const ma5Series = smaOfScores(actualSeries, 5);
   const ma20Series = smaOfScores(actualSeries, 20);
 
-  // Price normalisation — map price values within the visible window
-  // to 0..1 so the overlay shares the score Y-axis without a second
-  // axis. Captures the SHAPE of price motion, which is what the
-  // user wants when comparing with score motion (not absolute level).
-  const priceNormByDate = useMemo(() => {
-    if (priceByDate.size === 0 || filteredData.length === 0) {
-      return new Map<string, number>();
-    }
-    const prices: number[] = [];
+  // Price overlay normalisation. Two side effects of the window-bound
+  // min-max approach previously: (1) the line crashed to 0 / shot to
+  // 1 making it visually dominate, (2) users couldn't tell whether
+  // price moved 1% or 50%. We now compute BOTH:
+  //   • priceNormByDate — for the line position (still 0..1 over the
+  //     score axis, but inset to the 0.05..0.95 band so it doesn't
+  //     touch the y-axis extremes)
+  //   • priceReturnByDate — % change from window's first price, for
+  //     the tooltip and the new 'period return' badge
+  const { priceNormByDate, priceWindowReturn } = useMemo(() => {
+    const emptyResult = {
+      priceNormByDate: new Map<string, number>(),
+      priceWindowReturn: null as number | null,
+    };
+    if (priceByDate.size === 0 || filteredData.length === 0) return emptyResult;
+    const samples: Array<{ date: string; price: number }> = [];
     for (const p of filteredData) {
       const v = priceByDate.get(p.date.slice(0, 10));
-      if (v != null) prices.push(v);
+      if (v != null) samples.push({ date: p.date, price: v });
     }
-    if (prices.length === 0) return new Map<string, number>();
+    if (samples.length === 0) return emptyResult;
+    const prices = samples.map((s) => s.price);
     const min = Math.min(...prices);
     const max = Math.max(...prices);
     const range = max - min || 1;
-    const m = new Map<string, number>();
-    for (const p of filteredData) {
-      const v = priceByDate.get(p.date.slice(0, 10));
-      if (v != null) m.set(p.date, (v - min) / range);
+    const start = prices[0];
+    const end = prices[prices.length - 1];
+    const norm = new Map<string, number>();
+    for (const s of samples) {
+      // Inset to 0.05..0.95 so the line doesn't sit on the X-axis or top edge.
+      norm.set(s.date, 0.05 + ((s.price - min) / range) * 0.90);
     }
-    return m;
+    const windowReturn = ((end - start) / start) * 100;
+    return {
+      priceNormByDate: norm,
+      priceWindowReturn: windowReturn,
+    };
   }, [priceByDate, filteredData]);
 
-  // Annualised volatility of the score series — daily stdev × √252.
-  // Capped at the standard 0~1 score range so a freshly-spiking
-  // series doesn't overstate its own variability.
+  // Score variability — raw standard deviation expressed as % of the
+  // full score range (0..1). For a [0,1]-bounded score, annualised
+  // log-return volatility doesn't apply; instead we report 'how much
+  // does the daily score swing relative to the full range':
+  //   stdev 0.05 → '변동성 5%'  (small swings)
+  //   stdev 0.20 → '변동성 20%' (volatile)
+  //   stdev 0.40 → '변동성 40%' (extreme — uses most of the [0,1] band)
   const scoreVolatility = useMemo(() => {
     if (actualSeries.length < 5) return null;
     const valid = actualSeries.filter((v): v is number => v != null);
     if (valid.length < 5) return null;
     const mean = valid.reduce((a, b) => a + b, 0) / valid.length;
     const variance = valid.reduce((acc, v) => acc + (v - mean) ** 2, 0) / valid.length;
-    const dailyStd = Math.sqrt(variance);
-    return Math.min(1, dailyStd * Math.sqrt(252));
+    return Math.min(1, Math.sqrt(variance));   // raw stdev, capped at 1.0
   }, [actualSeries]);
 
   // Merge into one array per Recharts.
@@ -507,21 +524,42 @@ export function ScoreTrend({
            </button>
          )}
        </div>
-       <div className="flex items-center gap-3">
-         {/* Volatility badge */}
+       <div className="flex items-center gap-3 flex-wrap">
+         {/* Price window-return badge — only shown when 주가 비교 ON */}
+         {showPrice && priceWindowReturn !== null && (
+           <span
+             className="text-[10px] text-txt-muted"
+             title="선택 기간 첫 거래일 대비 가장 최근 거래일의 종가 변동률"
+           >
+             기간 수익률{' '}
+             <span
+               className="font-mono tabular-nums font-medium"
+               style={{
+                 color:
+                   priceWindowReturn >= 0
+                     ? 'rgb(72,166,152)'
+                     : 'rgb(220,72,72)',
+               }}
+             >
+               {priceWindowReturn >= 0 ? '+' : ''}
+               {priceWindowReturn.toFixed(2)}%
+             </span>
+           </span>
+         )}
+         {/* Variability badge — stdev × 100, capped 0~100% */}
          {scoreVolatility !== null && (
            <span
              className="text-[10px] text-txt-muted"
-             title="점수 시계열의 연환산 변동성 (daily stdev × √252). 높을수록 신호 변동이 심함."
+             title="점수 시계열의 표준편차 (× 100). 5% = 안정, 20%+ = 변동 큼."
            >
              변동성{' '}
              <span
                className="font-mono tabular-nums font-medium"
                style={{
                  color:
-                   scoreVolatility >= 0.6
+                   scoreVolatility >= 0.20
                      ? 'rgb(220,72,72)'
-                     : scoreVolatility >= 0.3
+                     : scoreVolatility >= 0.10
                        ? 'rgb(233,178,71)'
                        : 'var(--text-primary)',
                }}
@@ -539,7 +577,7 @@ export function ScoreTrend({
      {mae !== null && mape !== null && (
        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[color:var(--text-secondary)]">
          <span className="text-txt-muted">
-           실측 vs 예측 (최근 {overlap.length}일):
+           예측 적합도 ({overlap.length}일 비교):
          </span>
          <span>
            MAE <span className="text-[color:var(--text-primary)] font-mono tabular-nums font-medium">{mae.toFixed(3)}</span>
