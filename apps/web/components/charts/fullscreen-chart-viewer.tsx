@@ -200,6 +200,9 @@ interface RecentCompare {
   /** Human-readable label (한글 종목명 또는 지수명). Falls back to
    *  symbol when no name could be resolved. */
   label: string;
+  /** Which chart API to hit. Stored so a re-applied recent doesn't
+   *  have to re-resolve. */
+  market: 'kr' | 'us';
 }
 
 const RECENTS_KEY = 'chart:fs:recent-compares';
@@ -213,7 +216,11 @@ function loadRecents(): RecentCompare[] {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
     return (parsed as RecentCompare[]).filter(
-      (r) => r && typeof r.symbol === 'string' && typeof r.label === 'string',
+      (r) =>
+        r &&
+        typeof r.symbol === 'string' &&
+        typeof r.label === 'string' &&
+        (r.market === 'kr' || r.market === 'us'),
     ).slice(0, RECENTS_MAX);
   } catch {
     return [];
@@ -227,6 +234,55 @@ function saveRecents(list: RecentCompare[]) {
   } catch {
     /* quota / disabled — silent */
   }
+}
+
+/** Resolve ANY compare-input string to a chart-ready descriptor:
+ *  what symbol to fetch, which API (kr/us), and a 한글 label to
+ *  surface in the legend. Handles:
+ *    • '^KS11', '^IXIC' …            → US chart API for indices
+ *    • '005930'                       → KR chart API, name via stocks DB
+ *    • '삼성전자' / '코스피'           → /api/stocks/search → resolve ticker
+ *    • 'SPY', 'AAPL'                  → US chart API as-is
+ *  Returns null when nothing usable was found. */
+async function resolveCompare(
+  raw: string,
+): Promise<{ symbol: string; label: string; market: 'kr' | 'us' } | null> {
+  const q = raw.trim();
+  if (!q) return null;
+  const upper = q.toUpperCase();
+
+  // Built-in indices / ETFs first — these aren't in our stocks table.
+  if (SYMBOL_LABEL_MAP[q]) {
+    return { symbol: q, label: SYMBOL_LABEL_MAP[q], market: q.startsWith('^KS') || q.startsWith('^KQ') ? 'kr' : 'us' };
+  }
+  if (SYMBOL_LABEL_MAP[upper]) {
+    return { symbol: upper, label: SYMBOL_LABEL_MAP[upper], market: upper.startsWith('^KS') || upper.startsWith('^KQ') ? 'kr' : 'us' };
+  }
+  // Generic '^XXX' tag → US chart with the symbol as label.
+  if (/^\^[A-Z0-9]+$/i.test(q)) {
+    return { symbol: upper, label: upper, market: 'us' };
+  }
+  // 6-digit Korean ticker → kr-chart, name from stocks master.
+  if (/^\d{6}$/.test(q)) {
+    const label = await resolveLabel(q);
+    return { symbol: q, label, market: 'kr' };
+  }
+  // ASCII-only short string → likely US symbol (SPY, AAPL).
+  if (/^[A-Za-z]{1,5}$/.test(q)) {
+    return { symbol: upper, label: upper, market: 'us' };
+  }
+  // Anything else (Korean name, longer text) → autocomplete search.
+  try {
+    const r = await fetch(`/api/stocks/search?q=${encodeURIComponent(q)}`);
+    const j = (await r.json()) as { items?: Array<{ ticker?: string; name?: string }> };
+    const hit = j.items?.[0];
+    if (hit?.ticker) {
+      return { symbol: hit.ticker, label: hit.name ?? hit.ticker, market: 'kr' };
+    }
+  } catch {
+    /* fall through */
+  }
+  return null;
 }
 
 /** Resolve a ticker/index symbol to a 한글 label. Indices use the
@@ -286,32 +342,45 @@ export function FullscreenChartViewer({
   const [showMa, setShowMa] = useState<Record<5 | 20 | 60 | 120, boolean>>({
     5: false, 20: true, 60: true, 120: false,
   });
-  // Compare overlay — default to KOSPI for KR, S&P for US.
+  // Compare overlay — user input free-text (한글 이름·티커·지수 모두 허용).
+  // Resolved form drives both the chart fetch and the legend label.
   const [compareSymbol, setCompareSymbol] = useState<string>('');
   const [compareEnabled, setCompareEnabled] = useState(false);
+  const [compareResolved, setCompareResolved] = useState<
+    { symbol: string; label: string; market: 'kr' | 'us' } | null
+  >(null);
+  const [compareError, setCompareError] = useState<string | null>(null);
   // Recent-compares dropdown — populated from localStorage on mount,
-  // re-saved whenever a new compare is activated. Shows on input
-  // focus or hover so the user can re-use a previous comparison in
-  // one click instead of retyping the ticker.
+  // re-saved whenever a new compare is activated.
   const [recents, setRecents] = useState<RecentCompare[]>([]);
   const [recentsOpen, setRecentsOpen] = useState(false);
   useEffect(() => {
     setRecents(loadRecents());
   }, []);
 
-  // When user activates compare with a valid symbol, push it to the
-  // recents list (deduped, head-of-list, max 5). Display label is
-  // resolved via the indices map + stocks table lookup.
+  // Resolve free-text input → chart-ready descriptor whenever the
+  // user activates 비교 ON. Handles 한글 이름 via /api/stocks/search.
   useEffect(() => {
-    if (!compareEnabled || !compareSymbol.trim()) return;
-    const sym = compareSymbol.trim();
+    if (!compareEnabled || !compareSymbol.trim()) {
+      setCompareResolved(null);
+      setCompareError(null);
+      return;
+    }
     let cancelled = false;
-    void resolveLabel(sym).then((label) => {
+    setCompareError(null);
+    void resolveCompare(compareSymbol).then((res) => {
       if (cancelled) return;
+      if (!res) {
+        setCompareResolved(null);
+        setCompareError('종목을 찾을 수 없습니다');
+        return;
+      }
+      setCompareResolved(res);
+      // Push to recents (deduped, head-of-list, max 5).
       setRecents((prev) => {
         const next = [
-          { symbol: sym, label },
-          ...prev.filter((r) => r.symbol !== sym),
+          { symbol: res.symbol, label: res.label, market: res.market },
+          ...prev.filter((r) => r.symbol !== res.symbol),
         ].slice(0, RECENTS_MAX);
         saveRecents(next);
         return next;
@@ -323,7 +392,11 @@ export function FullscreenChartViewer({
   }, [compareEnabled, compareSymbol]);
 
   const pickRecent = (r: RecentCompare) => {
-    setCompareSymbol(r.symbol);
+    // Show the 한글 label in the input so the user reads what they
+    // picked; the resolution effect re-confirms but immediately
+    // populating compareResolved avoids the search round-trip flash.
+    setCompareSymbol(r.label);
+    setCompareResolved({ symbol: r.symbol, label: r.label, market: r.market });
     setCompareEnabled(true);
     setRecentsOpen(false);
   };
@@ -360,25 +433,33 @@ export function FullscreenChartViewer({
     return () => { cancelled = true; };
   }, [ticker, symbol, variant, apiPeriod]);
 
+  // Compare chart fetch — keyed on the RESOLVED symbol/market, not the
+  // raw input. This is how '삼성전자' (Korean name) ends up hitting
+  // /api/kr-chart?ticker=005930 instead of being routed to us-chart.
   useEffect(() => {
-    if (!compareEnabled || !compareSymbol) {
+    if (!compareEnabled || !compareResolved) {
       setCompareRaw([]);
       return;
     }
     let cancelled = false;
-    const isKrCompare = /^\d{6}$/.test(compareSymbol) || compareSymbol.startsWith('^KS');
-    const url = isKrCompare
-      ? `/api/kr-chart?ticker=${encodeURIComponent(compareSymbol)}&period=${apiPeriod}`
-      : `/api/us-chart?symbol=${encodeURIComponent(compareSymbol)}&period=${apiPeriod}`;
+    const { symbol, market } = compareResolved;
+    const url = market === 'kr'
+      ? `/api/kr-chart?ticker=${encodeURIComponent(symbol)}&period=${apiPeriod}`
+      : `/api/us-chart?symbol=${encodeURIComponent(symbol)}&period=${apiPeriod}`;
     fetch(url, { cache: 'no-store' })
       .then((r) => r.json())
-      .then((j: { candles?: RawCandle[] }) => {
+      .then((j: { candles?: RawCandle[]; error?: string }) => {
         if (cancelled) return;
+        if (j.error) {
+          setCompareError(`비교 데이터 로드 실패: ${j.error}`);
+          setCompareRaw([]);
+          return;
+        }
         setCompareRaw(j.candles ?? []);
       })
       .catch(() => !cancelled && setCompareRaw([]));
     return () => { cancelled = true; };
-  }, [compareEnabled, compareSymbol, apiPeriod]);
+  }, [compareEnabled, compareResolved, apiPeriod]);
 
   // ── Transform ────────────────────────────────────────────────
   const data: Row[] = useMemo(() => {
@@ -536,8 +617,8 @@ export function FullscreenChartViewer({
   const volumeHeight = 110;
   const rsiHeight = 110;
 
-  const compareLabel = compareEnabled && compareSymbol
-    ? compareSymbol.toUpperCase()
+  const compareLabel = compareEnabled && compareResolved
+    ? compareResolved.label
     : '';
 
   return (
@@ -782,9 +863,19 @@ export function FullscreenChartViewer({
           >
             비교 ON
           </ToolbarToggle>
-          {compareEnabled && compareLabel && (
+          {compareEnabled && compareLabel && !compareError && (
             <span className="text-[10px] text-status-info font-medium">
               vs {compareLabel}
+              {compareResolved && compareResolved.label !== compareResolved.symbol && (
+                <span className="text-txt-muted font-mono ml-1">
+                  ({compareResolved.symbol})
+                </span>
+              )}
+            </span>
+          )}
+          {compareEnabled && compareError && (
+            <span className="text-[10px] text-status-danger font-medium" title={compareError}>
+              ⚠ {compareError}
             </span>
           )}
         </div>
