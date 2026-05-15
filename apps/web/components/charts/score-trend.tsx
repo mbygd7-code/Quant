@@ -13,6 +13,7 @@ import {
   Legend,
 } from 'recharts';
 import { ClientOnly } from './client-only';
+import { cn } from '@/lib/utils';
 
 interface Point {
   date: string;
@@ -224,18 +225,115 @@ export function ScoreTrend({
         100
       : null;
 
+  // Directional accuracy — of the day-to-day deltas where both actual
+  // and predicted exist, what % had matching sign? This is the metric
+  // that actually tells you if the model "predicts up vs down" rather
+  // than just hugging the mean. A flat model can have low MAPE but
+  // ~50% directional accuracy (coin flip).
+  const directionalAcc = (() => {
+    if (overlap.length < 2) return null;
+    let matches = 0;
+    let total = 0;
+    for (let i = 1; i < overlap.length; i++) {
+      const prevActual = overlap[i - 1].actual as number;
+      const prevPred = overlap[i - 1].predicted as number;
+      const curActual = overlap[i].actual as number;
+      const curPred = overlap[i].predicted as number;
+      const actualDelta = curActual - prevActual;
+      const predDelta = curPred - prevPred;
+      // Skip flat days where direction is undefined (|delta| < 0.005)
+      if (Math.abs(actualDelta) < 0.005 || Math.abs(predDelta) < 0.005) continue;
+      total += 1;
+      if ((actualDelta > 0) === (predDelta > 0)) matches += 1;
+    }
+    return total > 0 ? (matches / total) * 100 : null;
+  })();
+
+  // Composite reliability — weighted blend of three signals, each in [0,100].
+  //  • sample size: how much overlap we have (0 → 0%, 14+ → 100%)
+  //  • MAPE inverse: 0% MAPE → 100, 30%+ MAPE → 0
+  //  • directional accuracy: as-is in 0..100
+  const reliability = (() => {
+    if (overlap.length === 0 || mape == null) return null;
+    const sampleSignal = Math.min(100, (overlap.length / 14) * 100);
+    const mapeSignal = Math.max(0, 100 - (mape / 30) * 100);
+    const dirSignal = directionalAcc ?? 50;
+    return 0.3 * sampleSignal + 0.35 * mapeSignal + 0.35 * dirSignal;
+  })();
+
+  const reliabilityTier =
+    reliability == null
+      ? null
+      : reliability >= 70
+        ? 'high'
+        : reliability >= 50
+          ? 'medium'
+          : 'low';
+
   return (
     <div className="w-full">
      {mae !== null && mape !== null && (
-       <div className="mb-1 flex items-center gap-3 text-[11px] text-[color:var(--text-secondary)]">
-         <span>
-           실측 vs 예측 적합도 (최근 {overlap.length}일):
+       <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[color:var(--text-secondary)]">
+         <span className="text-txt-muted">
+           실측 vs 예측 (최근 {overlap.length}일):
          </span>
          <span>
-           MAE <span className="text-[color:var(--text-primary)] font-medium">{mae.toFixed(3)}</span>
+           MAE <span className="text-[color:var(--text-primary)] font-mono tabular-nums font-medium">{mae.toFixed(3)}</span>
          </span>
          <span>
-           MAPE <span className="text-[color:var(--text-primary)] font-medium">{mape.toFixed(1)}%</span>
+           MAPE <span className="text-[color:var(--text-primary)] font-mono tabular-nums font-medium">{mape.toFixed(1)}%</span>
+         </span>
+         {directionalAcc !== null && (
+           <span>
+             방향 일치{' '}
+             <span
+               className="font-mono tabular-nums font-medium"
+               style={{
+                 color:
+                   directionalAcc >= 60
+                     ? 'rgb(72,166,152)'
+                     : directionalAcc < 50
+                       ? 'rgb(220,72,72)'
+                       : 'var(--text-primary)',
+               }}
+               title="day-over-day 점수 변동 방향이 일치한 비율 (50% = coin flip)"
+             >
+               {directionalAcc.toFixed(0)}%
+             </span>
+           </span>
+         )}
+         {reliability !== null && reliabilityTier && (
+           <span
+             className={cn(
+               'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ml-auto',
+               reliabilityTier === 'high'
+                 ? 'bg-status-success/15 text-status-success'
+                 : reliabilityTier === 'medium'
+                   ? 'bg-status-warning/15 text-status-warning'
+                   : 'bg-status-danger/15 text-status-danger',
+             )}
+             title="샘플수(30%) + MAPE(35%) + 방향일치(35%) 가중합 신뢰도"
+           >
+             신뢰도{' '}
+             {reliabilityTier === 'high'
+               ? '높음'
+               : reliabilityTier === 'medium'
+                 ? '보통'
+                 : '낮음'}{' '}
+             ({Math.round(reliability)})
+           </span>
+         )}
+       </div>
+     )}
+
+     {/* Low-reliability banner — informational, doesn't hide the chart */}
+     {reliabilityTier === 'low' && (
+       <div className="mb-2 rounded-md border border-status-warning/30 bg-status-warning/[0.06] px-3 py-2 text-[11px] text-status-warning flex items-start gap-2">
+         <span aria-hidden>ⓘ</span>
+         <span className="leading-relaxed">
+           예측 신뢰도 낮음 — 학습 데이터 부족 또는 모델이 평균 회귀에 가까운 상태입니다.
+           {overlap.length < 7 && ' 데이터 누적 후 다시 평가하세요.'}
+           {directionalAcc !== null && directionalAcc < 50 && ' 방향성 예측이 coin flip 이하입니다.'}
          </span>
        </div>
      )}
