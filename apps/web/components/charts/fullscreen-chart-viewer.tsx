@@ -169,6 +169,21 @@ const CROSSHAIR_CURSOR = {
   strokeDasharray: '4 3',
 } as const;
 
+/** Predefined volume-pane size tiers. Each value lines up with one
+ *  of the progressive-disclosure breakpoints in the volume pane so
+ *  clicking a tier reliably unlocks the next layer of indicators:
+ *    S  (90)  → bars + 평균/상대 거래량
+ *    M  (170) → + 매수/매도 % + Volume MA(20)
+ *    L  (240) → + OBV 라인 + OBV Δ 배지
+ *    XL (380) → 모든 지표 여유롭게 표시
+ */
+const VOLUME_TIERS = [
+  { id: 'S',  value: 90,  title: '작게 (90px) — 기본 막대 + 평균/상대 거래량' },
+  { id: 'M',  value: 170, title: '보통 (170px) — + 매수/매도 비율 + Volume MA20' },
+  { id: 'L',  value: 240, title: '크게 (240px) — + OBV 라인 + OBV Δ' },
+  { id: 'XL', value: 380, title: '최대 (380px) — 전체 지표 + 여유 공간' },
+] as const;
+
 const PERIODS: { id: FsPeriod; label: string; hint?: string }[] = [
   { id: '1d', label: '1D' },
   { id: '5d', label: '5D' },
@@ -1340,9 +1355,53 @@ export function FullscreenChartViewer({
                 </div>
               </div>
 
-              {/* Volume container — relative so we can overlay the
-                  stats badge in the top-left corner. */}
-              <div className="relative">
+              {/* Volume container — `group` so the tier-selector
+                  appears only on hover; `relative` so overlays
+                  position correctly. */}
+              <div className="relative group">
+                {/* Quick-resize tier selector — appears at top-center
+                    on hover. Click any tier to jump straight to that
+                    size; for fine tuning the drag handle above still
+                    works. The currently-active tier (the one closest
+                    to volumeHeight) is highlighted in brand purple. */}
+                <div
+                  className={cn(
+                    'absolute top-1 left-1/2 -translate-x-1/2 z-20',
+                    'opacity-0 group-hover:opacity-100 transition-opacity duration-150',
+                    'flex items-center gap-0.5 px-1 py-0.5 rounded-md',
+                    'bg-bg-secondary/95 backdrop-blur-sm',
+                    'border border-border-default/60 shadow-md',
+                  )}
+                  role="group"
+                  aria-label="거래량 페인 크기"
+                >
+                  {VOLUME_TIERS.map((t) => {
+                    // Active = the tier with smallest absolute distance.
+                    const distances = VOLUME_TIERS.map((tt) =>
+                      Math.abs(volumeHeight - tt.value),
+                    );
+                    const minIdx = distances.indexOf(Math.min(...distances));
+                    const isActive = VOLUME_TIERS[minIdx].id === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setVolumeHeight(t.value)}
+                        title={t.title}
+                        aria-pressed={isActive}
+                        className={cn(
+                          'px-2.5 py-0.5 text-[10px] font-semibold rounded transition-colors',
+                          isActive
+                            ? 'bg-brand-purple text-white shadow-sm'
+                            : 'text-txt-secondary hover:text-txt-primary hover:bg-bg-tertiary/60',
+                        )}
+                      >
+                        {t.id}
+                      </button>
+                    );
+                  })}
+                </div>
+
                 {/* Stats overlay (progressive disclosure) */}
                 {volumeStats && volumeHeight >= 90 && (
                   <div className="pointer-events-none absolute top-1 left-2 z-10 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[10px]">
