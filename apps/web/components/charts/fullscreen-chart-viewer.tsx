@@ -164,6 +164,12 @@ interface Props {
   ticker: string;
   variant: 'kr' | 'us';
   symbol?: string;
+  /** Display name (e.g. '삼성SDI'). Server-resolved from the `stocks`
+   *  table when available; falls back to `null` and we just show the
+   *  ticker. */
+  stockName?: string | null;
+  /** Sector for an optional small badge in the header. */
+  sector?: string | null;
   initialPeriod?: FsPeriod;
   initialMode?: FsMode;
 }
@@ -172,6 +178,8 @@ export function FullscreenChartViewer({
   ticker,
   variant,
   symbol,
+  stockName,
+  sector,
   initialPeriod = '3m',
   initialMode = 'candle',
 }: Props) {
@@ -354,9 +362,13 @@ export function FullscreenChartViewer({
 
   return (
     <div className="space-y-3">
-      {/* ── Header bar ──────────────────────────────────────── */}
+      {/* ── Header bar ──────────────────────────────────────────
+          Layout: [뒤로] [종목명 + 티커 + 현재가 + 등락 + 섹터배지] ⇢ [OHLV 통계]
+          Stock name and live price/change sit INLINE so the user
+          immediately sees what they're looking at. OHLV bar slides
+          to the right and only shows period-aggregated stats. */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <Link
             href={`/stocks/${variant}/${ticker}`}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-border-subtle/40 bg-bg-secondary/40 hover:bg-bg-tertiary/60 hover:border-brand-purple/40 text-[12px] font-medium text-txt-secondary hover:text-brand-purple transition-colors"
@@ -368,33 +380,63 @@ export function FullscreenChartViewer({
             </svg>
             뒤로
           </Link>
-          <div className="flex items-baseline gap-2">
-            <h1 className="text-lg font-bold tracking-tight">{ticker}</h1>
-            <span className="text-xs text-txt-muted uppercase">{variant} 차트</span>
+
+          {/* Identity + live price — one continuous baseline */}
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <h1 className="text-xl font-bold tracking-tight">
+              {stockName ?? ticker}
+            </h1>
+            {stockName && (
+              <span className="text-[12px] font-mono text-txt-muted tabular-nums">
+                {ticker}
+              </span>
+            )}
+            {sector && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-brand-purple/10 text-brand-purple border border-brand-purple/20">
+                {sector}
+              </span>
+            )}
+
+            {/* Live price + change directly next to the name */}
+            {!loading && !error && last && (
+              <>
+                <span
+                  className="font-mono text-xl font-bold tabular-nums"
+                  style={{ color: lineColor }}
+                >
+                  {fmt(last.close)}
+                </span>
+                {change != null && changePct != null && (
+                  <span
+                    className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded-md text-[12px] font-mono tabular-nums font-semibold"
+                    style={{
+                      color: lineColor,
+                      background: `${lineColor}1A`,           // ~10% tint
+                      border: `1px solid ${lineColor}33`,    // ~20% border
+                    }}
+                    title={`기간(${period.toUpperCase()}) 시초가 대비 변동`}
+                  >
+                    <span aria-hidden>{change >= 0 ? '▲' : '▼'}</span>
+                    {change >= 0 ? '+' : ''}{fmt(change)}
+                    <span className="opacity-80">
+                      ({changePct >= 0 ? '+' : ''}{changePct.toFixed(2)}%)
+                    </span>
+                  </span>
+                )}
+              </>
+            )}
           </div>
         </div>
 
         {!loading && !error && last && (
-          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 px-3 py-2 rounded-md bg-bg-secondary/40 border border-border-subtle/40">
-            <div className="flex items-baseline gap-2">
-              <span className="font-mono text-xl font-bold tabular-nums" style={{ color: lineColor }}>
-                {fmt(last.close)}
-              </span>
-              {change != null && changePct != null && (
-                <span className="text-[12px] font-mono tabular-nums font-semibold" style={{ color: lineColor }}>
-                  {change >= 0 ? '+' : ''}{fmt(change)} ({changePct >= 0 ? '+' : ''}{changePct.toFixed(2)}%)
-                </span>
-              )}
-            </div>
-            <div
-              className="flex items-baseline gap-3 text-[11px] tabular-nums"
-              title={`선택 기간(${period.toUpperCase()}) 기준 — O=시초가, H=최고가, L=최저가, V=누적 거래량`}
-            >
-              <span className="text-txt-muted">O <span className="text-txt-primary font-mono">{fmt(periodOpen)}</span></span>
-              <span className="text-txt-muted">H <span className="font-mono text-status-success">{fmt(periodHigh)}</span></span>
-              <span className="text-txt-muted">L <span className="font-mono text-status-danger">{fmt(periodLow)}</span></span>
-              <span className="text-txt-muted">V <span className="text-txt-primary font-mono">{fmtVol(periodVolumeSum)}</span></span>
-            </div>
+          <div
+            className="flex items-baseline gap-3 text-[11px] tabular-nums px-3 py-2 rounded-md bg-bg-secondary/40 border border-border-subtle/40"
+            title={`선택 기간(${period.toUpperCase()}) 기준 — O=시초가, H=최고가, L=최저가, V=누적 거래량`}
+          >
+            <span className="text-txt-muted">O <span className="text-txt-primary font-mono">{fmt(periodOpen)}</span></span>
+            <span className="text-txt-muted">H <span className="font-mono text-status-success">{fmt(periodHigh)}</span></span>
+            <span className="text-txt-muted">L <span className="font-mono text-status-danger">{fmt(periodLow)}</span></span>
+            <span className="text-txt-muted">V <span className="text-txt-primary font-mono">{fmtVol(periodVolumeSum)}</span></span>
           </div>
         )}
       </div>

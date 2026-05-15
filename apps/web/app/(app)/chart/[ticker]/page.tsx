@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 
 import { FullscreenChartViewer, type FsMode, type FsPeriod } from '@/components/charts/fullscreen-chart-viewer';
+import { getQueryClient } from '@/lib/supabase/query-client';
 
 // Dedicated full-screen chart viewer page. Reuses /api/{kr,us}-chart
 // data feeds the compact StockChart already uses, but renders inside
@@ -46,6 +47,29 @@ export default async function FullscreenChartPage({
     ? (modeParam as FsMode)
     : 'candle';
 
+  // Look up the stock's display name + sector so the header can show
+  // "삼성SDI 098460" instead of the bare ticker. For KR variant we
+  // query the `stocks` table (only watchlist + master rows guaranteed
+  // present). US variant — pass through whatever symbol was given;
+  // a future enhancement can hit the US stocks table similarly.
+  let stockName: string | null = null;
+  let sector: string | null = null;
+  if (variant === 'kr') {
+    try {
+      const sb = await getQueryClient();
+      const { data } = await sb
+        .from('stocks')
+        .select('name, sector')
+        .eq('ticker', ticker)
+        .maybeSingle();
+      stockName = (data?.name as string | undefined) ?? null;
+      sector = (data?.sector as string | undefined) ?? null;
+    } catch {
+      // Silently fall back to ticker-only display — page should still
+      // render even when DB lookup fails.
+    }
+  }
+
   return (
     <div className="space-y-4 max-w-[1600px] mx-auto">
       <Suspense
@@ -57,6 +81,8 @@ export default async function FullscreenChartPage({
           ticker={ticker}
           variant={variant}
           symbol={search.symbol}
+          stockName={stockName}
+          sector={sector}
           initialPeriod={period}
           initialMode={mode}
         />
