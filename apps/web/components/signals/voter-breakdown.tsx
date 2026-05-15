@@ -836,6 +836,12 @@ export function VoterBreakdownCard({ data }: { data: VoterBreakdown }) {
   const strengthPct =
     weightedScore != null ? Math.round(((weightedScore + 2) / 4) * 100) : null;
   const activeCount = data.voters.filter((v) => Math.abs(v.score) >= 0.1).length;
+  // Total possible voter slots in the M4 system. Used to show
+  // 'X/6 분석 완료' so the user can see when most voters skipped
+  // due to insufficient data rather than disagreed.
+  const TOTAL_VOTER_SLOTS = 6;
+  const analyzedCount = data.voters.length;
+  const skippedCount = Math.max(0, TOTAL_VOTER_SLOTS - analyzedCount);
 
   const confTone =
     confPct == null
@@ -963,9 +969,13 @@ export function VoterBreakdownCard({ data }: { data: VoterBreakdown }) {
               <div className={cn('text-2xl font-bold leading-none mb-1.5', confTone)}>
                 {confPct != null ? `${confPct}%` : '—'}
               </div>
-              <div className="text-[11px] text-txt-muted flex items-baseline gap-1.5">
+              <div className="text-[11px] text-txt-muted flex items-baseline gap-1.5 flex-wrap">
                 <span className="font-mono tabular-nums">
-                  active {activeCount}/{data.voters.length}
+                  분석 {analyzedCount}/{TOTAL_VOTER_SLOTS}명
+                </span>
+                <span>·</span>
+                <span className="font-mono tabular-nums">
+                  active {activeCount}/{analyzedCount}
                 </span>
                 {consensusNote && (
                   <span className={confTone}>· {consensusNote}</span>
@@ -974,8 +984,21 @@ export function VoterBreakdownCard({ data }: { data: VoterBreakdown }) {
             </div>
           </div>
 
+          {/* High-skip-rate warning — emerges when only some voters had
+              enough data. Distinct cause from low confidence: 'most
+              analysts didn't even weigh in this cycle' vs 'analysts
+              weighed in but disagreed'. */}
+          {skippedCount >= 3 && (
+            <div className="mt-3.5 pt-3 border-t border-border-subtle/40 flex items-start gap-2 text-xs text-status-warning">
+              <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <div className="leading-relaxed">
+                <strong>{skippedCount}명의 분석가가 데이터 부족으로 미참여</strong>했습니다 ({analyzedCount}/{TOTAL_VOTER_SLOTS}명만 분석). 종목 분기 실적, 일봉 데이터, earnings 캘린더 등이 채워지면 다음 사이클부터 합류합니다.
+              </div>
+            </div>
+          )}
+
           {/* Low-confidence warning — embedded inside the hero block */}
-          {confPct != null && confPct < 50 && (
+          {confPct != null && confPct < 50 && skippedCount < 3 && (
             <div className="mt-3.5 pt-3 border-t border-border-subtle/40 flex items-start gap-2 text-xs text-status-warning">
               <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
               <div className="leading-relaxed">
