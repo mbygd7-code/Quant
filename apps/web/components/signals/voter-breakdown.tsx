@@ -1,40 +1,35 @@
 import {
   Activity,
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   BarChart3,
   Cpu,
   Globe,
   Info,
+  Minus,
   ShieldCheck,
+  Sparkles,
   Waves,
 } from 'lucide-react';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { gradeToLabel, type SignalGrade } from '@/lib/signal-resolver';
 import type { VoterBreakdown, VoterRow } from '@/lib/queries/voters';
 
-/**
- * Per-voter metadata — name, domain, accent color, icon, score-band
- * interpretation. Centralised so the spectrum + card both consume the
- * same source of truth.
- */
+// ─── Voter metadata ────────────────────────────────────────────────
+
 interface VoterMeta {
   name: string;
   domain: string;
-  /** One-line "what this character measures". Shown under the name. */
   philosophy: string;
-  /** Lucide icon — picked to evoke the analyst's discipline. */
   icon: React.ComponentType<{ className?: string }>;
-  /** Hex for the avatar + bar accent. Distinct hues, all readable on the
-   *  light + dark themes. */
   accent: string;
-  /** Real-world inspiration — shown in the hover bio popover. */
   realName: string;
   era: string;
   bio: string;
-  /** Concrete inputs / methods this voter uses in the QuantSignal pipeline. */
   inputs: string[];
 }
 
@@ -46,8 +41,7 @@ const VOTER_META: Record<string, VoterMeta> = {
     era: '대공황 — 가치투자의 아버지',
     bio:
       '《Security Analysis》(1934), 《The Intelligent Investor》(1949) 저자. ' +
-      "워런 버핏의 스승. '내재가치 - 시장가격 = 안전마진' 개념을 정립했고, " +
-      'PER × EPS, PBR × BPS의 보수적 minimum을 본질가치로 사용.',
+      "워런 버핏의 스승. '내재가치 - 시장가격 = 안전마진' 개념을 정립.",
     inputs: ['forwardPE / trailingPE', 'PBR · ROE', '매출 · 영업이익 YoY (5분기 평균)'],
   },
   dow: {
@@ -57,7 +51,7 @@ const VOTER_META: Record<string, VoterMeta> = {
     era: '월스트리트 저널 창립자 · 다우 이론',
     bio:
       "월스트리트 저널과 다우존스 지수의 창립자. '추세는 친구다' 격언의 시초. " +
-      "다우 이론(주추세·중기·단기 3축)으로 시장이 명확한 방향성을 갖는다는 가설을 정립.",
+      "다우 이론(주추세·중기·단기 3축)으로 시장 방향성 모델 정립.",
     inputs: ['200일/60일/20일 이평선 정렬', '거래량 5일 vs 20일 비율', '52주 신고가 근접도'],
   },
   turing: {
@@ -67,7 +61,7 @@ const VOTER_META: Record<string, VoterMeta> = {
     era: '컴퓨터 과학 · 기계학습의 시조',
     bio:
       '암호 해독(에니그마)과 보편 튜링 기계로 알고리즘 가능성을 정의. ' +
-      "QuantSignal에서는 '패턴은 수치로 환원된다'는 그의 관점을 따라 순수 기술지표만 사용.",
+      "'패턴은 수치로 환원된다'는 관점을 따라 순수 기술지표만 사용.",
     inputs: ['RSI(14) 과매수/과매도', 'MACD(12,26,9) 크로스오버', 'Bollinger %b(20, 2σ)'],
   },
   shiller: {
@@ -77,20 +71,19 @@ const VOTER_META: Record<string, VoterMeta> = {
     era: '예일대 · 노벨 경제학상(2013)',
     bio:
       '《Irrational Exuberance》(2000)에서 닷컴 버블 경고. ' +
-      'CAPE(Cyclically-Adjusted PE, 10년 평균 수익 기반) 지표 창안. ' +
-      '시장이 기업 펀더멘털이 아닌 군중 심리에 의해 왜곡된다는 입장.',
-    inputs: ['forwardPE vs 섹터 중앙값', '매출 추세 5분기 회귀', '시장 regime (과열/저평가)'],
+      'CAPE(10년 평균 수익 기반 PER) 지표 창안. ' +
+      '시장이 군중 심리에 의해 왜곡된다는 입장.',
+    inputs: ['forwardPE vs 섹터 중앙값', '매출 추세 5분기 회귀', '시장 regime'],
   },
   keynes: {
-    name: 'Keynes', domain: '거시', philosophy: 'USD · 금리 · VIX · WTI · DXY 베타',
+    name: 'Keynes', domain: '거시', philosophy: 'USD · 금리 · VIX · WTI · DXY',
     icon: Globe, accent: '#E59B47',
     realName: 'John Maynard Keynes (1883–1946)',
-    era: '거시경제학의 창시자 · 경제학자 겸 투자자',
+    era: '거시경제학의 창시자 · 펀드매니저',
     bio:
       '《일반이론》(1936) 저자. 정부 재정정책의 효과를 이론화. ' +
-      '본인은 King\'s College Cambridge의 펀드 매니저로 영국채·환율·원자재 활용. ' +
-      "'시장은 당신이 견딜 수 있는 기간보다 더 오래 비합리적일 수 있다' 명언.",
-    inputs: ['USDKRW · ^TNX(미 10년) · ^VIX · DXY · WTI', '종목별 5개 매크로 베타', '5요소 합산 기대 변동 %p'],
+      "King's College Cambridge 펀드 매니저로 영국채·환율·원자재 활용.",
+    inputs: ['USDKRW · ^TNX · ^VIX · DXY · WTI', '종목별 5개 매크로 베타', '5요소 합산 기대 변동 %p'],
   },
   taleb: {
     name: 'Taleb', domain: '리스크', philosophy: '꼬리위험 · 이벤트',
@@ -100,33 +93,31 @@ const VOTER_META: Record<string, VoterMeta> = {
     bio:
       '《Fooled by Randomness》(2001), 《The Black Swan》(2007) 저자. ' +
       '정규분포가 무시하는 꼬리 사건이 시장 손익의 본질이라는 입장. ' +
-      'QuantSignal에서는 severity 1-5 등급 + 자동 강등 룰로 강세 신호에 brake를 검.',
-    inputs: ['90일 최대 drawdown', '90일 변동성 (연환산)', '비대칭 비율 (상승/하락)', 'D-7 earnings 임박'],
+      'severity 1-5 등급 + 자동 강등으로 강세 신호에 brake를 검.',
+    inputs: ['90일 최대 drawdown', '90일 변동성 (연환산)', '비대칭 비율', 'D-7 earnings 임박'],
   },
   simons: {
     name: 'Simons', domain: 'ML', philosophy: 'GBM · 패턴 학습',
     icon: BarChart3, accent: '#6BB6FF',
     realName: 'James Simons (1938–2024)',
-    era: 'Renaissance Technologies · Medallion Fund',
+    era: 'Renaissance Technologies · Medallion',
     bio:
-      "수학자(미분기하학)에서 헤지펀드 매니저로 전향. Medallion 펀드는 30년간 연 66% 수익. " +
-      "'어떤 이론도 시장을 완벽히 설명할 수 없으니, 데이터로 패턴만 찾는다' 입장. " +
-      'QuantSignal에서는 GBM 분류기로 다음날 +1% 확률을 예측.',
-    inputs: ['14개 피처 (기술 + 매크로 + 뉴스)', 'GradientBoosting · CalibratedClassifier', '시계열 GroupKFold 검증'],
+      "수학자에서 헤지펀드 매니저로 전향. Medallion 펀드 30년간 연 66% 수익. " +
+      "'데이터로 패턴만 찾는다' 입장으로 순수 ML 분류기.",
+    inputs: ['14개 피처 (기술+매크로+뉴스)', 'GradientBoosting · 캘리브레이션', 'GroupKFold 시계열 검증'],
   },
 };
 
-/** Color band that mirrors SIGNAL_TONE so the bar/score color reads the
- *  same as the badge color elsewhere on the page. */
+// ─── Color + verdict utilities ─────────────────────────────────────
+
 function scoreColor(score: number): string {
-  if (score >= 1.0)   return 'rgb(72,166,152)';   // success
-  if (score >= 0.3)   return '#7CC97E';
-  if (score >= -0.3)  return 'rgb(170,170,170)';
-  if (score >= -1.0)  return '#E9B247';
-  return 'rgb(220,72,72)';
+  if (score >= 1.0)   return 'rgb(72,166,152)';   // green/success
+  if (score >= 0.3)   return '#7CC97E';            // light green
+  if (score >= -0.3)  return 'rgb(170,170,170)';   // grey/neutral
+  if (score >= -1.0)  return '#E9B247';            // amber
+  return 'rgb(220,72,72)';                          // red
 }
 
-/** Plain-language one-liner for the voter score band. */
 function scoreVerdict(score: number): string {
   if (score >= 1.5)   return '강한 긍정';
   if (score >= 0.5)   return '긍정';
@@ -135,64 +126,82 @@ function scoreVerdict(score: number): string {
   return '강한 부정';
 }
 
-// ─── Sub-components ────────────────────────────────────────────────
+function scoreIcon(score: number) {
+  if (score >= 0.5) return ArrowUp;
+  if (score <= -0.5) return ArrowDown;
+  return Minus;
+}
 
-/** Mini horizontal spectrum: 6 vertical bars, centered at 0, height
- *  proportional to |score|. Color follows scoreColor(). Lets a user
- *  read the consensus shape in 1 second. */
-function VoterSpectrum({ voters }: { voters: VoterRow[] }) {
+// ─── Voter distribution (horizontal bars per voter) ────────────────
+
+/** One-line-per-voter bipolar bars. Replaces the previous vertical
+ *  spectrum bars — horizontal is much easier to scan at a glance and
+ *  carries verdict + name + score on each row. */
+function VoterDistribution({ voters }: { voters: VoterRow[] }) {
   return (
-    <div className="rounded-md border border-border-subtle/60 bg-bg-secondary/40 px-4 py-3">
-      <div className="text-[10px] uppercase tracking-wider text-txt-muted mb-2">
-        voter 분포
+    <section>
+      <div className="flex items-center gap-2 mb-3">
+        <div className="h-px flex-1 bg-border-default/40" />
+        <span className="text-[10px] uppercase tracking-[0.15em] text-txt-muted font-semibold">
+          voter 분포
+        </span>
+        <div className="h-px flex-1 bg-border-default/40" />
       </div>
-      <div className="flex items-end gap-1.5 h-16">
+      <div className="space-y-1.5">
         {voters.map((v) => {
           const meta = VOTER_META[v.agent_name];
           if (!meta) return null;
-          const magnitude = Math.min(1, Math.abs(v.score) / 2); // 0..1
-          const heightPct = 8 + magnitude * 92; // 8% min so 0-voters still visible
-          const isPositive = v.score >= 0;
+          const color = scoreColor(v.score);
+          const verdict = scoreVerdict(v.score);
+          const Trend = scoreIcon(v.score);
+          const barPct = Math.min(100, (Math.abs(v.score) / 2) * 50);
           return (
             <div
               key={v.agent_name}
-              className="flex-1 flex flex-col items-center gap-1 group"
-              title={`${meta.name}: ${v.score.toFixed(2)}`}
+              className="flex items-center gap-3 px-3 py-1.5 rounded-sm hover:bg-bg-secondary/30 transition-colors"
             >
-              <div className="flex-1 w-full flex items-end justify-center relative">
-                {/* Center axis line */}
-                <div className="absolute left-0 right-0 top-1/2 h-px bg-border-default/30" />
-                <div
-                  className={cn(
-                    'w-full rounded-sm transition-all',
-                    isPositive ? 'self-end' : 'self-start',
-                  )}
-                  style={{
-                    height: `${heightPct / 2}%`,
-                    background: scoreColor(v.score),
-                    marginTop: isPositive ? `${50 - heightPct / 2}%` : '50%',
-                  }}
-                />
-              </div>
-              <div className="text-[9px] font-medium text-txt-secondary">
+              <div className="w-20 text-xs font-semibold tabular-nums" style={{ color: meta.accent }}>
                 {meta.name}
               </div>
+              <div className="text-[10px] text-txt-muted w-14 truncate" title={meta.philosophy}>
+                {meta.domain}
+              </div>
+              <div className="flex-1 relative h-2 rounded-full bg-bg-tertiary/30 overflow-hidden">
+                <div className="absolute left-1/2 top-0 bottom-0 w-px bg-border-default/50" />
+                <div
+                  className={cn(
+                    'absolute top-0 bottom-0 rounded-full transition-all',
+                    v.score >= 0 ? 'left-1/2' : 'right-1/2',
+                  )}
+                  style={{ width: `${barPct}%`, background: color }}
+                />
+              </div>
               <div
-                className="text-[10px] font-mono tabular-nums"
-                style={{ color: scoreColor(v.score) }}
+                className="flex items-center gap-1 text-xs font-mono tabular-nums w-16 justify-end"
+                style={{ color }}
               >
-                {v.score >= 0 ? '+' : ''}
-                {v.score.toFixed(1)}
+                <Trend className="h-3 w-3 shrink-0" />
+                <span className="font-semibold">
+                  {v.score >= 0 ? '+' : ''}
+                  {v.score.toFixed(2)}
+                </span>
+              </div>
+              <div
+                className="text-[10px] w-14 text-right font-medium"
+                style={{ color }}
+              >
+                {verdict}
               </div>
             </div>
           );
         })}
       </div>
-    </div>
+    </section>
   );
 }
 
-/** Individual voter card with avatar, score, micro-bar, narrative. */
+// ─── Voter card with hover bio ─────────────────────────────────────
+
 function VoterCard({
   voter,
   weight,
@@ -207,75 +216,93 @@ function VoterCard({
   const verdict = scoreVerdict(voter.score);
   const barPct = Math.min(100, (Math.abs(voter.score) / 2) * 50);
   return (
-    <div className="rounded-md border border-border-subtle/60 bg-bg-secondary/40 p-3 hover:border-border-default/60 transition-colors">
-      {/* Top: avatar + name + domain */}
-      <div className="flex items-start gap-2.5 mb-2">
-        {/* Avatar with hover bio popover. Pure CSS — no Radix needed. */}
+    <div className="rounded-lg border border-border-subtle/50 bg-bg-secondary/30 p-3.5 hover:border-border-default/70 hover:bg-bg-secondary/50 transition-all">
+      {/* Header row: avatar + name + weight */}
+      <div className="flex items-start gap-3 mb-2.5">
         <div className="relative shrink-0 group/avatar">
           <button
             type="button"
             aria-label={`${meta.name} 프로필`}
-            className="h-9 w-9 rounded-full flex items-center justify-center transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-brand-purple/50"
+            className="h-10 w-10 rounded-full flex items-center justify-center transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-brand-purple/50"
             style={{
-              background: `${meta.accent}22`,
+              background: `${meta.accent}1F`,
               color: meta.accent,
+              border: `1px solid ${meta.accent}40`,
             }}
           >
             <Icon className="h-4 w-4" />
           </button>
-          {/* Bio popover — appears on hover/focus of the avatar */}
+          {/* Bio popover */}
           <div
-            className="absolute left-0 top-full mt-1 z-30 w-72 rounded-md border border-border-default bg-bg-secondary p-3 shadow-lg opacity-0 invisible group-hover/avatar:opacity-100 group-hover/avatar:visible group-focus-within/avatar:opacity-100 group-focus-within/avatar:visible transition-opacity duration-150 pointer-events-none"
+            className="absolute left-0 top-full mt-1.5 z-40 w-80 rounded-lg border border-border-default bg-bg-secondary p-3.5 shadow-xl opacity-0 invisible group-hover/avatar:opacity-100 group-hover/avatar:visible group-focus-within/avatar:opacity-100 group-focus-within/avatar:visible transition-all duration-150 pointer-events-none"
             role="tooltip"
           >
-            <div
-              className="text-xs font-semibold mb-0.5"
-              style={{ color: meta.accent }}
-            >
-              {meta.realName}
+            <div className="flex items-center gap-2 mb-2">
+              <div
+                className="h-6 w-6 rounded-full flex items-center justify-center shrink-0"
+                style={{ background: `${meta.accent}1F`, color: meta.accent }}
+              >
+                <Icon className="h-3 w-3" />
+              </div>
+              <div>
+                <div className="text-xs font-semibold" style={{ color: meta.accent }}>
+                  {meta.realName}
+                </div>
+                <div className="text-[9px] uppercase tracking-wider text-txt-muted">
+                  {meta.era}
+                </div>
+              </div>
             </div>
-            <div className="text-[10px] uppercase tracking-wider text-txt-muted mb-2">
-              {meta.era}
-            </div>
-            <p className="text-[11px] leading-relaxed text-txt-primary mb-2">
+            <p className="text-[11px] leading-relaxed text-txt-primary mb-2.5">
               {meta.bio}
             </p>
-            <div className="text-[10px] uppercase tracking-wider text-txt-muted mb-1">
-              사용 데이터
+            <div className="border-t border-border-subtle pt-2">
+              <div className="text-[9px] uppercase tracking-wider text-txt-muted mb-1 font-semibold">
+                사용 데이터
+              </div>
+              <ul className="text-[11px] text-txt-secondary space-y-0.5">
+                {meta.inputs.map((input) => (
+                  <li key={input} className="flex gap-1.5">
+                    <span style={{ color: meta.accent }}>▸</span>
+                    <span>{input}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul className="text-[11px] text-txt-secondary space-y-0.5">
-              {meta.inputs.map((input) => (
-                <li key={input} className="flex gap-1">
-                  <span style={{ color: meta.accent }}>·</span>
-                  <span>{input}</span>
-                </li>
-              ))}
-            </ul>
           </div>
         </div>
+
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-1.5">
-            <span className="font-semibold text-sm">{meta.name}</span>
-            <span className="text-[10px] text-txt-muted">{meta.domain}</span>
+            <span className="font-semibold text-sm text-txt-primary">{meta.name}</span>
+            <span
+              className="text-[9px] uppercase tracking-wider px-1 rounded"
+              style={{ background: `${meta.accent}1F`, color: meta.accent }}
+            >
+              {meta.domain}
+            </span>
           </div>
           <div className="text-[10px] text-txt-muted truncate" title={meta.philosophy}>
             {meta.philosophy}
           </div>
         </div>
         {weight != null && (
-          <span className="text-[9px] text-txt-muted tabular-nums shrink-0">
+          <span className="text-[10px] text-txt-muted tabular-nums shrink-0 mt-1">
             w {Math.round(weight * 100)}%
           </span>
         )}
       </div>
 
-      {/* Score + verdict */}
+      {/* Score + verdict + bar */}
       <div className="flex items-baseline justify-between mb-1.5">
-        <span className="text-[10px] uppercase tracking-wider text-txt-muted">
+        <span
+          className="text-[10px] uppercase tracking-[0.15em] font-bold"
+          style={{ color }}
+        >
           {verdict}
         </span>
         <span
-          className="font-mono tabular-nums text-base font-semibold"
+          className="font-mono tabular-nums text-lg font-bold"
           style={{ color }}
         >
           {voter.score >= 0 ? '+' : ''}
@@ -283,28 +310,104 @@ function VoterCard({
         </span>
       </div>
 
-      {/* Bipolar bar */}
-      <div className="relative h-1.5 rounded-full bg-bg-tertiary/40 overflow-hidden mb-2">
+      <div className="relative h-1.5 rounded-full bg-bg-tertiary/40 overflow-hidden mb-2.5">
         <div className="absolute left-1/2 top-0 bottom-0 w-px bg-border-default/60" />
         <div
           className={cn(
-            'absolute top-0 bottom-0 transition-all rounded-full',
+            'absolute top-0 bottom-0 rounded-full transition-all',
             voter.score >= 0 ? 'left-1/2' : 'right-1/2',
           )}
           style={{ width: `${barPct}%`, background: color }}
         />
       </div>
 
-      {/* Truncated narrative — 2 lines, ellipsis */}
       {voter.narrative && (
         <p
-          className="text-[11px] text-txt-secondary line-clamp-2 leading-snug"
+          className="text-[11px] text-txt-secondary line-clamp-3 leading-relaxed"
           title={voter.narrative}
         >
           {voter.narrative}
         </p>
       )}
     </div>
+  );
+}
+
+// ─── Soros synthesis — parse into structured sections ──────────────
+
+interface ParsedSoros {
+  headline: string | null;
+  body: string;
+}
+
+/** Lightweight parse of the Soros narrative.
+ *  The LLM produces one long Korean paragraph ending with a conclusion
+ *  sentence like '...최종 시그널은 HOLD.'. We extract that last sentence
+ *  as the headline and keep the rest as the body, formatted with
+ *  inline line breaks at sentence boundaries. */
+function parseSoros(narrative: string): ParsedSoros {
+  const trimmed = narrative.trim();
+  // Split on '.' followed by space or end; keep the dot.
+  const sentences = trimmed
+    .split(/(?<=[\.\!\?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (sentences.length <= 1) {
+    return { headline: null, body: trimmed };
+  }
+  // Pick the LAST sentence that contains a grade keyword as the headline;
+  // fall back to the last sentence overall.
+  const gradeKeywords = ['HOLD', 'BUY', 'CAUTION', 'RISK', '시그널은', '최종'];
+  let headlineIdx = sentences.length - 1;
+  for (let i = sentences.length - 1; i >= 0; i--) {
+    if (gradeKeywords.some((kw) => sentences[i].includes(kw))) {
+      headlineIdx = i;
+      break;
+    }
+  }
+  const headline = sentences[headlineIdx];
+  const body = sentences
+    .filter((_, idx) => idx !== headlineIdx)
+    .join(' ');
+  return { headline, body };
+}
+
+function SorosSynthesis({ narrative }: { narrative: string }) {
+  const { headline, body } = parseSoros(narrative);
+  return (
+    <section className="rounded-lg border border-brand-purple/30 bg-gradient-to-br from-brand-purple/5 via-brand-purple/3 to-transparent overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-brand-purple/20 bg-brand-purple/5">
+        <div className="h-7 w-7 rounded-full bg-gradient-brand flex items-center justify-center shrink-0">
+          <Sparkles className="h-3.5 w-3.5 text-white" />
+        </div>
+        <div className="flex-1">
+          <div className="text-[10px] uppercase tracking-[0.15em] text-brand-purple font-bold">
+            Soros 종합
+          </div>
+          <div className="text-[10px] text-txt-muted">
+            5인 voter 의견 + priced_in + Taleb 게이트의 메타 분석
+          </div>
+        </div>
+      </div>
+
+      {/* Headline (extracted final-grade conclusion) */}
+      {headline && (
+        <div className="px-4 pt-3.5">
+          <div className="flex gap-2 text-sm font-medium text-brand-purple leading-relaxed">
+            <span className="shrink-0">▍</span>
+            <span>{headline}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Body — main analysis with comfortable typography */}
+      {body && (
+        <div className="px-4 py-3.5 text-sm text-txt-primary leading-relaxed">
+          {body}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -320,7 +423,6 @@ export function VoterBreakdownCard({ data }: { data: VoterBreakdown }) {
     weightedScore != null ? Math.round(((weightedScore + 2) / 4) * 100) : null;
   const activeCount = data.voters.filter((v) => Math.abs(v.score) >= 0.1).length;
 
-  // Tier coloring for the agreement readout.
   const confTone =
     confPct == null
       ? 'text-txt-muted'
@@ -330,7 +432,6 @@ export function VoterBreakdownCard({ data }: { data: VoterBreakdown }) {
           ? 'text-status-success'
           : 'text-txt-primary';
 
-  // Grade color band — drives the hero label and the accent stripe.
   const gradeAccent =
     grade === 'STRONG_BUY' ? 'rgb(72,166,152)'
     : grade === 'BUY'      ? '#7CC97E'
@@ -338,22 +439,31 @@ export function VoterBreakdownCard({ data }: { data: VoterBreakdown }) {
     : grade === 'CAUTION'  ? '#E9B247'
     :                        'rgb(220,72,72)';
 
+  // Status text under the agreement number — explains what 4% means.
+  const consensusNote = (() => {
+    if (confPct == null) return null;
+    if (activeCount <= 1) return '단일 voter 주도';
+    if (confPct < 30) return 'voter 의견 충돌';
+    if (confPct < 50) return '의견 분산';
+    if (confPct < 70) return '약한 동의';
+    return '강한 합의';
+  })();
+
   return (
     <Card className="border-brand-purple/20 relative">
-      {/* Accent stripe — quick visual cue for the grade without reading.
-          Sits inside the rounded corners via rounded-t-lg to inherit the
-          Card's shape; absolutely positioned so it doesn't push content. */}
+      {/* Accent stripe — grade color at the top edge */}
       <div
         className="absolute top-0 left-0 right-0 h-1 rounded-t-lg pointer-events-none"
         style={{ background: gradeAccent }}
       />
 
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <CardTitle className="text-base font-heading flex items-center gap-2">
-            <span className="inline-block h-6 w-6 rounded-full bg-gradient-brand" />
+      <CardContent className="pt-6 pb-5 space-y-5">
+        {/* ── Heading row ───────────────────────────────────────── */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-heading font-semibold flex items-center gap-2">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-gradient-brand" />
             6-Voter 합의
-          </CardTitle>
+          </h2>
           <div className="flex items-center gap-2 text-[11px] text-txt-muted">
             <span>
               cycle{' '}
@@ -363,105 +473,131 @@ export function VoterBreakdownCard({ data }: { data: VoterBreakdown }) {
             </span>
             {data.taleb_override && (
               <Badge variant="outline" className="border-status-danger/40 text-status-danger">
-                Taleb override sev {data.taleb_severity}
+                Taleb sev {data.taleb_severity}
               </Badge>
             )}
             {(weights as Record<string, unknown>)['confidence_gate_applied'] === true && (
               <Badge variant="outline" className="border-status-warning/40 text-status-warning">
-                신뢰도 게이트 적용
+                신뢰도 게이트
               </Badge>
             )}
           </div>
         </div>
-      </CardHeader>
 
-      <CardContent className="space-y-5">
-        {/* ── Hero block: at-a-glance verdict ──────────────────────── */}
-        <div className="grid gap-3 sm:grid-cols-2">
-          {/* Grade + strength */}
-          <div className="rounded-md border border-border-subtle/60 bg-bg-secondary/40 p-3">
-            <div className="text-[10px] uppercase tracking-wider text-txt-muted mb-1">
-              최종 등급
-            </div>
-            <div
-              className="text-xl font-bold leading-tight"
-              style={{ color: gradeAccent }}
-            >
-              {label}
-            </div>
-            <div className="mt-2 flex items-baseline gap-3 text-xs">
-              <span className="text-txt-muted">가중 점수</span>
-              <span className="font-mono tabular-nums font-medium">
-                {weightedScore != null ? weightedScore.toFixed(2) : '—'}
-              </span>
+        {/* ── Hero verdict block ────────────────────────────────── */}
+        <div className="rounded-lg border border-border-subtle/60 bg-bg-secondary/30 px-5 py-4">
+          <div className="grid gap-4 sm:grid-cols-12 items-center">
+            {/* Grade — primary visual anchor */}
+            <div className="sm:col-span-4">
+              <div className="text-[10px] uppercase tracking-[0.15em] text-txt-muted mb-1 font-semibold">
+                최종 등급
+              </div>
+              <div
+                className="text-3xl font-bold leading-none mb-1.5"
+                style={{ color: gradeAccent }}
+              >
+                {label}
+              </div>
               {strengthPct !== null && (
-                <>
-                  <span className="text-txt-muted ml-1">방향 강도</span>
-                  <span className="font-mono tabular-nums font-medium">
-                    {strengthPct}/100
+                <div className="flex items-baseline gap-1.5 text-[11px]">
+                  <span className="text-txt-muted">방향 강도</span>
+                  <span className="font-mono tabular-nums font-semibold text-txt-primary">
+                    {strengthPct}
                   </span>
-                </>
+                  <span className="text-txt-muted">/100</span>
+                </div>
               )}
             </div>
+
+            {/* Vertical divider */}
+            <div className="hidden sm:block sm:col-span-1">
+              <div className="h-16 w-px bg-border-default/40 mx-auto" />
+            </div>
+
+            {/* Score breakdown */}
+            <div className="sm:col-span-3">
+              <div className="text-[10px] uppercase tracking-[0.15em] text-txt-muted mb-1 font-semibold">
+                가중 점수
+              </div>
+              <div className="text-2xl font-mono tabular-nums font-bold leading-none mb-1.5">
+                {weightedScore != null ? (
+                  <>
+                    <span style={{ color: gradeAccent }}>
+                      {weightedScore >= 0 ? '+' : ''}
+                      {weightedScore.toFixed(2)}
+                    </span>
+                  </>
+                ) : (
+                  '—'
+                )}
+              </div>
+              <div className="text-[11px] text-txt-muted">
+                정규화 범위 -2 ~ +2
+              </div>
+            </div>
+
+            {/* Vertical divider */}
+            <div className="hidden sm:block sm:col-span-1">
+              <div className="h-16 w-px bg-border-default/40 mx-auto" />
+            </div>
+
+            {/* Confidence */}
+            <div className="sm:col-span-3">
+              <div className="text-[10px] uppercase tracking-[0.15em] text-txt-muted mb-1 font-semibold">
+                voter 합의
+              </div>
+              <div className={cn('text-2xl font-bold leading-none mb-1.5', confTone)}>
+                {confPct != null ? `${confPct}%` : '—'}
+              </div>
+              <div className="text-[11px] text-txt-muted flex items-baseline gap-1.5">
+                <span className="font-mono tabular-nums">
+                  active {activeCount}/{data.voters.length}
+                </span>
+                {consensusNote && (
+                  <span className={confTone}>· {consensusNote}</span>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Confidence + active voters */}
-          <div className="rounded-md border border-border-subtle/60 bg-bg-secondary/40 p-3">
-            <div className="text-[10px] uppercase tracking-wider text-txt-muted mb-1">
-              voter 합의
+          {/* Low-confidence warning — embedded inside the hero block */}
+          {confPct != null && confPct < 50 && (
+            <div className="mt-3.5 pt-3 border-t border-border-subtle/40 flex items-start gap-2 text-xs text-status-warning">
+              <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <div className="leading-relaxed">
+                voter 의견이 분산되어 있습니다. 단일 voter가 신호를 주도하므로
+                <strong> 등급 강등</strong>이 적용되었을 수 있으며 다음 사이클에서
+                합의가 강해지는지 확인을 권장합니다.
+              </div>
             </div>
-            <div className={cn('text-xl font-bold leading-tight', confTone)}>
-              {confPct != null ? `${confPct}%` : '—'}
-            </div>
-            <div className="mt-2 flex items-baseline gap-3 text-xs">
-              <span className="text-txt-muted">active</span>
-              <span className="font-mono tabular-nums font-medium">
-                {activeCount} / {data.voters.length}
-              </span>
-              <span className="text-txt-muted ml-1">|score| ≥ 0.1</span>
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* Low-confidence warning */}
-        {confPct != null && confPct < 50 && (
-          <div className="flex items-start gap-2 rounded-md border border-status-warning/40 bg-status-warning/10 px-3 py-2 text-xs text-status-warning">
-            <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <div>
-              voter 의견 분산 ({confPct}%) — 단일 voter가 신호를 주도합니다.
-              다음 사이클에서 합의가 강해지는지 함께 확인하세요.
-            </div>
+        {/* ── Voter distribution (horizontal bars) ──────────────── */}
+        <VoterDistribution voters={data.voters} />
+
+        {/* ── Voter cards grid ─────────────────────────────────── */}
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="h-px flex-1 bg-border-default/40" />
+            <span className="text-[10px] uppercase tracking-[0.15em] text-txt-muted font-semibold">
+              분석가 의견
+            </span>
+            <div className="h-px flex-1 bg-border-default/40" />
           </div>
-        )}
-
-        {/* ── Spectrum: all voters at a glance ──────────────────── */}
-        <VoterSpectrum voters={data.voters} />
-
-        {/* ── Voter cards grid ──────────────────────────────────── */}
-        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-          {data.voters.map((v) => (
-            <VoterCard
-              key={v.agent_name}
-              voter={v}
-              weight={weights[v.agent_name] as number | undefined}
-            />
-          ))}
-        </div>
-
-        {/* ── Soros synthesis quote ─────────────────────────────── */}
-        {data.narrative && (
-          <div className="rounded-md border-l-4 border-brand-purple bg-brand-purple/5 px-4 py-3">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="inline-block h-4 w-4 rounded-full bg-gradient-brand" />
-              <span className="text-[10px] uppercase tracking-wider text-brand-purple font-semibold">
-                Soros 종합
-              </span>
-            </div>
-            <p className="text-sm text-txt-primary leading-relaxed whitespace-pre-line">
-              {data.narrative}
-            </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {data.voters.map((v) => (
+              <VoterCard
+                key={v.agent_name}
+                voter={v}
+                weight={weights[v.agent_name] as number | undefined}
+              />
+            ))}
           </div>
-        )}
+        </section>
+
+        {/* ── Soros synthesis — structured ─────────────────────── */}
+        {data.narrative && <SorosSynthesis narrative={data.narrative} />}
       </CardContent>
     </Card>
   );
