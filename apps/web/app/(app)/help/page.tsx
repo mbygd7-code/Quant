@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { HelpSearch } from '@/components/help/help-search';
 
 // Help page for absolute beginners. Goal: a single page that explains
 // every term, abbreviation, chart element, and AI concept the app
@@ -57,6 +58,10 @@ export default function HelpPage() {
             <p className="mt-4 text-sm text-txt-muted">
               ⓘ 본 정보는 투자 판단 보조 자료이며 매매 권유가 아닙니다. 모든 결정은 본인 책임입니다.
             </p>
+            {/* Quick-jump search — type an abbreviation, term, or section
+                title and the page scrolls to that section with a brief
+                flash highlight. */}
+            <HelpSearch />
           </div>
         </div>
       </section>

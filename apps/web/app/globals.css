@@ -205,6 +205,19 @@ html[data-theme="light"] .content-gradient-bg > * { position: relative; z-index:
 
 ::selection { background: var(--selection-bg); color: var(--text-primary); }
 
+/* Help-page search "you landed here" flash. Applied programmatically
+ * for ~1.6s after a search result is clicked so the user gets a
+ * brief visual confirmation of which section they navigated to. */
+@keyframes help-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(var(--brand-purple-rgb), 0.55); background-color: rgba(var(--brand-purple-rgb), 0.10); }
+  60%  { box-shadow: 0 0 0 8px rgba(var(--brand-purple-rgb), 0.00); background-color: rgba(var(--brand-purple-rgb), 0.06); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--brand-purple-rgb), 0.00); background-color: transparent; }
+}
+.help-flash {
+  animation: help-flash 1.6s ease-out both;
+  border-radius: 12px;
+}
+
 html.theme-transitioning,
 html.theme-transitioning *,
 html.theme-transitioning *::before,
