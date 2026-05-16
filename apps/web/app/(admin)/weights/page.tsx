@@ -15,6 +15,7 @@ interface WeightConfig {
   fundamental_weight: number;
   volume_flow_weight: number;
   risk_penalty_weight: number;
+  kr_fear_greed_weight: number;
   signal_threshold_strong: number;
   signal_threshold_interest: number;
   signal_threshold_neutral: number;
@@ -39,7 +40,7 @@ export default async function WeightsPage() {
       <div>
         <h1 className="font-heading text-2xl font-semibold tracking-tight">가중치 · 임계값</h1>
         <p className="mt-1 text-sm text-txt-secondary">
-          7요소 가중치 합계는 1.00, 임계값은 단조 감소여야 저장 가능
+          8요소 가중치 합계는 1.00, 임계값은 단조 감소여야 저장 가능
         </p>
       </div>
 
@@ -62,6 +63,7 @@ export default async function WeightsPage() {
               fundamental_weight: active.fundamental_weight,
               volume_flow_weight: active.volume_flow_weight,
               risk_penalty_weight: active.risk_penalty_weight,
+              kr_fear_greed_weight: active.kr_fear_greed_weight ?? 0.05,
               signal_threshold_strong: active.signal_threshold_strong,
               signal_threshold_interest: active.signal_threshold_interest,
               signal_threshold_neutral: active.signal_threshold_neutral,

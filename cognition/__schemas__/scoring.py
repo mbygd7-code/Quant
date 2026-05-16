@@ -15,7 +15,12 @@ SignalLabel = Literal["강한 관심", "관심", "관망", "주의", "위험"]
 
 
 class SubScores(BaseModel):
-    """The 7 components of the SKILL.md section 3 weighted formula."""
+    """The 8 components of the SKILL.md section 3 weighted formula.
+
+    The 8th — `kr_fear_greed` — was added on top of the original 7
+    after the KR-specific Fear & Greed index (signals.kr_fear_greed)
+    proved more defensible than scraping CNN's US-centric number.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -26,6 +31,7 @@ class SubScores(BaseModel):
     fundamental: float = Field(ge=0.0, le=1.0)
     volume_flow: float = Field(ge=0.0, le=1.0)
     risk_penalty: float = Field(ge=0.0, le=1.0)
+    kr_fear_greed: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
 class Rationale(BaseModel):

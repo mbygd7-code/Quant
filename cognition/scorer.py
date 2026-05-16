@@ -50,13 +50,17 @@ def sigmoid(x: float) -> float:
 
 @dataclass
 class WeightConfig:
-    global_market: float = 0.20
-    sector: float = 0.20
-    related_us_stock: float = 0.20
-    news_sentiment: float = 0.15
+    # Eight subscore weights — original 7 + kr_fear_greed (8th factor).
+    # Defaults sum to 1.0; the migration that introduced the 8th column
+    # renormalizes existing rows so old configs keep summing to 1.0.
+    global_market: float = 0.19
+    sector: float = 0.19
+    related_us_stock: float = 0.19
+    news_sentiment: float = 0.14
     fundamental: float = 0.10
-    volume_flow: float = 0.10
+    volume_flow: float = 0.09
     risk_penalty: float = 0.05
+    kr_fear_greed: float = 0.05
     threshold_strong: float = 0.80
     threshold_interest: float = 0.65
     threshold_neutral: float = 0.50
@@ -94,7 +98,31 @@ class StockScorer:
             fundamental=self._fundamental(ticker, on_date),
             volume_flow=self._volume_flow(ticker, on_date),
             risk_penalty=self._risk(ticker, on_date),
+            kr_fear_greed=self._kr_fear_greed(on_date),
         )
+
+    def _kr_fear_greed(self, on_date: Date) -> float:
+        """8th factor — KR-specific Fear & Greed composite (0..1).
+
+        The underlying compute returns 0..100; we divide. Note this is
+        market-wide (not per-ticker) so it's cached per `on_date` to
+        avoid recomputing the watchlist breadth/foreign-flow scan for
+        every ticker in a single scoring run.
+        """
+        cached = getattr(self, "_kr_fg_cache", {})
+        if on_date in cached:
+            return cached[on_date]
+        try:
+            from signals.kr_fear_greed import compute_kr_fg
+
+            result = compute_kr_fg(on_date)
+            value = max(0.0, min(1.0, result.score / 100.0))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("kr_fear_greed compute failed (%s) — using NEUTRAL", exc)
+            value = NEUTRAL
+        cached[on_date] = value
+        self._kr_fg_cache = cached
+        return value
 
     def _global_market(self, ticker: str, on_date: Date) -> float:
         """Combined global signal:
@@ -516,6 +544,7 @@ class StockScorer:
             + w.news_sentiment * sub.news_sentiment
             + w.fundamental * sub.fundamental
             + w.volume_flow * sub.volume_flow
+            + w.kr_fear_greed * sub.kr_fear_greed
             - w.risk_penalty * sub.risk_penalty
         )
         return min(max(raw, 0.0), 1.0)
@@ -597,6 +626,10 @@ class StockScorer:
             fundamental=float(r["fundamental_weight"]),
             volume_flow=float(r["volume_flow_weight"]),
             risk_penalty=float(r["risk_penalty_weight"]),
+            # 8th weight — missing on rows from before migration 25.
+            # Fall back to dataclass default (0.05) so old configs keep
+            # working until they're rewritten by the admin UI.
+            kr_fear_greed=float(r.get("kr_fear_greed_weight", 0.05)),
             threshold_strong=float(r["signal_threshold_strong"]),
             threshold_interest=float(r["signal_threshold_interest"]),
             threshold_neutral=float(r["signal_threshold_neutral"]),
@@ -617,6 +650,7 @@ def upsert_score(score: AIScore) -> None:
         "fundamental_score":      score.sub_scores.fundamental,
         "volume_flow_score":      score.sub_scores.volume_flow,
         "risk_penalty":           score.sub_scores.risk_penalty,
+        "kr_fear_greed_score":    score.sub_scores.kr_fear_greed,
         "final_score":            score.final_score,
         "signal":                 score.signal,
         "rationale_json":         score.rationale.model_dump(),

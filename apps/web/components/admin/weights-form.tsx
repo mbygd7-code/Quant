@@ -22,6 +22,7 @@ interface State {
   fundamental_weight: number;
   volume_flow_weight: number;
   risk_penalty_weight: number;
+  kr_fear_greed_weight: number;
   signal_threshold_strong: number;
   signal_threshold_interest: number;
   signal_threshold_neutral: number;
@@ -36,6 +37,7 @@ const WEIGHT_FIELDS: Array<{ key: keyof State; label: string }> = [
   { key: 'fundamental_weight', label: '펀더멘털' },
   { key: 'volume_flow_weight', label: '수급/거래량' },
   { key: 'risk_penalty_weight', label: '리스크 패널티' },
+  { key: 'kr_fear_greed_weight', label: '한국 F&G' },
 ];
 
 const THRESHOLD_FIELDS: Array<{ key: keyof State; label: string; tone: string }> = [
@@ -58,7 +60,8 @@ export function WeightsForm({ initial }: { initial: State }) {
       state.news_sentiment_weight +
       state.fundamental_weight +
       state.volume_flow_weight +
-      state.risk_penalty_weight,
+      state.risk_penalty_weight +
+      state.kr_fear_greed_weight,
     [state],
   );
   const sumOk = Math.abs(sum - 1.0) < 0.001;
@@ -106,7 +109,7 @@ export function WeightsForm({ initial }: { initial: State }) {
 
         <section>
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-medium">7요소 가중치</h3>
+            <h3 className="text-sm font-medium">8요소 가중치</h3>
             <span
               className={`flex items-center gap-1 text-xs font-mono ${
                 sumOk ? 'text-txt-primary' : 'text-status-error'
