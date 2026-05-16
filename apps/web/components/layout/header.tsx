@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Database,
   FlaskConical,
+  HelpCircle,
   LineChart,
   LogOut,
   Moon,
@@ -185,6 +186,17 @@ export function Header({ email, role }: HeaderProps) {
       </nav>
 
       <div className="ml-auto flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          asChild
+          aria-label="도움말 — 주식 용어 및 차트 사용법"
+          title="도움말 — 주식 용어 / 차트 / 거래량 / AI 시그널 안내"
+        >
+          <Link href="/help">
+            <HelpCircle className="h-4 w-4" />
+          </Link>
+        </Button>
         <Button variant="ghost" size="icon" aria-label="알림">
           <Bell className="h-4 w-4" />
         </Button>

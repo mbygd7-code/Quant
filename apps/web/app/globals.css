@@ -17,9 +17,12 @@ html[data-theme="dark"] {
   --bg-tertiary: #252525;
   --bg-content: #1A1A1A;
 
+  /* Contrast bump — old #A0A0A0 / #6B6B6B were the lower bounds of
+   * WCAG AA on dark bg. Pushed both lighter for better daytime/glare
+   * readability without losing the hierarchy from primary. */
   --text-primary: #FFFFFF;
-  --text-secondary: #A0A0A0;
-  --text-muted: #6B6B6B;
+  --text-secondary: #C9C9C9;
+  --text-muted: #8E8E8E;
 
   --brand-purple-rgb: 114 60 235;
   --brand-purple-deep-rgb: 76 17 206;
@@ -90,9 +93,13 @@ html[data-theme="light"] {
   --bg-tertiary: #EAE6DE;
   --bg-content: #E4DFD5;
 
-  --text-primary: #2D2A33;
-  --text-secondary: #6B6B6B;
-  --text-muted: #A3A09A;
+  /* Light-theme text — major contrast bump (Nov 2026).
+   * Old #6B6B6B and #A3A09A were so soft on the cream background
+   * that secondary copy and label hints disappeared. Pushed both
+   * markedly darker so muted-grays still register as readable text. */
+  --text-primary: #1F1C25;     /* was #2D2A33 — slightly darker */
+  --text-secondary: #4A4853;    /* was #6B6B6B */
+  --text-muted: #6E6B66;        /* was #A3A09A — biggest jump */
 
   --brand-purple-rgb: 158 180 36;
   --brand-purple-deep-rgb: 128 152 20;
