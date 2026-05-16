@@ -36,7 +36,7 @@ export default async function ReportsPage() {
                 <div className="mt-0.5 text-xs text-txt-muted">
                   NASDAQ <span className={changeColor(it.nasdaqChange)}>{formatPercent(it.nasdaqChange)}</span>
                   {' · '}
-                  강한 관심 <span className="text-brand-purple">{it.strongCount}</span>개
+                  강한 관심 <span className="text-txt-primary">{it.strongCount}</span>개
                   {' · '}
                   위험 <span className="text-status-error">{it.riskCount}</span>개
                 </div>

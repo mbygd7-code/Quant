@@ -57,13 +57,13 @@ export function VersionHistory({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-baseline gap-2 min-w-0">
                   {c.is_active ? (
-                    <CheckCircle2 className="h-3.5 w-3.5 text-brand-purple shrink-0" />
+                    <CheckCircle2 className="h-3.5 w-3.5 text-txt-primary shrink-0" />
                   ) : (
                     <span className="h-3.5 w-3.5 rounded-full border border-border shrink-0" />
                   )}
                   <span className="font-mono text-sm">v{c.version}</span>
                   {c.is_active && (
-                    <span className="text-[10px] text-brand-purple uppercase tracking-wider">
+                    <span className="text-[10px] text-txt-primary uppercase tracking-wider">
                       active
                     </span>
                   )}

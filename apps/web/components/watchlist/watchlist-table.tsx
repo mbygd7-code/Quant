@@ -136,7 +136,7 @@ export function WatchlistTable({ rows, date, role }: Props) {
                   {date ? (
                     <Link
                       href={`/reports/${date}/${r.ticker}`}
-                      className="text-brand-purple hover:underline text-xs"
+                      className="text-txt-primary hover:underline text-xs"
                     >
                       자세히 →
                     </Link>

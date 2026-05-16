@@ -216,7 +216,7 @@ export function AdminAddStockDialog({ children }: { children: React.ReactNode })
                 >
                   <Icon
                     className={
-                      'h-4 w-4 ' + (active ? 'text-brand-purple' : 'text-txt-muted')
+                      'h-4 w-4 ' + (active ? 'text-txt-primary' : 'text-txt-muted')
                     }
                   />
                   <span className="text-xs font-medium">{m.label}</span>
@@ -262,7 +262,7 @@ export function AdminAddStockDialog({ children }: { children: React.ReactNode })
                       {r.sector ?? r.market}
                     </div>
                   </div>
-                  <Plus className="h-4 w-4 text-txt-muted group-hover:text-brand-purple" />
+                  <Plus className="h-4 w-4 text-txt-muted group-hover:text-txt-primary" />
                 </div>
               </button>
             ))}
@@ -297,7 +297,7 @@ export function AdminAddStockDialog({ children }: { children: React.ReactNode })
                       {r.signal && (
                         <Badge
                           variant="outline"
-                          className="h-4 px-1.5 text-[9px] font-normal border-brand-purple/40 text-brand-purple"
+                          className="h-4 px-1.5 text-[9px] font-normal border-brand-purple/40 text-txt-primary"
                         >
                           {r.signal}
                         </Badge>
@@ -308,7 +308,7 @@ export function AdminAddStockDialog({ children }: { children: React.ReactNode })
                       {r.highlight && (
                         <>
                           <span className="text-txt-muted">·</span>
-                          <span className="text-brand-purple font-medium">{r.highlight}</span>
+                          <span className="text-txt-primary font-medium">{r.highlight}</span>
                         </>
                       )}
                     </div>
@@ -324,7 +324,7 @@ export function AdminAddStockDialog({ children }: { children: React.ReactNode })
                     </div>
                   </div>
 
-                  <Plus className="h-4 w-4 text-txt-muted group-hover:text-brand-purple" />
+                  <Plus className="h-4 w-4 text-txt-muted group-hover:text-txt-primary" />
                 </div>
               </button>
             ))}

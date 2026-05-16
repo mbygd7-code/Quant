@@ -45,7 +45,7 @@ export default function HelpPage() {
       <section className="rounded-2xl border-2 border-brand-purple/30 bg-gradient-to-br from-brand-purple/[0.08] via-bg-secondary to-bg-secondary p-8 md:p-10 shadow-md">
         <div className="flex items-start gap-5">
           <div className="rounded-2xl bg-brand-purple/15 p-4 hidden md:block">
-            <Sparkles className="h-10 w-10 text-brand-purple" />
+            <Sparkles className="h-10 w-10 text-txt-primary" />
           </div>
           <div className="flex-1">
             <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-txt-primary leading-tight">
@@ -74,7 +74,7 @@ export default function HelpPage() {
             href={item.href}
             className="flex items-center gap-2.5 rounded-xl border-2 border-border-subtle/60 bg-bg-secondary px-3.5 py-3 hover:border-brand-purple/40 hover:bg-brand-purple/[0.04] transition-colors"
           >
-            <item.icon className="h-5 w-5 text-brand-purple shrink-0" />
+            <item.icon className="h-5 w-5 text-txt-primary shrink-0" />
             <span className="text-[15px] font-semibold text-txt-primary">
               {item.label}
             </span>
@@ -224,8 +224,8 @@ export default function HelpPage() {
           <div className="grid md:grid-cols-3 gap-4">
             <div className="rounded-lg bg-status-success/[0.08] border-2 border-status-success/30 p-4">
               <div className="flex items-center gap-2 mb-2">
-                <CheckCircle2 className="h-5 w-5 text-status-success" />
-                <strong className="text-status-success text-[15px]">강한 추세</strong>
+                <CheckCircle2 className="h-5 w-5 text-txt-primary" />
+                <strong className="text-txt-primary text-[15px]">강한 추세</strong>
               </div>
               <p className="text-[14px] text-txt-secondary leading-relaxed">
                 가격 ↑ + 거래량 ↑↑ = 많은 사람이 동참한 진짜 상승
@@ -326,7 +326,7 @@ export default function HelpPage() {
           ))}
         </div>
         <div className="mt-4 rounded-lg bg-brand-purple/[0.06] border border-brand-purple/30 p-4 text-[14px] text-txt-secondary leading-relaxed">
-          <strong className="text-brand-purple block mb-1">🧠 Soros 종합</strong>
+          <strong className="text-txt-primary block mb-1">🧠 Soros 종합</strong>
           마지막에 <strong>Soros</strong>(소로스) 캐릭터가 6명 의견을 종합해서 최종 narrative + 단기/중기 전망 + 촉매·리스크를 정리해요.
         </div>
       </Section>
@@ -462,7 +462,7 @@ export default function HelpPage() {
                       )}
                     </dt>
                     {t.english && (
-                      <p className="text-[12px] text-brand-purple italic font-medium mb-1">
+                      <p className="text-[12px] text-txt-primary italic font-medium mb-1">
                         {t.english}
                       </p>
                     )}
@@ -484,7 +484,7 @@ export default function HelpPage() {
           모든 투자 결정과 결과는 본인 책임이며, 본 서비스는 손익에 대한 책임을 지지 않습니다.
         </p>
         <div className="mt-3 flex items-center justify-center gap-3 text-[13px]">
-          <Link href="/dashboard" className="text-brand-purple hover:underline font-semibold inline-flex items-center gap-1">
+          <Link href="/dashboard" className="text-txt-primary hover:underline font-semibold inline-flex items-center gap-1">
             대시보드로 돌아가기
             <ChevronRight className="h-4 w-4" />
           </Link>
@@ -526,7 +526,7 @@ function Section({
     <section id={id} className="scroll-mt-20">
       <div className="flex items-start gap-4 mb-5">
         <div className="rounded-xl bg-brand-purple/10 p-3 shrink-0">
-          <Icon className="h-7 w-7 text-brand-purple" />
+          <Icon className="h-7 w-7 text-txt-primary" />
         </div>
         <div className="flex-1 min-w-0">
           <h2 className="text-2xl md:text-3xl font-extrabold text-txt-primary tracking-tight leading-tight">
@@ -576,7 +576,7 @@ function TermCard({
           <h3 className="text-[18px] font-bold text-txt-primary">{title}</h3>
           <p className="text-[13px] font-mono text-txt-muted mt-0.5">{short}</p>
           {english && (
-            <p className="text-[12px] text-brand-purple mt-1 font-medium italic">
+            <p className="text-[12px] text-txt-primary mt-1 font-medium italic">
               {english}
             </p>
           )}
@@ -604,7 +604,7 @@ function ShortcutCard({
   return (
     <div className="flex items-start gap-4 rounded-xl border-2 border-border-subtle/60 bg-bg-secondary p-5">
       <div className="rounded-lg bg-brand-purple/10 p-3 shrink-0">
-        <Icon className="h-6 w-6 text-brand-purple" />
+        <Icon className="h-6 w-6 text-txt-primary" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 flex-wrap mb-1">

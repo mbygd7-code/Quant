@@ -644,7 +644,7 @@ export function ScoreTrend({
            className={cn(
              'px-2.5 py-1 text-[11px] font-semibold rounded border transition-colors',
              showMA
-               ? 'border-brand-purple/40 bg-brand-purple/10 text-brand-purple'
+               ? 'border-brand-purple/40 bg-brand-purple/10 text-txt-primary'
                : 'border-border-subtle/40 text-txt-muted hover:text-txt-primary',
            )}
            title="5일/20일 이동평균선으로 점수 추세 평활화"
@@ -659,7 +659,7 @@ export function ScoreTrend({
            className={cn(
              'px-2.5 py-1 text-[11px] font-semibold rounded border transition-colors',
              showGradeBands
-               ? 'border-brand-purple/40 bg-brand-purple/10 text-brand-purple'
+               ? 'border-brand-purple/40 bg-brand-purple/10 text-txt-primary'
                : 'border-border-subtle/40 text-txt-muted hover:text-txt-primary',
            )}
            title="5단계 신호 등급 구간 (강한 관심/관심/관망/주의/위험) 배경 표시"
@@ -691,7 +691,7 @@ export function ScoreTrend({
            className={cn(
              'px-2.5 py-1 text-[11px] font-semibold rounded border transition-colors',
              showNaive
-               ? 'border-brand-purple/40 bg-brand-purple/10 text-brand-purple'
+               ? 'border-brand-purple/40 bg-brand-purple/10 text-txt-primary'
                : 'border-border-subtle/40 text-txt-muted hover:text-txt-primary',
            )}
            title="Naive baseline: '내일 점수 = 오늘 점수' 라는 가장 단순한 예측. ML 모델은 이걸 못 이기면 가치 없음 (위 skill 지표가 이 baseline 대비 우위)."
@@ -712,7 +712,7 @@ export function ScoreTrend({
                style={{
                  color:
                    priceWindowReturn >= 0
-                     ? 'rgb(72,166,152)'
+                     ? 'var(--text-primary)'
                      : 'rgb(220,72,72)',
                }}
              >
@@ -772,7 +772,7 @@ export function ScoreTrend({
                style={{
                  color:
                    directionalAcc >= 60
-                     ? 'rgb(72,166,152)'
+                     ? 'var(--text-primary)'
                      : directionalAcc < 50
                        ? 'rgb(220,72,72)'
                        : 'var(--text-primary)',
@@ -790,7 +790,7 @@ export function ScoreTrend({
                style={{
                  color:
                    skillScore >= 0.2
-                     ? 'rgb(72,166,152)'
+                     ? 'var(--text-primary)'
                      : skillScore < 0
                        ? 'rgb(220,72,72)'
                        : 'var(--text-primary)',
@@ -808,7 +808,7 @@ export function ScoreTrend({
                  className={cn(
                    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-bold border',
                    reliabilityTier === 'high'
-                     ? 'bg-status-success/15 text-status-success border-status-success/30'
+                     ? 'bg-status-success/15 text-txt-primary border-status-success/30'
                      : reliabilityTier === 'medium'
                        ? 'bg-status-warning/15 text-status-warning border-status-warning/30'
                        : 'bg-status-danger/15 text-status-danger border-status-danger/30',
@@ -845,7 +845,7 @@ export function ScoreTrend({
              style={{
                color:
                  Math.abs(priceMetrics.scorePriceCorr) >= 0.5
-                   ? 'rgb(72,166,152)'
+                   ? 'var(--text-primary)'
                    : Math.abs(priceMetrics.scorePriceCorr) < 0.2
                      ? 'rgb(220,72,72)'
                      : 'var(--text-primary)',
@@ -863,7 +863,7 @@ export function ScoreTrend({
                style={{
                  color:
                    priceMetrics.scorePriceDirAcc >= 60
-                     ? 'rgb(72,166,152)'
+                     ? 'var(--text-primary)'
                      : priceMetrics.scorePriceDirAcc < 50
                        ? 'rgb(220,72,72)'
                        : 'var(--text-primary)',
@@ -881,7 +881,7 @@ export function ScoreTrend({
                style={{
                  color:
                    Math.abs(priceMetrics.leadCorr) >= 0.5
-                     ? 'rgb(72,166,152)'
+                     ? 'var(--text-primary)'
                      : 'var(--text-primary)',
                }}
              >
@@ -1003,7 +1003,7 @@ export function ScoreTrend({
                             style={{
                               color:
                                 row.price_return >= 0
-                                  ? 'rgb(72,166,152)'
+                                  ? 'var(--text-primary)'
                                   : 'rgb(220,72,72)',
                             }}
                           >
@@ -1254,7 +1254,7 @@ function MetricItem({
                 {info.title}
               </div>
               {info.english && (
-                <div className="text-[11px] text-brand-purple italic mt-0.5">
+                <div className="text-[11px] text-txt-primary italic mt-0.5">
                   {info.english}
                 </div>
               )}
@@ -1270,7 +1270,7 @@ function MetricItem({
                 <div className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold mb-1">
                   어떻게 계산
                 </div>
-                <ul className="text-[12px] text-txt-secondary space-y-1 pl-3 list-disc marker:text-brand-purple">
+                <ul className="text-[12px] text-txt-secondary space-y-1 pl-3 list-disc marker:text-txt-primary">
                   {info.how.map((line) => (
                     <li key={line}>{line}</li>
                   ))}
@@ -1620,7 +1620,7 @@ function LegendWithPopover({
                       <div className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold mb-1">
                         어떻게 만들어지나
                       </div>
-                      <ul className="text-[12px] text-txt-secondary space-y-1 pl-3 list-disc marker:text-brand-purple">
+                      <ul className="text-[12px] text-txt-secondary space-y-1 pl-3 list-disc marker:text-txt-primary">
                         {detail.how.map((line) => (
                           <li key={line}>{line}</li>
                         ))}

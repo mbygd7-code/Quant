@@ -11,7 +11,7 @@ export const DEV_BYPASS_AUTH = process.env.DEV_BYPASS_AUTH === 'true';
 
 let _adminSingleton: SupabaseClient | null = null;
 
-function getAdminClient(): SupabaseClient {
+export function getAdminClient(): SupabaseClient {
   if (_adminSingleton) return _adminSingleton;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;

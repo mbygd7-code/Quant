@@ -153,7 +153,7 @@ function VoterDistribution({ voters }: { voters: VoterRow[] }) {
           </h3>
           <div className="text-[12px] text-txt-secondary">
             -2.00 ~ +2.00 · 가운데 <span className="font-semibold text-txt-primary">0</span>(중립) 기준 ·
-            <span className="text-status-success font-semibold"> 오른쪽 강세</span> /
+            <span className="text-txt-primary font-semibold"> 오른쪽 강세</span> /
             <span className="text-status-danger font-semibold"> 왼쪽 약세</span>
           </div>
         </div>
@@ -579,7 +579,7 @@ function SorosSynthesis({
           <Sparkles className="h-4 w-4 text-white" />
         </div>
         <div className="flex-1">
-          <div className="text-[11px] uppercase tracking-[0.15em] text-brand-purple font-bold">
+          <div className="text-[11px] uppercase tracking-[0.15em] text-txt-primary font-bold">
             Soros 종합
           </div>
           <div className="text-[11px] text-txt-secondary">
@@ -663,7 +663,7 @@ function SorosSynthesis({
             <div className="rounded-md border border-border-subtle/60 bg-bg-secondary/30 overflow-hidden">
               <div className="px-3.5 py-2 border-b border-border-subtle/40 bg-bg-secondary/40 flex items-center gap-2">
                 <div className="h-1.5 w-1.5 rounded-full bg-brand-purple" />
-                <span className="text-[11px] uppercase tracking-[0.15em] text-brand-purple font-bold">
+                <span className="text-[11px] uppercase tracking-[0.15em] text-txt-primary font-bold">
                   단기 전망
                 </span>
                 <span className="text-[10px] text-txt-muted ml-auto font-mono">
@@ -679,7 +679,7 @@ function SorosSynthesis({
             <div className="rounded-md border border-border-subtle/60 bg-bg-secondary/30 overflow-hidden">
               <div className="px-3.5 py-2 border-b border-border-subtle/40 bg-bg-secondary/40 flex items-center gap-2">
                 <div className="h-1.5 w-1.5 rounded-full bg-brand-purple" />
-                <span className="text-[11px] uppercase tracking-[0.15em] text-brand-purple font-bold">
+                <span className="text-[11px] uppercase tracking-[0.15em] text-txt-primary font-bold">
                   중기 전망
                 </span>
                 <span className="text-[10px] text-txt-muted ml-auto font-mono">
@@ -849,7 +849,7 @@ export function VoterBreakdownCard({ data }: { data: VoterBreakdown }) {
       : confPct < 50
         ? 'text-status-warning'
         : confPct >= 70
-          ? 'text-status-success'
+          ? 'text-txt-primary'
           : 'text-txt-primary';
 
   const gradeAccent =

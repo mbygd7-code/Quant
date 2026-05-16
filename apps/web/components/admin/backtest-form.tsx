@@ -175,9 +175,9 @@ export function BacktestForm({ weightConfigs }: { weightConfigs: WeightConfig[] 
         {activeJob && (
           <div className="rounded-md border border-brand-purple/30 bg-brand-purple/5 p-3">
             <div className="flex items-center gap-2 text-sm">
-              <Loader2 className="h-4 w-4 animate-spin text-brand-purple" />
+              <Loader2 className="h-4 w-4 animate-spin text-txt-primary" />
               <span className="font-mono text-xs">{activeJob.id.slice(0, 8)}</span>
-              <span className="ml-auto text-xs uppercase tracking-wider text-brand-purple">
+              <span className="ml-auto text-xs uppercase tracking-wider text-txt-primary">
                 {activeJob.status} {activeJob.progress != null && `(${activeJob.progress}%)`}
               </span>
             </div>

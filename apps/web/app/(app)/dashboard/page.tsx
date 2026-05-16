@@ -53,7 +53,7 @@ export default async function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm font-medium text-brand-purple">{data.brief.headline}</p>
+            <p className="text-sm font-medium text-txt-primary">{data.brief.headline}</p>
             <p className="text-sm leading-relaxed text-txt-primary whitespace-pre-line">
               {data.brief.body}
             </p>
@@ -75,11 +75,11 @@ export default async function DashboardPage() {
               <div className="grid gap-3 md:grid-cols-2">
                 {data.brief.top_picks.length > 0 && (
                   <div>
-                    <div className="text-[11px] uppercase tracking-wider text-status-success mb-2">관심 신호</div>
+                    <div className="text-[11px] uppercase tracking-wider text-txt-primary mb-2">관심 신호</div>
                     <ul className="space-y-1.5">
                       {data.brief.top_picks.map((p, i) => (
                         <li key={i} className="flex gap-2 text-sm text-txt-primary">
-                          <span className="text-status-success shrink-0">•</span>
+                          <span className="text-txt-primary shrink-0">•</span>
                           <span>{p}</span>
                         </li>
                       ))}

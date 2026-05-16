@@ -9,10 +9,27 @@
  */
 import { NextResponse } from 'next/server';
 
-import { getQueryClient } from '@/lib/supabase/query-client';
+import { getAdminClient, getQueryClient } from '@/lib/supabase/query-client';
 import { KR_TICKER_RE } from '@/lib/ticker';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * Ticker → sector overrides. NAVER's `industryCodeType.name` lumps robotics
+ * companies under "기계" (machinery) or "전자장비" (electronic equipment),
+ * which buries them in unrelated picker categories. We map known robotics
+ * tickers to a more useful "로봇" bucket — anything else falls through to
+ * whatever NAVER says.
+ *
+ * Extend this map as the user requests new buckets.
+ */
+const SECTOR_OVERRIDES: Record<string, string> = {
+  '056080': '로봇',  // 유진로봇
+  '108490': '로봇',  // 로보스타
+  '277810': '로봇',  // 레인보우로보틱스
+  '447660': '로봇',  // 비전텍AI (if/when it lands)
+  '464080': '로봇',  // 에스오에스랩 (LiDAR — robotics-adjacent)
+};
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -88,6 +105,37 @@ export async function GET(req: Request) {
       }
     }),
   );
+
+  // Apply hand-curated sector overrides (e.g. robotics → "로봇") last so they
+  // win over NAVER's industry tagging. Also persist the override back to the
+  // master so the watchlist-list endpoint serves the corrected sector on the
+  // next fetch — this is what makes the picker's sector filter populate
+  // "로봇" automatically without a redeploy.
+  const overrideWrites: Array<{ ticker: string; sector: string }> = [];
+  for (const t of tickers) {
+    const override = SECTOR_OVERRIDES[t];
+    if (!override) continue;
+    const hit = byTicker.get(t);
+    if (hit && hit.sector !== override) {
+      byTicker.set(t, { ...hit, sector: override });
+      overrideWrites.push({ ticker: t, sector: override });
+    }
+  }
+  if (overrideWrites.length > 0) {
+    try {
+      const admin = getAdminClient();
+      // Update one row at a time — `update().in()` would over-write `name`
+      // and `market` for stocks that weren't returned by NAVER. Sector is
+      // the only column we want to touch here.
+      await Promise.all(
+        overrideWrites.map((w) =>
+          admin.from('stocks').update({ sector: w.sector }).eq('ticker', w.ticker),
+        ),
+      );
+    } catch {
+      /* write blip — sectors still get the override in the response below */
+    }
+  }
 
   const items = tickers.map((t) => {
     const hit = byTicker.get(t);

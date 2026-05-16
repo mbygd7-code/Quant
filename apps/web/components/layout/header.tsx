@@ -121,7 +121,7 @@ export function Header({ email, role }: HeaderProps) {
               className={cn(
                 'flex items-center gap-1.5 px-3 h-9 rounded-md text-[13px] font-medium transition-colors',
                 active
-                  ? 'bg-[var(--sidebar-active-bg)] text-brand-purple'
+                  ? 'bg-[var(--sidebar-active-bg)] text-txt-primary'
                   : 'text-txt-secondary hover:text-txt-primary hover:bg-[var(--sidebar-hover)]',
               )}
             >
@@ -140,7 +140,7 @@ export function Header({ email, role }: HeaderProps) {
                 className={cn(
                   'flex items-center gap-1.5 px-3 h-9 rounded-md text-[13px] font-medium transition-colors',
                   settingsActive
-                    ? 'bg-[var(--sidebar-active-bg)] text-brand-purple'
+                    ? 'bg-[var(--sidebar-active-bg)] text-txt-primary'
                     : 'text-txt-secondary hover:text-txt-primary hover:bg-[var(--sidebar-hover)]',
                 )}
               >
@@ -170,7 +170,7 @@ export function Header({ email, role }: HeaderProps) {
                         href={item.href}
                         className={cn(
                           'flex items-center gap-2 cursor-pointer',
-                          active && 'text-brand-purple',
+                          active && 'text-txt-primary',
                         )}
                       >
                         <Icon className="h-4 w-4" />
@@ -212,7 +212,7 @@ export function Header({ email, role }: HeaderProps) {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
               <div className="text-xs text-txt-muted truncate">{email}</div>
-              <div className="text-[10px] uppercase tracking-wider text-brand-purple mt-0.5">
+              <div className="text-[10px] uppercase tracking-wider text-txt-primary mt-0.5">
                 {role}
               </div>
             </DropdownMenuLabel>

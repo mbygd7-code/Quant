@@ -861,7 +861,7 @@ export function FullscreenChartViewer({
         <div className="flex items-center gap-3 flex-wrap">
           <Link
             href={`/stocks/${variant}/${ticker}`}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-border-subtle/40 bg-bg-secondary/40 hover:bg-bg-tertiary/60 hover:border-brand-purple/40 text-[12px] font-medium text-txt-secondary hover:text-brand-purple transition-colors"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-border-subtle/40 bg-bg-secondary/40 hover:bg-bg-tertiary/60 hover:border-brand-purple/40 text-[12px] font-medium text-txt-secondary hover:text-txt-primary transition-colors"
             title="종목 상세로 돌아가기"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -882,7 +882,7 @@ export function FullscreenChartViewer({
               </span>
             )}
             {sector && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-brand-purple/10 text-brand-purple border border-brand-purple/20">
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-brand-purple/10 text-txt-primary border border-brand-purple/20">
                 {sector}
               </span>
             )}
@@ -924,7 +924,7 @@ export function FullscreenChartViewer({
             title={`선택 기간(${period.toUpperCase()}) 기준 — O=시초가, H=최고가, L=최저가, V=누적 거래량`}
           >
             <span className="text-txt-muted">O <span className="text-txt-primary font-mono">{fmt(periodOpen)}</span></span>
-            <span className="text-txt-muted">H <span className="font-mono text-status-success">{fmt(periodHigh)}</span></span>
+            <span className="text-txt-muted">H <span className="font-mono text-txt-primary">{fmt(periodHigh)}</span></span>
             <span className="text-txt-muted">L <span className="font-mono text-status-danger">{fmt(periodLow)}</span></span>
             <span className="text-txt-muted">V <span className="text-txt-primary font-mono">{fmtVol(periodVolumeSum)}</span></span>
           </div>
@@ -1072,7 +1072,7 @@ export function FullscreenChartViewer({
                     className={cn(
                       'w-full text-left px-2.5 py-1.5 flex items-baseline justify-between gap-2 transition-colors',
                       compareSymbol === r.symbol
-                        ? 'bg-brand-purple/15 text-brand-purple'
+                        ? 'bg-brand-purple/15 text-txt-primary'
                         : 'hover:bg-bg-tertiary/60 text-txt-primary',
                     )}
                   >
@@ -1523,7 +1523,7 @@ export function FullscreenChartViewer({
                   <span className="text-txt-muted text-[11px]">|</span>
                   <span className="text-txt-secondary">
                     <span className="text-[11px] mr-0.5">H</span>
-                    <span className="font-mono font-bold text-[13px] text-status-success">
+                    <span className="font-mono font-bold text-[13px] text-txt-primary">
                       {fmt(segHigh)}
                     </span>
                   </span>
@@ -1954,7 +1954,7 @@ function ToolbarToggle({
       className={cn(
         'px-2.5 py-1 text-[11px] font-semibold rounded border transition-colors',
         on
-          ? 'border-brand-purple/40 bg-brand-purple/10 text-brand-purple'
+          ? 'border-brand-purple/40 bg-brand-purple/10 text-txt-primary'
           : 'border-border-subtle/40 text-txt-muted hover:text-txt-primary',
       )}
     >

@@ -11,6 +11,7 @@ import {
   Search,
   Plus,
   Check,
+  ListTodo,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -73,7 +74,7 @@ const SECTIONS: SectionDef[] = [
     title: 'AI 추천 종목',
     subtitle: '7요소 종합 점수 상위',
     icon: Sparkles,
-    accent: 'text-brand-purple',
+    accent: 'text-txt-primary',
     accentBg: 'bg-brand-purple/10',
   },
   {
@@ -129,7 +130,7 @@ function DiscoveryRow({ rank, stock, live, added, pending, onAdd }: DiscoveryRow
           className="flex-1 min-w-0 group/link"
         >
           <div className="flex items-baseline gap-2">
-            <span className="font-medium truncate group-hover/link:text-brand-purple transition-colors">
+            <span className="font-medium truncate group-hover/link:text-txt-primary transition-colors">
               {stock.name}
             </span>
             <span className="text-[10px] font-mono text-txt-muted shrink-0">{stock.ticker}</span>
@@ -139,7 +140,7 @@ function DiscoveryRow({ rank, stock, live, added, pending, onAdd }: DiscoveryRow
             {stock.signal && (
               <Badge
                 variant="outline"
-                className="h-4 px-1.5 text-[9px] font-normal border-brand-purple/40 text-brand-purple shrink-0"
+                className="h-4 px-1.5 text-[9px] font-normal border-brand-purple/40 text-txt-primary shrink-0"
               >
                 {stock.signal}
               </Badge>
@@ -150,7 +151,7 @@ function DiscoveryRow({ rank, stock, live, added, pending, onAdd }: DiscoveryRow
             {stock.highlight && (
               <>
                 <span className="text-txt-muted">·</span>
-                <span className="text-brand-purple font-medium">{stock.highlight}</span>
+                <span className="text-txt-primary font-medium">{stock.highlight}</span>
               </>
             )}
           </div>
@@ -222,23 +223,54 @@ interface SectionCardProps {
   onAdd: (ticker: string, name: string) => void;
 }
 
+// Module-level SWR-style cache. Each (mode, market) key keeps the last
+// successful response in memory + a timestamp. On re-mount we paint
+// cached rows immediately (no skeleton flash), then revalidate in the
+// background. TTL is intentionally generous (90s) because the upstream
+// — NAVER ranking snapshots — only changes meaningfully every minute or
+// so during market hours, and not at all after 15:30 KST.
+//
+// This cache lives in the JS heap of the running SPA session: navigating
+// 국내주식 → 종목 상세 → 국내주식 keeps the cache warm. A hard refresh
+// (server-side re-render) starts cold — that's intentional, server-side
+// fetch caching (`next: { revalidate: 60 }`) covers that path separately.
+const DISCOVERY_CACHE = new Map<
+  string,
+  { rows: DiscoveryStock[]; ts: number }
+>();
+const DISCOVERY_TTL_MS = 90_000;
+
 function SectionCard({ def, market, added, pendingTicker, onAdd }: SectionCardProps) {
-  const [rows, setRows] = useState<DiscoveryStock[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `${def.id}:${market}`;
+  // Seed initial state from the cache so the first paint already shows rows.
+  const cached = DISCOVERY_CACHE.get(cacheKey);
+  const [rows, setRows] = useState<DiscoveryStock[]>(cached?.rows ?? []);
+  const [loading, setLoading] = useState(!cached);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    const c = DISCOVERY_CACHE.get(cacheKey);
+    // If cached and still fresh, skip the network call entirely.
+    if (c && Date.now() - c.ts < DISCOVERY_TTL_MS) {
+      setRows(c.rows);
+      setLoading(false);
+      return;
+    }
+    // Otherwise: paint cached rows (if any) so the user isn't staring at
+    // a spinner, then revalidate. Only flip `loading` when we have no
+    // cached fallback to show.
+    if (!c) setLoading(true);
     discoverUnaddedStocksAction(def.id, market, 12).then((data) => {
       if (cancelled) return;
+      DISCOVERY_CACHE.set(cacheKey, { rows: data, ts: Date.now() });
       setRows(data);
       setLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [def.id, market]);
+  }, [def.id, market, cacheKey]);
 
   const visibleRows = expanded ? rows : rows.slice(0, 5);
   const visibleTickers = useMemo(() => visibleRows.map((r) => r.ticker), [visibleRows]);
@@ -320,7 +352,7 @@ function SearchResults({
     <Card>
       <CardContent className="p-4 space-y-1">
         <div className="flex items-center gap-2 mb-2">
-          <Search className="h-4 w-4 text-brand-purple" />
+          <Search className="h-4 w-4 text-txt-primary" />
           <span className="text-sm font-semibold">&ldquo;{query}&rdquo; 검색 결과</span>
         </div>
         {pending && <p className="text-xs text-txt-muted px-2 py-3">검색 중...</p>}
@@ -443,13 +475,15 @@ export function KrDiscovery({ initialWatchlistCount }: Props) {
             거래대금·등락률·AI 점수·외국인 수급으로 KOSPI/KOSDAQ 종목을 발굴해 마스터 워치리스트에 추가합니다.
           </p>
         </div>
-        <div className="text-right">
-          <div className="text-xs text-txt-muted">현재 워치리스트</div>
-          <div className="text-lg font-semibold tabular-nums">
-            {watchlistCount}{' '}
-            <span className="text-xs font-normal text-txt-muted">종목</span>
-          </div>
-        </div>
+        <Button asChild variant="outline" className="h-9">
+          <Link href="/watchlist">
+            <ListTodo className="h-4 w-4 mr-1.5" />
+            주식리스트
+            <span className="ml-1.5 rounded-full bg-bg-tertiary/60 px-2 py-0.5 text-[11px] font-medium tabular-nums">
+              {watchlistCount}
+            </span>
+          </Link>
+        </Button>
       </div>
 
       {/* Search + market filter */}

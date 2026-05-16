@@ -212,7 +212,7 @@ export function ChunkEditor({
                       onClick={() => toggleMarket(m)}
                       className={`px-2.5 py-1 rounded-sm text-xs border transition-colors ${
                         on
-                          ? 'bg-brand-purple/15 text-brand-purple border-brand-purple/30'
+                          ? 'bg-brand-purple/15 text-txt-primary border-brand-purple/30'
                           : 'border-border text-txt-secondary hover:bg-bg-tertiary'
                       }`}
                     >

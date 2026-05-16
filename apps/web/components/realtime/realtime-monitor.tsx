@@ -178,7 +178,7 @@ export function RealtimeMonitor({
             실시간 시세 모니터
           </h1>
           <div className="mt-1 flex items-center gap-2 text-sm text-txt-secondary">
-            <Activity className="h-3.5 w-3.5 text-status-success" />
+            <Activity className="h-3.5 w-3.5 text-txt-primary" />
             Finnhub WebSocket · 미국주식 체결 실시간 (IEX) · 최대 {MAX_TRACKED}종목
             <ConnBadge state={state} />
           </div>
@@ -227,7 +227,7 @@ export function RealtimeMonitor({
               <p className="font-medium">NEXT_PUBLIC_FINNHUB_KEY가 설정되지 않았습니다.</p>
               <p className="text-txt-secondary">
                 <a
-                  className="underline text-brand-purple"
+                  className="underline text-txt-primary"
                   href="https://finnhub.io/dashboard"
                   target="_blank"
                   rel="noreferrer"
@@ -330,7 +330,7 @@ function ConnBadge({ state }: { state: ConnState }) {
   const map: Record<ConnState, { label: string; cls: string }> = {
     idle: { label: '대기', cls: 'text-txt-muted' },
     connecting: { label: '연결 중', cls: 'text-status-warning' },
-    open: { label: 'LIVE', cls: 'text-status-success' },
+    open: { label: 'LIVE', cls: 'text-txt-primary' },
     closed: { label: '재연결 중', cls: 'text-status-warning' },
     error: { label: '오류', cls: 'text-status-danger' },
     'no-key': { label: 'API KEY 없음', cls: 'text-status-danger' },
@@ -445,7 +445,7 @@ function QuoteCard({
                 className={cn(
                   'flex items-center gap-1 text-sm font-medium tabular-nums',
                   // US convention (green up, red down) — matches Finnhub source
-                  isUp === true && 'text-status-success',
+                  isUp === true && 'text-txt-primary',
                   isUp === false && 'text-status-danger',
                   isUp === null && 'text-txt-muted',
                 )}

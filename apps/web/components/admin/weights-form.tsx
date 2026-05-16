@@ -39,8 +39,8 @@ const WEIGHT_FIELDS: Array<{ key: keyof State; label: string }> = [
 ];
 
 const THRESHOLD_FIELDS: Array<{ key: keyof State; label: string; tone: string }> = [
-  { key: 'signal_threshold_strong', label: '강한 관심 ≥', tone: 'text-brand-purple' },
-  { key: 'signal_threshold_interest', label: '관심 ≥', tone: 'text-brand-purple' },
+  { key: 'signal_threshold_strong', label: '강한 관심 ≥', tone: 'text-txt-primary' },
+  { key: 'signal_threshold_interest', label: '관심 ≥', tone: 'text-txt-primary' },
   { key: 'signal_threshold_neutral', label: '관망 ≥', tone: 'text-txt-secondary' },
   { key: 'signal_threshold_caution', label: '주의 ≥', tone: 'text-status-warning' },
 ];
@@ -109,7 +109,7 @@ export function WeightsForm({ initial }: { initial: State }) {
             <h3 className="text-sm font-medium">7요소 가중치</h3>
             <span
               className={`flex items-center gap-1 text-xs font-mono ${
-                sumOk ? 'text-status-success' : 'text-status-error'
+                sumOk ? 'text-txt-primary' : 'text-status-error'
               }`}
             >
               {sumOk ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
@@ -141,7 +141,7 @@ export function WeightsForm({ initial }: { initial: State }) {
             <h3 className="text-sm font-medium">신호 임계값</h3>
             <span
               className={`flex items-center gap-1 text-xs ${
-                monotonicOk ? 'text-status-success' : 'text-status-error'
+                monotonicOk ? 'text-txt-primary' : 'text-status-error'
               }`}
             >
               {monotonicOk ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}

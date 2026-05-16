@@ -342,7 +342,7 @@ export function HelpSearch() {
               <span className="text-[14px] font-medium text-txt-primary truncate">
                 {entry.label}
               </span>
-              <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-brand-purple/80 bg-brand-purple/10 px-2 py-0.5 rounded">
+              <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-txt-primary/80 bg-brand-purple/10 px-2 py-0.5 rounded">
                 {entry.category}
               </span>
             </li>

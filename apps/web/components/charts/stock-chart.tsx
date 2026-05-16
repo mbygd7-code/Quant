@@ -290,7 +290,7 @@ export function StockChart({
               O <span className="text-txt-primary font-mono">{fmt(periodOpen)}</span>
             </span>
             <span className="text-txt-muted">
-              H <span className="font-mono text-status-success">{fmt(periodHigh)}</span>
+              H <span className="font-mono text-txt-primary">{fmt(periodHigh)}</span>
             </span>
             <span className="text-txt-muted">
               L <span className="font-mono text-status-danger">{fmt(periodLow)}</span>
@@ -345,7 +345,7 @@ export function StockChart({
               here has migrated into the period-aware OHLV row above. */}
           <Link
             href={`/chart/${ticker}?variant=${variant}${symbol ? `&symbol=${encodeURIComponent(symbol)}` : ''}&period=${period}&mode=${mode}`}
-            className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border-subtle/40 bg-bg-secondary/40 hover:bg-bg-tertiary/60 hover:border-brand-purple/40 text-[11px] font-semibold text-txt-secondary hover:text-brand-purple transition-colors"
+            className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border-subtle/40 bg-bg-secondary/40 hover:bg-bg-tertiary/60 hover:border-brand-purple/40 text-[11px] font-semibold text-txt-secondary hover:text-txt-primary transition-colors"
             title="전체화면 차트 뷰어 (확장 기간, Bollinger Bands, RSI, 로그 스케일, 비교 종목 등)"
             aria-label="전체화면 차트 뷰어 열기"
           >
@@ -435,7 +435,7 @@ export function StockChart({
           className={cn(
             'px-2.5 py-1 text-[11px] font-semibold rounded border transition-colors',
             showMA
-              ? 'border-brand-purple/40 bg-brand-purple/10 text-brand-purple'
+              ? 'border-brand-purple/40 bg-brand-purple/10 text-txt-primary'
               : 'border-border-subtle/40 text-txt-muted hover:text-txt-primary',
           )}
           title="20일/60일 이동평균선"
@@ -448,7 +448,7 @@ export function StockChart({
           className={cn(
             'px-2.5 py-1 text-[11px] font-semibold rounded border transition-colors',
             showVolume
-              ? 'border-brand-purple/40 bg-brand-purple/10 text-brand-purple'
+              ? 'border-brand-purple/40 bg-brand-purple/10 text-txt-primary'
               : 'border-border-subtle/40 text-txt-muted hover:text-txt-primary',
           )}
         >
@@ -460,7 +460,7 @@ export function StockChart({
           className={cn(
             'px-2.5 py-1 text-[11px] font-semibold rounded border transition-colors',
             showRange
-              ? 'border-brand-purple/40 bg-brand-purple/10 text-brand-purple'
+              ? 'border-brand-purple/40 bg-brand-purple/10 text-txt-primary'
               : 'border-border-subtle/40 text-txt-muted hover:text-txt-primary',
           )}
           title="기간 최고/최저 가격선"
@@ -665,7 +665,7 @@ export function StockChart({
                         <text
                           x={0}
                           y={4}
-                          fill="rgb(72,166,152)"
+                          fill="var(--text-primary)"
                           fontSize={9}
                           fontWeight={700}
                           style={{ fontFamily: 'ui-monospace, monospace' }}

@@ -139,7 +139,7 @@ export function LoginForm() {
       </Button>
       <p className="text-center text-xs text-txt-muted">
         초대 코드를 받으셨나요?{' '}
-        <Link href="/invite" className="text-brand-purple hover:underline">
+        <Link href="/invite" className="text-txt-primary hover:underline">
           초대 가입
         </Link>
       </p>

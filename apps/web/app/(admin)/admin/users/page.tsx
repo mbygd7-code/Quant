@@ -79,7 +79,7 @@ export default async function UsersPage() {
         <Card>
           <CardContent className="p-4">
             <div className="text-[11px] uppercase tracking-wider text-txt-muted">최근 7일</div>
-            <div className="mt-2 font-heading text-2xl font-semibold tabular-nums text-brand-purple">
+            <div className="mt-2 font-heading text-2xl font-semibold tabular-nums text-txt-primary">
               +{recent7d}
             </div>
           </CardContent>
@@ -120,10 +120,10 @@ export default async function UsersPage() {
                   {invitesList.map((inv) => {
                     const expired = new Date(inv.expires_at) < new Date();
                     const status = inv.used_at
-                      ? <Badge variant="outline" className="text-status-success">사용됨</Badge>
+                      ? <Badge variant="outline" className="text-txt-primary">사용됨</Badge>
                       : expired
                       ? <Badge variant="outline" className="text-txt-muted">만료</Badge>
-                      : <Badge variant="outline" className="text-brand-purple">대기</Badge>;
+                      : <Badge variant="outline" className="text-txt-primary">대기</Badge>;
                     return (
                       <tr key={inv.code} className="border-b border-border-divider-faint">
                         <td className="p-2 font-mono">{inv.email}</td>

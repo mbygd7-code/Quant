@@ -286,7 +286,7 @@ export default async function KrStockDetail({ params }: Props) {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm font-medium text-brand-purple">{detail.commentary.headline}</p>
+            <p className="text-sm font-medium text-txt-primary">{detail.commentary.headline}</p>
             <p className="text-sm leading-relaxed text-txt-primary whitespace-pre-line">
               {detail.commentary.body}
             </p>
@@ -312,13 +312,13 @@ export default async function KrStockDetail({ params }: Props) {
               <div className="grid gap-3 md:grid-cols-2">
                 {detail.commentary.catalysts.length > 0 && (
                   <div>
-                    <div className="text-[11px] uppercase tracking-wider text-status-success mb-2">
+                    <div className="text-[11px] uppercase tracking-wider text-txt-primary mb-2">
                       카탈리스트
                     </div>
                     <ul className="space-y-1.5">
                       {detail.commentary.catalysts.map((c, i) => (
                         <li key={i} className="flex gap-2 text-sm text-txt-primary">
-                          <span className="text-status-success shrink-0">•</span>
+                          <span className="text-txt-primary shrink-0">•</span>
                           <span>{c}</span>
                         </li>
                       ))}
@@ -362,7 +362,7 @@ export default async function KrStockDetail({ params }: Props) {
                 <ul className="space-y-2 text-sm text-txt-primary">
                   {reasons.map((r, i) => (
                     <li key={i} className="flex gap-2">
-                      <span className="text-brand-purple shrink-0">•</span>
+                      <span className="text-txt-primary shrink-0">•</span>
                       <span>{r}</span>
                     </li>
                   ))}
@@ -461,7 +461,7 @@ export default async function KrStockDetail({ params }: Props) {
                 href={n.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block text-sm text-brand-purple hover:underline"
+                className="block text-sm text-txt-primary hover:underline"
               >
                 {n.title} {n.source && <span className="text-xs text-txt-muted">· {n.source}</span>}
               </a>

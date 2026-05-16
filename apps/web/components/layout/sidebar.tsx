@@ -10,20 +10,12 @@ import {
   ListTodo,
   Loader2,
   Plus,
-  Search,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFavorites } from '@/lib/use-favorites';
 import { KR_TICKER_RE } from '@/lib/ticker';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { FavoritePicker } from '@/components/watchlist/favorite-picker';
 
 type Role = 'user' | 'beta' | 'admin';
 
@@ -61,6 +53,9 @@ export function Sidebar({ role, variant = 'desktop' }: { role: Role; variant?: '
   );
   const [openSection, setOpenSection] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Bumps to force a universe re-fetch after an external stock is promoted
+  // into the master watchlist (so the next picker open sees it natively).
+  const [universeRevision, setUniverseRevision] = useState(0);
   const { tickers, add, remove, hydrated } = useFavorites();
 
   useEffect(() => {
@@ -76,7 +71,7 @@ export function Sidebar({ role, variant = 'desktop' }: { role: Role; variant?: '
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [universeRevision]);
 
   const universeByTicker = useMemo(() => {
     const m = new Map<string, WatchlistItem>();
@@ -159,8 +154,8 @@ export function Sidebar({ role, variant = 'desktop' }: { role: Role; variant?: '
       ? 'flex h-full flex-col w-full'
       : 'hidden md:flex flex-col w-[220px] shrink-0 border-r border-border-divider';
 
-  const onWatchlistPage =
-    pathname === '/watchlist' || pathname.startsWith('/watchlist/');
+  const onFavoritesPage =
+    pathname === '/favorites' || pathname.startsWith('/favorites/');
 
   return (
     <aside
@@ -188,11 +183,11 @@ export function Sidebar({ role, variant = 'desktop' }: { role: Role; variant?: '
             )}
           </button>
           <Link
-            href="/watchlist"
+            href="/favorites"
             className={cn(
               'flex items-center gap-2 flex-1 px-1.5 h-8 rounded-sm text-sm transition-colors',
-              onWatchlistPage
-                ? 'bg-[var(--sidebar-active-bg)] text-brand-purple font-medium'
+              onFavoritesPage
+                ? 'bg-[var(--sidebar-active-bg)] text-txt-primary font-medium'
                 : 'text-txt-secondary hover:text-txt-primary hover:bg-[var(--sidebar-hover)]',
             )}
           >
@@ -209,7 +204,7 @@ export function Sidebar({ role, variant = 'desktop' }: { role: Role; variant?: '
             onClick={() => setPickerOpen(true)}
             aria-label="관심주식 추가"
             title="관심주식 추가"
-            className="p-1 rounded text-txt-muted hover:text-brand-purple hover:bg-[var(--sidebar-hover)] transition-colors"
+            className="p-1 rounded text-txt-muted hover:text-txt-primary hover:bg-[var(--sidebar-hover)] transition-colors"
           >
             <Plus className="h-4 w-4" />
           </button>
@@ -226,10 +221,17 @@ export function Sidebar({ role, variant = 'desktop' }: { role: Role; variant?: '
               <div className="px-3 py-3 text-[11px] text-txt-muted">
                 관심주식이 비어있습니다.
                 <br />
+                <Link
+                  href="/favorites"
+                  className="text-txt-primary hover:underline text-[10px]"
+                >
+                  관심주식 페이지 →
+                </Link>
+                <br />
                 <button
                   type="button"
                   onClick={() => setPickerOpen(true)}
-                  className="mt-1 inline-flex items-center gap-1 text-brand-purple hover:underline"
+                  className="mt-1 inline-flex items-center gap-1 text-txt-primary hover:underline"
                 >
                   <Plus className="h-3 w-3" /> 종목 추가
                 </button>
@@ -258,14 +260,14 @@ export function Sidebar({ role, variant = 'desktop' }: { role: Role; variant?: '
                     <li key={it.ticker} className="group">
                       <div
                         className={cn(
-                          'flex items-center gap-2 pl-6 pr-1 h-8 rounded-sm text-[12px] transition-colors',
+                          'flex items-center gap-2 pl-6 pr-1 h-9 rounded-sm text-[13px] font-medium transition-colors',
                           active
-                            ? 'bg-[var(--sidebar-active-bg)] text-brand-purple'
-                            : 'text-txt-secondary hover:text-txt-primary hover:bg-[var(--sidebar-hover)]',
+                            ? 'bg-[var(--sidebar-active-bg)] text-txt-primary'
+                            : 'text-txt-primary hover:text-txt-primary hover:bg-[var(--sidebar-hover)]',
                         )}
                       >
                         <span
-                          className="h-1.5 w-1.5 rounded-full shrink-0"
+                          className="h-2 w-2 rounded-full shrink-0"
                           style={{ background: dot }}
                           aria-hidden
                         />
@@ -277,7 +279,7 @@ export function Sidebar({ role, variant = 'desktop' }: { role: Role; variant?: '
                           {it.name}
                         </Link>
                         {pct != null && (
-                          <span className={cn('text-[10px] tabular-nums', pctCls)}>
+                          <span className={cn('text-[11px] font-medium tabular-nums', pctCls)}>
                             {pct > 0 ? '+' : ''}
                             {(pct * 100).toFixed(1)}%
                           </span>
@@ -314,115 +316,9 @@ export function Sidebar({ role, variant = 'desktop' }: { role: Role; variant?: '
         onAdd={(t) => {
           add(t);
         }}
+        onUniverseChanged={() => setUniverseRevision((n) => n + 1)}
       />
     </aside>
   );
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// Add-to-favorites picker
-
-interface PickerProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  universe: WatchlistItem[] | null;
-  existing: string[];
-  onAdd: (ticker: string) => void;
-}
-
-function FavoritePicker({ open, onOpenChange, universe, existing, onAdd }: PickerProps) {
-  const [query, setQuery] = useState('');
-
-  const filtered = useMemo(() => {
-    if (!universe) return [];
-    const q = query.trim().toLowerCase();
-    const base = q
-      ? universe.filter(
-          (it) =>
-            it.name.toLowerCase().includes(q) ||
-            it.ticker.toLowerCase().includes(q) ||
-            (it.sector ?? '').toLowerCase().includes(q),
-        )
-      : universe;
-    return base.slice(0, 100);
-  }, [universe, query]);
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md p-0 gap-0 overflow-hidden">
-        <DialogHeader className="px-4 pt-4 pb-2">
-          <DialogTitle className="text-base">관심주식 추가</DialogTitle>
-        </DialogHeader>
-        <div className="px-4 pb-3">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-txt-muted" />
-            <Input
-              autoFocus
-              placeholder="종목명·티커·섹터 검색"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="pl-8 h-9 text-sm"
-            />
-          </div>
-        </div>
-        <div className="max-h-[420px] overflow-y-auto border-t border-border-subtle">
-          {universe === null ? (
-            <div className="flex items-center justify-center gap-2 py-8 text-xs text-txt-muted">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              종목 목록 불러오는 중…
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="py-8 text-center text-xs text-txt-muted">
-              검색 결과가 없습니다.
-            </div>
-          ) : (
-            <ul>
-              {filtered.map((it) => {
-                const added = existing.includes(it.ticker);
-                return (
-                  <li
-                    key={it.ticker}
-                    className="flex items-center gap-3 px-4 py-2 hover:bg-[var(--sidebar-hover)] border-b border-border-subtle/40 last:border-b-0"
-                  >
-                    <span
-                      className="h-1.5 w-1.5 rounded-full shrink-0"
-                      style={{ background: signalColor(it.signal) }}
-                      aria-hidden
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-sm font-medium truncate">{it.name}</span>
-                        <span className="text-[10px] font-mono text-txt-muted">{it.ticker}</span>
-                      </div>
-                      <div className="text-[10px] text-txt-muted truncate">
-                        {it.market}
-                        {it.sector ? ` · ${it.sector}` : ''}
-                        {it.signal ? ` · ${it.signal}` : ''}
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant={added ? 'ghost' : 'outline'}
-                      disabled={added}
-                      onClick={() => onAdd(it.ticker)}
-                      className="h-7 px-2 text-[11px]"
-                    >
-                      {added ? '추가됨' : (
-                        <>
-                          <Plus className="h-3 w-3 mr-0.5" />추가
-                        </>
-                      )}
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-        <div className="px-4 py-2 border-t border-border-subtle text-[10px] text-txt-muted text-right">
-          {existing.length}개 추가됨
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
