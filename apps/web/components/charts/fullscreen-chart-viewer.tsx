@@ -2065,44 +2065,46 @@ function FullscreenTooltip({
   const dayChangePct = (dayChange / row.open) * 100;
 
   // ── Compact (default) layout ─────────────────────────────
-  // Original dense style — small footprint so it doesn't dominate
-  // the chart. Hint at the bottom tells the user how to expand.
+  // Bigger date + values per user request; all numeric text in
+  // text-primary except the directional indicators (close + day
+  // change) which keep their up/down color so the user can read
+  // direction at a glance.
   if (!expanded) {
     return (
-      <div className="rounded-md border border-border-default bg-bg-secondary/95 backdrop-blur-sm p-3 text-[11px] shadow-lg min-w-[220px]">
-        <div className="text-txt-secondary text-[10px] font-mono mb-1.5 pb-1 border-b border-border-subtle/40">
+      <div className="rounded-md border border-border-default bg-bg-secondary/95 backdrop-blur-sm p-3.5 text-[13px] shadow-lg min-w-[250px]">
+        <div className="text-txt-primary text-[15px] font-mono font-bold mb-2.5 pb-2 border-b border-border-default/50 tabular-nums">
           {row.date}
         </div>
-        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 tabular-nums">
-          <span className="text-txt-muted">시가 (O)</span>
-          <span className="text-right font-mono">{fmt(row.open)}</span>
-          <span className="text-txt-muted">고가 (H)</span>
-          <span className="text-right font-mono text-status-success">{fmt(row.high)}</span>
-          <span className="text-txt-muted">저가 (L)</span>
-          <span className="text-right font-mono text-status-danger">{fmt(row.low)}</span>
-          <span className="text-txt-muted">종가 (C)</span>
-          <span className="text-right font-mono font-semibold" style={{ color: changeColor }}>
+        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 tabular-nums">
+          <span className="text-txt-muted text-[12px]">시가 (O)</span>
+          <span className="text-right font-mono font-semibold text-txt-primary">{fmt(row.open)}</span>
+          <span className="text-txt-muted text-[12px]">고가 (H)</span>
+          <span className="text-right font-mono font-semibold text-txt-primary">{fmt(row.high)}</span>
+          <span className="text-txt-muted text-[12px]">저가 (L)</span>
+          <span className="text-right font-mono font-semibold text-txt-primary">{fmt(row.low)}</span>
+          <span className="text-txt-muted text-[12px]">종가 (C)</span>
+          <span className="text-right font-mono font-bold" style={{ color: changeColor }}>
             {fmt(row.close)}
           </span>
-          <span className="text-txt-muted">일중 변동</span>
-          <span className="text-right font-mono font-semibold" style={{ color: changeColor }}>
+          <span className="text-txt-muted text-[12px]">일중 변동</span>
+          <span className="text-right font-mono font-bold" style={{ color: changeColor }}>
             {dayChange >= 0 ? '+' : ''}{fmt(dayChange)} ({dayChangePct >= 0 ? '+' : ''}{dayChangePct.toFixed(2)}%)
           </span>
           {row.volume > 0 && (<>
-            <span className="text-txt-muted">거래량</span>
-            <span className="text-right font-mono">{fmtVolLocal(row.volume)}</span>
+            <span className="text-txt-muted text-[12px]">거래량</span>
+            <span className="text-right font-mono font-semibold text-txt-primary">{fmtVolLocal(row.volume)}</span>
           </>)}
           {row.ma20 != null && (<>
-            <span className="text-txt-muted">MA20</span>
-            <span className="text-right font-mono" style={{ color: '#F59E0B' }}>{fmt(row.ma20)}</span>
+            <span className="text-txt-muted text-[12px]">MA20</span>
+            <span className="text-right font-mono font-semibold text-txt-primary">{fmt(row.ma20)}</span>
           </>)}
           {row.ma60 != null && (<>
-            <span className="text-txt-muted">MA60</span>
-            <span className="text-right font-mono" style={{ color: '#A855F7' }}>{fmt(row.ma60)}</span>
+            <span className="text-txt-muted text-[12px]">MA60</span>
+            <span className="text-right font-mono font-semibold text-txt-primary">{fmt(row.ma60)}</span>
           </>)}
         </div>
-        <div className="mt-2 pt-1.5 border-t border-border-subtle/40 text-[9px] text-txt-muted italic flex items-center gap-1">
-          <kbd className="px-1 py-px text-[8px] rounded border border-border-subtle/60 bg-bg-tertiary/40 font-mono font-bold not-italic">
+        <div className="mt-2.5 pt-1.5 border-t border-border-subtle/40 text-[10px] text-txt-muted italic flex items-center gap-1">
+          <kbd className="px-1 py-px text-[9px] rounded border border-border-subtle/60 bg-bg-tertiary/40 font-mono font-bold not-italic">
             Space
           </kbd>
           <span>누르면 자세히</span>
@@ -2172,26 +2174,28 @@ function FullscreenTooltip({
         </div>
       </div>
 
-      {/* ── OHLV grid (2×2) */}
+      {/* ── OHLV grid (2×2) — all values in text-primary (black on
+          light theme) so they're maximally legible. Color is reserved
+          for directional indicators only. */}
       <div className="px-3.5 py-3 grid grid-cols-2 gap-x-5 gap-y-2.5 border-b border-border-subtle/50">
         <TooltipStat label="시가" value={fmt(row.open)} />
-        <TooltipStat label="고가" value={fmt(row.high)} valueColor="var(--status-success)" />
-        <TooltipStat label="저가" value={fmt(row.low)} valueColor="var(--status-danger)" />
+        <TooltipStat label="고가" value={fmt(row.high)} />
+        <TooltipStat label="저가" value={fmt(row.low)} />
         {row.volume > 0 && (
           <TooltipStat label="거래량" value={fmtVolLocal(row.volume)} />
         )}
       </div>
 
-      {/* ── Period cumulative */}
+      {/* ── Period cumulative — directional → uses up/down colors. */}
       <div className="px-3.5 py-2 flex items-center justify-between border-b border-border-subtle/50">
         <span className="text-txt-muted text-[12px] font-semibold">기간 누적</span>
         <span
           className="font-mono font-bold text-[14px] tabular-nums px-2 py-0.5 rounded"
           style={{
-            color: row.closePct >= 0 ? '#3DD68C' : '#F26D6D',
+            color: row.closePct >= 0 ? upColor : downColor,
             background: row.closePct >= 0
-              ? 'rgba(61,214,140,0.12)'
-              : 'rgba(242,109,109,0.12)',
+              ? `${upColor}1F`
+              : `${downColor}1F`,
           }}
         >
           {row.closePct >= 0 ? '▲ +' : '▼ '}
@@ -2244,7 +2248,9 @@ function FullscreenTooltip({
           </span>
           <span
             className="font-mono font-bold text-[14px] tabular-nums"
-            style={{ color: (row.comparePct ?? 0) >= 0 ? '#3DD68C' : '#F26D6D' }}
+            style={{
+              color: (row.comparePct ?? 0) >= 0 ? upColor : downColor,
+            }}
           >
             {(row.comparePct ?? 0) >= 0 ? '+' : ''}
             {(row.comparePct ?? 0).toFixed(2)}%
@@ -2286,6 +2292,10 @@ function TooltipIndicator({
 }: {
   label: string;
   value: string;
+  /** Swatch color — identifies which line on the chart this value
+   *  belongs to. The VALUE TEXT itself stays text-primary (black on
+   *  light theme) for legibility; only the small line swatch keeps
+   *  the brand color. */
   color: string;
 }) {
   return (
@@ -2297,10 +2307,7 @@ function TooltipIndicator({
         />
         {label}
       </span>
-      <span
-        className="text-right font-mono font-bold text-[13px] tabular-nums"
-        style={{ color }}
-      >
+      <span className="text-right font-mono font-bold text-[13px] tabular-nums text-txt-primary">
         {value}
       </span>
     </>
