@@ -55,17 +55,17 @@ const RAW_ENTRIES: Array<Omit<Entry, 'matchText'> & { keywords: string[] }> = [
   { label: '용어 사전 (Glossary)',   category: '섹션', sectionId: 'glossary',
     keywords: ['용어사전', '사전', 'glossary', '약어'] },
 
-  // ─── Basics ──────────────────────────────────────────
-  { label: '시가 / 종가 (Open / Close)', category: '가격', sectionId: 'basics',
+  // ─── Basics ── target specific TermCard ids ──────────
+  { label: '시가 / 종가 (Open / Close)', category: '가격', sectionId: 'term-open-close',
     keywords: ['시가', '종가', 'open', 'close', '개장가', 'O', 'C', 'OHLC'] },
-  { label: '고가 / 저가 (High / Low)',    category: '가격', sectionId: 'basics',
+  { label: '고가 / 저가 (High / Low)',    category: '가격', sectionId: 'term-high-low',
     keywords: ['고가', '저가', 'high', 'low', '최고가', '최저가', 'H', 'L'] },
-  { label: '거래량 (Volume)',             category: '가격', sectionId: 'basics',
+  { label: '거래량 (Volume)',             category: '가격', sectionId: 'term-volume',
     keywords: ['거래량', 'volume', 'V'] },
-  { label: '등락률 (Change Rate)',        category: '가격', sectionId: 'basics',
+  { label: '등락률 (Change Rate)',        category: '가격', sectionId: 'term-change-rate',
     keywords: ['등락률', '변동률', 'change', 'rate', '상승률', '하락률'] },
 
-  // ─── Candles ─────────────────────────────────────────
+  // ─── Candles (no individual ids — jump to section) ───
   { label: '양봉 / 음봉 (Bullish / Bearish candle)', category: '캔들', sectionId: 'candles',
     keywords: ['양봉', '음봉', 'bullish', 'bearish', '상승봉', '하락봉'] },
   { label: 'Wick (꼬리)',                category: '캔들', sectionId: 'candles',
@@ -73,122 +73,122 @@ const RAW_ENTRIES: Array<Omit<Entry, 'matchText'> & { keywords: string[] }> = [
   { label: 'Body (몸통)',                category: '캔들', sectionId: 'candles',
     keywords: ['body', '몸통', 'real body'] },
 
-  // ─── Technical indicators ────────────────────────────
-  { label: 'MA — Moving Average (이동평균선)', category: '지표', sectionId: 'chart-tools',
+  // ─── Technical indicators — point to TermCard ids ────
+  { label: 'MA — Moving Average (이동평균선)', category: '지표', sectionId: 'term-ma',
     keywords: ['MA', 'moving average', '이동평균', '이동평균선', 'MA5', 'MA20', 'MA60', 'MA120'] },
-  { label: 'EMA — Exponential Moving Average', category: '지표', sectionId: 'glossary',
+  { label: 'EMA — Exponential Moving Average', category: '지표', sectionId: 'gloss-ema',
     keywords: ['EMA', 'exponential moving average', '지수이동평균'] },
-  { label: 'BB — Bollinger Bands (볼린저 밴드)', category: '지표', sectionId: 'chart-tools',
+  { label: 'BB — Bollinger Bands (볼린저 밴드)', category: '지표', sectionId: 'term-bb',
     keywords: ['BB', 'bollinger', 'bands', '볼린저', '볼린저밴드', 'sigma', 'σ', '표준편차'] },
-  { label: 'RSI — Relative Strength Index (상대강도지수)', category: '지표', sectionId: 'chart-tools',
+  { label: 'RSI — Relative Strength Index (상대강도지수)', category: '지표', sectionId: 'term-rsi',
     keywords: ['RSI', 'relative strength', '상대강도', '상대강도지수', 'wilder', '과매수', '과매도'] },
-  { label: 'OBV — On-Balance Volume', category: '지표', sectionId: 'chart-tools',
+  { label: 'OBV — On-Balance Volume', category: '지표', sectionId: 'term-obv',
     keywords: ['OBV', 'on-balance volume', '누적거래량', 'granville', '매집', '분배'] },
-  { label: 'MACD — Moving Average Convergence Divergence', category: '지표', sectionId: 'glossary',
+  { label: 'MACD — Moving Average Convergence Divergence', category: '지표', sectionId: 'gloss-macd',
     keywords: ['MACD', 'macd', 'convergence', 'divergence'] },
-  { label: 'VWAP — Volume-Weighted Average Price', category: '지표', sectionId: 'glossary',
+  { label: 'VWAP — Volume-Weighted Average Price', category: '지표', sectionId: 'gloss-vwap',
     keywords: ['VWAP', 'volume weighted', '가중평균가'] },
-  { label: 'ATR — Average True Range', category: '지표', sectionId: 'glossary',
+  { label: 'ATR — Average True Range', category: '지표', sectionId: 'gloss-atr',
     keywords: ['ATR', 'average true range', '평균진폭'] },
-  { label: 'Golden Cross / Death Cross (골든크로스 / 데드크로스)', category: '지표', sectionId: 'chart-tools',
+  { label: 'Golden Cross / Death Cross', category: '지표', sectionId: 'gloss-golden-cross',
     keywords: ['golden cross', 'death cross', '골든크로스', '데드크로스'] },
-  { label: 'Breakout / Breakdown (돌파 / 이탈)', category: '지표', sectionId: 'glossary',
-    keywords: ['breakout', 'breakdown', '돌파', '이탈', '지지', '저항'] },
-  { label: 'Support / Resistance (지지 / 저항)', category: '지표', sectionId: 'glossary',
+  { label: 'Breakout / Breakdown (돌파 / 이탈)', category: '지표', sectionId: 'gloss-breakout',
+    keywords: ['breakout', 'breakdown', '돌파', '이탈'] },
+  { label: 'Support / Resistance (지지 / 저항)', category: '지표', sectionId: 'gloss-support-resistance',
     keywords: ['support', 'resistance', '지지선', '저항선'] },
-  { label: 'Divergence (다이버전스)', category: '지표', sectionId: 'glossary',
+  { label: 'Divergence (다이버전스)', category: '지표', sectionId: 'gloss-divergence',
     keywords: ['divergence', '다이버전스'] },
-  { label: 'σ — Sigma / Standard Deviation', category: '지표', sectionId: 'glossary',
+  { label: 'σ — Sigma / Standard Deviation', category: '지표', sectionId: 'gloss-σ',
     keywords: ['sigma', 'σ', 'standard deviation', '표준편차'] },
 
-  // ─── Financial ratios ────────────────────────────────
-  { label: 'PER (P/E) — Price-to-Earnings Ratio (주가수익비율)', category: '재무', sectionId: 'glossary',
+  // ─── Financial ratios — gloss ids ─────────────────────
+  { label: 'PER (P/E) — Price-to-Earnings Ratio (주가수익비율)', category: '재무', sectionId: 'gloss-per-p-e',
     keywords: ['PER', 'PE', 'p/e', 'price to earnings', '주가수익비율'] },
-  { label: 'PBR (P/B) — Price-to-Book Ratio (주가순자산비율)', category: '재무', sectionId: 'glossary',
+  { label: 'PBR (P/B) — Price-to-Book Ratio (주가순자산비율)', category: '재무', sectionId: 'gloss-pbr-p-b',
     keywords: ['PBR', 'PB', 'p/b', 'price to book', '주가순자산비율'] },
-  { label: 'EPS — Earnings Per Share (주당순이익)', category: '재무', sectionId: 'glossary',
+  { label: 'EPS — Earnings Per Share (주당순이익)', category: '재무', sectionId: 'gloss-eps',
     keywords: ['EPS', 'earnings per share', '주당순이익'] },
-  { label: 'BPS — Book-value Per Share (주당순자산)', category: '재무', sectionId: 'glossary',
+  { label: 'BPS — Book-value Per Share (주당순자산)', category: '재무', sectionId: 'gloss-bps',
     keywords: ['BPS', 'book value per share', '주당순자산'] },
-  { label: 'ROE — Return on Equity (자기자본이익률)', category: '재무', sectionId: 'glossary',
+  { label: 'ROE — Return on Equity (자기자본이익률)', category: '재무', sectionId: 'gloss-roe',
     keywords: ['ROE', 'return on equity', '자기자본이익률'] },
-  { label: 'ROA — Return on Assets (총자산이익률)', category: '재무', sectionId: 'glossary',
+  { label: 'ROA — Return on Assets (총자산이익률)', category: '재무', sectionId: 'gloss-roa',
     keywords: ['ROA', 'return on assets', '총자산이익률'] },
-  { label: 'DPS — Dividend Per Share (주당배당금)', category: '재무', sectionId: 'glossary',
+  { label: 'DPS — Dividend Per Share (주당배당금)', category: '재무', sectionId: 'gloss-dps',
     keywords: ['DPS', 'dividend per share', '주당배당금'] },
-  { label: 'Dividend Yield (배당수익률)', category: '재무', sectionId: 'glossary',
+  { label: 'Dividend Yield (배당수익률)', category: '재무', sectionId: 'gloss-dividend-yield',
     keywords: ['dividend yield', '배당수익률', '배당'] },
-  { label: 'CAPE — Cyclically Adjusted P/E (Shiller PE)', category: '재무', sectionId: 'glossary',
+  { label: 'CAPE — Cyclically Adjusted P/E (Shiller PE)', category: '재무', sectionId: 'gloss-cape',
     keywords: ['CAPE', 'shiller', 'cyclically adjusted'] },
-  { label: 'Market Cap — 시가총액', category: '재무', sectionId: 'glossary',
+  { label: 'Market Cap — 시가총액', category: '재무', sectionId: 'gloss-market-cap',
     keywords: ['market cap', 'capitalization', '시가총액', '시총'] },
 
-  // ─── AI · Stats ──────────────────────────────────────
-  { label: 'MAE — Mean Absolute Error', category: 'AI/통계', sectionId: 'accuracy',
+  // ─── AI · Stats — TermCard for in-section, gloss for rest
+  { label: 'MAE — Mean Absolute Error', category: 'AI/통계', sectionId: 'term-mae-mape',
     keywords: ['MAE', 'mean absolute error', '평균오차', '평균절대오차'] },
-  { label: 'MAPE — Mean Absolute Percentage Error', category: 'AI/통계', sectionId: 'accuracy',
+  { label: 'MAPE — Mean Absolute Percentage Error', category: 'AI/통계', sectionId: 'term-mae-mape',
     keywords: ['MAPE', 'mean absolute percentage', '평균비율오차'] },
-  { label: 'RMSE — Root Mean Square Error', category: 'AI/통계', sectionId: 'glossary',
+  { label: 'RMSE — Root Mean Square Error', category: 'AI/통계', sectionId: 'gloss-rmse',
     keywords: ['RMSE', 'root mean square error', '평균제곱근오차'] },
-  { label: 'Direction Accuracy (방향 일치율)', category: 'AI/통계', sectionId: 'accuracy',
+  { label: 'Direction Accuracy (방향 일치율)', category: 'AI/통계', sectionId: 'term-direction',
     keywords: ['direction', 'directional', 'accuracy', '방향일치', '방향성'] },
-  { label: 'Skill Score', category: 'AI/통계', sectionId: 'accuracy',
+  { label: 'Skill Score', category: 'AI/통계', sectionId: 'term-skill',
     keywords: ['skill', 'skill score', 'naive baseline', '기상학'] },
-  { label: 'Reliability — 신뢰도', category: 'AI/통계', sectionId: 'accuracy',
+  { label: 'Reliability — 신뢰도', category: 'AI/통계', sectionId: 'term-reliability',
     keywords: ['reliability', '신뢰도', '높음', '보통', '낮음'] },
-  { label: 'GBM / GBR — Gradient Boosting', category: 'AI/통계', sectionId: 'glossary',
+  { label: 'GBM / GBR — Gradient Boosting', category: 'AI/통계', sectionId: 'gloss-gbm-gbr',
     keywords: ['GBM', 'GBR', 'gradient boosting', 'machine', 'regressor'] },
-  { label: 'OLS — Ordinary Least Squares', category: 'AI/통계', sectionId: 'glossary',
+  { label: 'OLS — Ordinary Least Squares', category: 'AI/통계', sectionId: 'gloss-ols',
     keywords: ['OLS', 'ordinary least squares', '최소제곱법'] },
-  { label: 'LLM — Large Language Model', category: 'AI/통계', sectionId: 'glossary',
+  { label: 'LLM — Large Language Model', category: 'AI/통계', sectionId: 'gloss-llm',
     keywords: ['LLM', 'large language model', '언어모델', 'GPT', 'claude'] },
-  { label: 'AUC — Area Under the Curve', category: 'AI/통계', sectionId: 'glossary',
+  { label: 'AUC — Area Under the Curve', category: 'AI/통계', sectionId: 'gloss-auc',
     keywords: ['AUC', 'area under curve', 'ROC'] },
-  { label: 'CI — Confidence Interval (신뢰구간)', category: 'AI/통계', sectionId: 'glossary',
+  { label: 'CI — Confidence Interval (신뢰구간)', category: 'AI/통계', sectionId: 'gloss-ci',
     keywords: ['CI', 'confidence interval', '신뢰구간', '95%'] },
-  { label: 'Backtest (백테스트)', category: 'AI/통계', sectionId: 'glossary',
+  { label: 'Backtest (백테스트)', category: 'AI/통계', sectionId: 'gloss-backtest',
     keywords: ['backtest', '백테스트'] },
-  { label: 'Drawdown (낙폭)', category: 'AI/통계', sectionId: 'glossary',
+  { label: 'Drawdown (낙폭)', category: 'AI/통계', sectionId: 'gloss-drawdown',
     keywords: ['drawdown', '낙폭', 'MDD', 'maximum drawdown'] },
-  { label: 'Sharpe Ratio (샤프 비율)', category: 'AI/통계', sectionId: 'glossary',
+  { label: 'Sharpe Ratio (샤프 비율)', category: 'AI/통계', sectionId: 'gloss-sharpe-ratio',
     keywords: ['sharpe', 'sharpe ratio', '샤프비율'] },
-  { label: 'Naive Baseline', category: 'AI/통계', sectionId: 'glossary',
+  { label: 'Naive Baseline', category: 'AI/통계', sectionId: 'gloss-naive-baseline',
     keywords: ['naive', 'baseline', '순진'] },
 
   // ─── Market terms ────────────────────────────────────
-  { label: 'KOSPI — Korea Composite Stock Price Index (코스피)', category: '시장', sectionId: 'glossary',
+  { label: 'KOSPI — Korea Composite Stock Price Index (코스피)', category: '시장', sectionId: 'gloss-kospi',
     keywords: ['KOSPI', '코스피', 'korea composite'] },
-  { label: 'KOSDAQ (코스닥)', category: '시장', sectionId: 'glossary',
+  { label: 'KOSDAQ (코스닥)', category: '시장', sectionId: 'gloss-kosdaq',
     keywords: ['KOSDAQ', '코스닥'] },
-  { label: 'NASDAQ (나스닥)', category: '시장', sectionId: 'glossary',
+  { label: 'NASDAQ (나스닥)', category: '시장', sectionId: 'gloss-nasdaq',
     keywords: ['NASDAQ', '나스닥'] },
-  { label: 'NYSE — New York Stock Exchange', category: '시장', sectionId: 'glossary',
+  { label: 'NYSE — New York Stock Exchange', category: '시장', sectionId: 'gloss-nyse',
     keywords: ['NYSE', 'new york stock exchange'] },
-  { label: 'KRX — Korea Exchange (한국거래소)', category: '시장', sectionId: 'glossary',
+  { label: 'KRX — Korea Exchange (한국거래소)', category: '시장', sectionId: 'gloss-krx',
     keywords: ['KRX', '한국거래소'] },
-  { label: 'ETF — Exchange-Traded Fund (상장지수펀드)', category: '시장', sectionId: 'glossary',
+  { label: 'ETF — Exchange-Traded Fund (상장지수펀드)', category: '시장', sectionId: 'gloss-etf',
     keywords: ['ETF', 'exchange traded fund', '상장지수펀드'] },
-  { label: 'ETN — Exchange-Traded Note', category: '시장', sectionId: 'glossary',
+  { label: 'ETN — Exchange-Traded Note', category: '시장', sectionId: 'gloss-etn',
     keywords: ['ETN', 'exchange traded note', '상장지수증권'] },
-  { label: 'IPO — Initial Public Offering (기업공개)', category: '시장', sectionId: 'glossary',
+  { label: 'IPO — Initial Public Offering (기업공개)', category: '시장', sectionId: 'gloss-ipo',
     keywords: ['IPO', '기업공개', 'initial public offering'] },
-  { label: 'Bull / Bear Market (강세장 / 약세장)', category: '시장', sectionId: 'glossary',
+  { label: 'Bull / Bear Market (강세장 / 약세장)', category: '시장', sectionId: 'gloss-bull-bear',
     keywords: ['bull', 'bear', '강세장', '약세장'] },
-  { label: 'Bid / Ask (매수호가 / 매도호가)', category: '시장', sectionId: 'glossary',
+  { label: 'Bid / Ask (매수호가 / 매도호가)', category: '시장', sectionId: 'gloss-bid-ask',
     keywords: ['bid', 'ask', '매수호가', '매도호가', '호가'] },
-  { label: '상한가 / 하한가 (Daily Price Limit)', category: '시장', sectionId: 'glossary',
+  { label: '상한가 / 하한가 (Daily Price Limit)', category: '시장', sectionId: 'gloss-상한가-하한가',
     keywords: ['상한가', '하한가', 'price limit', '30%'] },
-  { label: '대장주 (Leader Stock)', category: '시장', sectionId: 'glossary',
+  { label: '대장주 (Leader Stock)', category: '시장', sectionId: 'gloss-대장주',
     keywords: ['대장주', 'leader'] },
-  { label: '대형주 / 중형주 / 소형주 (Large/Mid/Small Cap)', category: '시장', sectionId: 'glossary',
+  { label: '대형주 / 중형주 / 소형주 (Large/Mid/Small Cap)', category: '시장', sectionId: 'gloss-대형주-중형주-소형주',
     keywords: ['대형주', '중형주', '소형주', 'large cap', 'mid cap', 'small cap'] },
-  { label: '추세 / 모멘텀 (Trend / Momentum)', category: '시장', sectionId: 'glossary',
+  { label: '추세 / 모멘텀 (Trend / Momentum)', category: '시장', sectionId: 'gloss-추세',
     keywords: ['추세', '모멘텀', 'trend', 'momentum'] },
-  { label: '변동성 (Volatility)', category: '시장', sectionId: 'glossary',
+  { label: '변동성 (Volatility)', category: '시장', sectionId: 'gloss-변동성',
     keywords: ['변동성', 'volatility'] },
-  { label: '유동성 (Liquidity)', category: '시장', sectionId: 'glossary',
+  { label: '유동성 (Liquidity)', category: '시장', sectionId: 'gloss-유동성',
     keywords: ['유동성', 'liquidity', '슬리피지', 'slippage'] },
-  { label: '횡보 (Sideways / Consolidation)', category: '시장', sectionId: 'glossary',
+  { label: '횡보 (Sideways / Consolidation)', category: '시장', sectionId: 'gloss-횡보',
     keywords: ['횡보', 'sideways', 'consolidation', '박스권'] },
 
   // ─── Service-specific ────────────────────────────────
@@ -197,13 +197,13 @@ const RAW_ENTRIES: Array<Omit<Entry, 'matchText'> & { keywords: string[] }> = [
   { label: '6 Voters — 그레이엄·다우·터링·시러·케인즈·탈레브', category: '서비스', sectionId: 'voters',
     keywords: ['voter', 'voters', '그레이엄', 'graham', '다우', 'dow', '터링', 'turing',
               '시러', 'shiller', '케인즈', 'keynes', '탈레브', 'taleb'] },
-  { label: 'Watchlist (관심주식)', category: '서비스', sectionId: 'glossary',
+  { label: 'Watchlist (관심주식)', category: '서비스', sectionId: 'gloss-watchlist',
     keywords: ['watchlist', '관심주식', '50종목'] },
-  { label: 'Master 종목 (마스터 등록)', category: '서비스', sectionId: 'glossary',
+  { label: 'Master 종목 (마스터 등록)', category: '서비스', sectionId: 'gloss-master',
     keywords: ['master', '마스터', '등록'] },
-  { label: 'RAG — Retrieval-Augmented Generation', category: '서비스', sectionId: 'glossary',
+  { label: 'RAG — Retrieval-Augmented Generation', category: '서비스', sectionId: 'gloss-rag',
     keywords: ['RAG', 'retrieval', 'augmented', 'generation'] },
-  { label: '청크 (Knowledge Chunk)', category: '서비스', sectionId: 'glossary',
+  { label: '청크 (Knowledge Chunk)', category: '서비스', sectionId: 'gloss-청크',
     keywords: ['청크', 'chunk', '지식'] },
 
   // ─── Shortcuts ───────────────────────────────────────
@@ -244,12 +244,23 @@ export function HelpSearch() {
   }, [query]);
 
   const goTo = (entry: Entry) => {
-    const el = document.getElementById(entry.sectionId);
+    let el = document.getElementById(entry.sectionId);
+    // Fallback chain — if the term-specific id isn't found (e.g.
+    // glossary slug missing), step up to a likely parent section.
+    if (!el) {
+      const parts = entry.sectionId.split('-');
+      if (parts[0] === 'term' || parts[0] === 'gloss') {
+        // Find any section ancestor that exists.
+        el = document.getElementById('glossary') ?? document.getElementById('basics');
+      }
+    }
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      // Add a brief flash class to highlight where the user landed.
+      // 'center' so the highlighted card sits comfortably in the
+      // viewport rather than glued to the top edge.
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Pulse-twice highlight (2.2s).
       el.classList.add('help-flash');
-      window.setTimeout(() => el.classList.remove('help-flash'), 1600);
+      window.setTimeout(() => el!.classList.remove('help-flash'), 2200);
     }
     setQuery('');
     setOpen(false);

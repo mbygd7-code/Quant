@@ -86,6 +86,7 @@ export default function HelpPage() {
       <Section id="basics" icon={Sigma} title="1. 가장 먼저 알아야 할 용어" subtitle="이 단어들만 알면 차트의 80%가 읽혀요">
         <div className="grid md:grid-cols-2 gap-5">
           <TermCard
+            id="term-open-close"
             icon={ArrowUpRight}
             iconColor="#F26D6D"
             title="시가 / 종가"
@@ -95,6 +96,7 @@ export default function HelpPage() {
             usage="종가가 시가보다 높으면 '오른 날'(빨강), 낮으면 '내린 날'(파랑). 한국 시장은 빨강이 상승, 파랑이 하락이에요. 미국은 반대 (초록 상승, 빨강 하락)."
           />
           <TermCard
+            id="term-high-low"
             icon={Target}
             iconColor="#48A698"
             title="고가 / 저가"
@@ -104,6 +106,7 @@ export default function HelpPage() {
             usage="고가-저가 차이가 크면 그날 변동성이 큰 날. 작으면 박스권에서 움직인 잔잔한 날."
           />
           <TermCard
+            id="term-volume"
             icon={BarChart3}
             iconColor="#5BA8F2"
             title="거래량"
@@ -113,6 +116,7 @@ export default function HelpPage() {
             usage="가격이 올랐을 때 거래량도 큼 = '진짜 추세'. 가격은 올랐는데 거래량 작음 = '의심해야 할 상승'. 거래량은 가격의 '신뢰도'예요."
           />
           <TermCard
+            id="term-change-rate"
             icon={TrendingUp}
             iconColor="#A855F7"
             title="등락률"
@@ -166,6 +170,7 @@ export default function HelpPage() {
       <Section id="chart-tools" icon={LineChart} title="3. 차트의 보조선들" subtitle="가격만 봐도 알기 어려운 추세·과열·정상범위를 그려줘요">
         <div className="grid md:grid-cols-2 gap-5">
           <TermCard
+            id="term-ma"
             icon={Waves}
             iconColor="#F59E0B"
             title="MA (이동평균선)"
@@ -175,6 +180,7 @@ export default function HelpPage() {
             usage="MA20 위에 있으면 단기 상승세, 아래면 단기 하락세. MA20이 MA60을 위로 뚫으면(골든크로스 = Golden Cross) 추세 전환 신호로 봐요. 반대는 데드크로스(Death Cross)."
           />
           <TermCard
+            id="term-bb"
             icon={Scale}
             iconColor="#A855F7"
             title="Bollinger Bands"
@@ -184,6 +190,7 @@ export default function HelpPage() {
             usage="위쪽 띠 닿으면 '과열', 아래쪽 띠 닿으면 '과매도'. 띠가 좁아지면(squeeze = 스퀴즈) '곧 큰 변동이 온다'는 신호 — 변동성 축소 후 폭발(breakout = 가격 돌파) 자주 발생."
           />
           <TermCard
+            id="term-rsi"
             icon={Gauge}
             iconColor="#A855F7"
             title="RSI (상대강도지수)"
@@ -193,6 +200,7 @@ export default function HelpPage() {
             usage="70 이상 = 과매수(곧 조정 가능성), 30 이하 = 과매도(반등 가능성). 50 근처면 중립. 가격은 신고가인데 RSI는 못 따라오면 '하락 다이버전스(bearish divergence)' = 위험 신호."
           />
           <TermCard
+            id="term-obv"
             icon={TrendingDown}
             iconColor="#A855F7"
             title="OBV (누적 매수/매도)"
@@ -327,6 +335,7 @@ export default function HelpPage() {
       <Section id="accuracy" icon={Target} title="7. 예측 정확도 읽는 법" subtitle="모델이 얼마나 믿을 만한지 정량화한 4개 지표">
         <div className="grid md:grid-cols-2 gap-5">
           <TermCard
+            id="term-mae-mape"
             icon={Sigma}
             iconColor="#48A698"
             title="MAE / MAPE"
@@ -336,6 +345,7 @@ export default function HelpPage() {
             usage="MAE 0.05 = 평균 5점(0~100 스케일) 빗나감 = 우수. MAPE 10% 이하면 ✓ 좋음, 30% 넘으면 ✗ 의심."
           />
           <TermCard
+            id="term-direction"
             icon={Gauge}
             iconColor="#A855F7"
             title="방향 일치율"
@@ -345,6 +355,7 @@ export default function HelpPage() {
             usage="60% 이상이면 의미 있는 모델. 50% 미만이면 그냥 어제값 쓰는 게 나음."
           />
           <TermCard
+            id="term-skill"
             icon={Sparkles}
             iconColor="#F59E0B"
             title="Skill Score"
@@ -354,6 +365,7 @@ export default function HelpPage() {
             usage="+30% 이상이면 충분히 가치 있는 모델. 0% 근처 = 단순 예측 수준, 음수면 모델이 오히려 해가 됨."
           />
           <TermCard
+            id="term-reliability"
             icon={CheckCircle2}
             iconColor="#48A698"
             title="신뢰도"
@@ -436,7 +448,8 @@ export default function HelpPage() {
                 {group.terms.map((t) => (
                   <div
                     key={t.abbr}
-                    className="rounded-lg border border-border-subtle/60 bg-bg-secondary p-3.5 hover:border-brand-purple/30 transition-colors"
+                    id={`gloss-${glossSlug(t.abbr)}`}
+                    className="scroll-mt-24 rounded-lg border border-border-subtle/60 bg-bg-secondary p-3.5 hover:border-brand-purple/30 transition-colors"
                   >
                     <dt className="flex items-baseline gap-2 flex-wrap mb-1">
                       <span className="text-[15px] font-bold text-txt-primary font-mono">
@@ -481,6 +494,24 @@ export default function HelpPage() {
   );
 }
 
+/** Convert a glossary abbreviation into a URL/DOM-safe slug.
+ *  Examples:
+ *    'MA'            → 'ma'
+ *    'PER (P/E)'     → 'per'
+ *    'BB ±2σ'        → 'bb'
+ *    '양봉 / 음봉'    → '양봉-음봉'
+ *  Keeps the first 'word' (letters / Korean) so we get short ids
+ *  even when the abbr contains parenthetical notes or special chars.
+ */
+function glossSlug(abbr: string): string {
+  return abbr
+    .toLowerCase()
+    .split(/[^a-z0-9가-힣σ]+/i)
+    .filter(Boolean)
+    .slice(0, 3)
+    .join('-');
+}
+
 // ── Section helper ──────────────────────────────────────
 function Section({
   id, icon: Icon, title, subtitle, children,
@@ -512,8 +543,12 @@ function Section({
 }
 
 function TermCard({
-  icon: Icon, iconColor, title, short, english, body, usage,
+  id, icon: Icon, iconColor, title, short, english, body, usage,
 }: {
+  /** Unique DOM id used by the help-page search to scroll
+   *  precisely to this card (instead of the parent section).
+   *  Convention: 'term-{slug}' — e.g. 'term-ma', 'term-rsi'. */
+  id?: string;
   icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
   iconColor: string;
   title: string;
@@ -526,7 +561,10 @@ function TermCard({
   usage: string;
 }) {
   return (
-    <div className="rounded-xl border-2 border-border-subtle/60 bg-bg-secondary p-5 hover:border-brand-purple/30 transition-colors">
+    <div
+      id={id}
+      className="scroll-mt-24 rounded-xl border-2 border-border-subtle/60 bg-bg-secondary p-5 hover:border-brand-purple/30 transition-colors"
+    >
       <div className="flex items-start gap-3 mb-3">
         <div
           className="rounded-lg p-2.5 shrink-0"
