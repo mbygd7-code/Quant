@@ -73,7 +73,7 @@ export function TelegramLink({ chatId, initialCode, initialExpiresAt }: Props) {
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <span className="text-sm">상태:</span>
-          <span className="text-status-success text-sm">✓ 연동됨</span>
+          <span className="text-txt-primary text-sm">✓ 연동됨</span>
           <span className="font-mono text-xs text-txt-muted">chat_id {maskChatId(chatId)}</span>
         </div>
         <Button variant="outline" size="sm" onClick={handleDisconnect} disabled={pending}>

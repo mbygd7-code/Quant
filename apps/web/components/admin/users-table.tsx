@@ -42,8 +42,8 @@ interface UserRow {
 }
 
 const ROLE_TONE: Record<UserRow['role'], string> = {
-  admin: 'text-brand-purple border-brand-purple/30',
-  beta: 'text-status-success border-status-success/30',
+  admin: 'text-txt-primary border-brand-purple/30',
+  beta: 'text-txt-primary border-status-success/30',
   user: 'text-txt-secondary',
 };
 
@@ -122,7 +122,7 @@ export function UsersTable({ rows }: { rows: UserRow[] }) {
                 </TableCell>
                 <TableCell>
                   {u.telegram_chat_id ? (
-                    <span className="text-status-success text-xs">🟢 연동됨</span>
+                    <span className="text-txt-primary text-xs">🟢 연동됨</span>
                   ) : (
                     <span className="text-txt-muted text-xs">⚪ 미연동</span>
                   )}
@@ -172,7 +172,7 @@ export function UsersTable({ rows }: { rows: UserRow[] }) {
           <DialogHeader>
             <DialogTitle>역할 변경</DialogTitle>
             <DialogDescription>
-              {editing?.email} (현재: <span className="text-brand-purple">{editing?.role}</span>)
+              {editing?.email} (현재: <span className="text-txt-primary">{editing?.role}</span>)
             </DialogDescription>
           </DialogHeader>
           <Select onValueChange={(v) => handleRoleChange(v as UserRow['role'])}>

@@ -17,9 +17,12 @@ html[data-theme="dark"] {
   --bg-tertiary: #252525;
   --bg-content: #1A1A1A;
 
+  /* Contrast bump — old #A0A0A0 / #6B6B6B were the lower bounds of
+   * WCAG AA on dark bg. Pushed both lighter for better daytime/glare
+   * readability without losing the hierarchy from primary. */
   --text-primary: #FFFFFF;
-  --text-secondary: #A0A0A0;
-  --text-muted: #6B6B6B;
+  --text-secondary: #C9C9C9;
+  --text-muted: #8E8E8E;
 
   --brand-purple-rgb: 114 60 235;
   --brand-purple-deep-rgb: 76 17 206;
@@ -43,6 +46,13 @@ html[data-theme="dark"] {
   --status-warning-rgb: 255 239 99;
   --status-error-rgb: 239 68 68;
   --status-info-rgb: 114 60 235;
+  /* Convenience CSS-var aliases for component code that uses
+     `var(--status-foo)` directly (e.g. inline `style={{background: ...}}`). */
+  --status-success: rgb(var(--status-success-rgb));
+  --status-warning: rgb(var(--status-warning-rgb));
+  --status-error:   rgb(var(--status-error-rgb));
+  --status-danger:  rgb(var(--status-error-rgb));
+  --status-info:    rgb(var(--status-info-rgb));
 
   --surface-overlay: rgba(0, 0, 0, 0.60);
 
@@ -83,9 +93,13 @@ html[data-theme="light"] {
   --bg-tertiary: #EAE6DE;
   --bg-content: #E4DFD5;
 
-  --text-primary: #2D2A33;
-  --text-secondary: #6B6B6B;
-  --text-muted: #A3A09A;
+  /* Light-theme text — major contrast bump (Nov 2026).
+   * Old #6B6B6B and #A3A09A were so soft on the cream background
+   * that secondary copy and label hints disappeared. Pushed both
+   * markedly darker so muted-grays still register as readable text. */
+  --text-primary: #1F1C25;     /* was #2D2A33 — slightly darker */
+  --text-secondary: #4A4853;    /* was #6B6B6B */
+  --text-muted: #6E6B66;        /* was #A3A09A — biggest jump */
 
   --brand-purple-rgb: 158 180 36;
   --brand-purple-deep-rgb: 128 152 20;
@@ -109,6 +123,11 @@ html[data-theme="light"] {
   --status-warning-rgb: 220 180 50;
   --status-error-rgb: 220 72 72;
   --status-info-rgb: 110 140 40;
+  --status-success: rgb(var(--status-success-rgb));
+  --status-warning: rgb(var(--status-warning-rgb));
+  --status-error:   rgb(var(--status-error-rgb));
+  --status-danger:  rgb(var(--status-error-rgb));
+  --status-info:    rgb(var(--status-info-rgb));
 
   --surface-overlay: rgba(30, 27, 46, 0.35);
 
@@ -185,6 +204,33 @@ html[data-theme="light"] .content-gradient-bg > * { position: relative; z-index:
 @keyframes slideLeft { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }
 
 ::selection { background: var(--selection-bg); color: var(--text-primary); }
+
+/* Help-page search "you landed here" flash. Applied programmatically
+ * for ~2.2s after a search result is clicked so the user gets a
+ * clear visual confirmation of which TERM they navigated to. The
+ * animation pulses TWICE so it really catches the eye even on a
+ * dense card grid. */
+@keyframes help-flash {
+  0%   { box-shadow: 0 0 0 0    rgba(var(--brand-purple-rgb), 0.70);
+         background-color:       rgba(var(--brand-purple-rgb), 0.18);
+         outline: 3px solid       rgba(var(--brand-purple-rgb), 0.85);
+         outline-offset: 2px; }
+  25%  { box-shadow: 0 0 0 10px rgba(var(--brand-purple-rgb), 0.00);
+         background-color:       rgba(var(--brand-purple-rgb), 0.08);
+         outline-color:           rgba(var(--brand-purple-rgb), 0.30); }
+  50%  { box-shadow: 0 0 0 0    rgba(var(--brand-purple-rgb), 0.55);
+         background-color:       rgba(var(--brand-purple-rgb), 0.14);
+         outline-color:           rgba(var(--brand-purple-rgb), 0.70); }
+  75%  { box-shadow: 0 0 0 10px rgba(var(--brand-purple-rgb), 0.00);
+         background-color:       rgba(var(--brand-purple-rgb), 0.06);
+         outline-color:           rgba(var(--brand-purple-rgb), 0.20); }
+  100% { box-shadow: 0 0 0 0    rgba(var(--brand-purple-rgb), 0.00);
+         background-color:       transparent;
+         outline-color:           rgba(var(--brand-purple-rgb), 0.00); }
+}
+.help-flash {
+  animation: help-flash 2.2s ease-out both;
+}
 
 html.theme-transitioning,
 html.theme-transitioning *,

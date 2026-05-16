@@ -225,13 +225,13 @@ export function WeightSliderForm({ initial }: Props) {
             <span
               className={cn(
                 'font-mono tabular-nums',
-                sumOk ? 'text-status-success' : 'text-status-danger',
+                sumOk ? 'text-txt-primary' : 'text-status-danger',
               )}
             >
               {(sum * 100).toFixed(2)}%
             </span>
             {sumOk ? (
-              <Check className="h-3.5 w-3.5 text-status-success" />
+              <Check className="h-3.5 w-3.5 text-txt-primary" />
             ) : (
               <AlertCircle className="h-3.5 w-3.5 text-status-danger" />
             )}

@@ -90,7 +90,7 @@ export function InviteUserDialog({ children }: { children: React.ReactNode }) {
                 {issued.sent ? '✅ 메일 발송 완료. 링크는 다음과 같습니다:' : '⚠ 메일 발송 실패. 다음 링크를 직접 공유하세요:'}
               </div>
               <div className="flex items-center gap-2">
-                <code className="font-mono text-xs break-all flex-1 text-brand-purple">{issued.url}</code>
+                <code className="font-mono text-xs break-all flex-1 text-txt-primary">{issued.url}</code>
                 <Button size="icon" variant="ghost" onClick={copyLink} aria-label="복사">
                   <Copy className="h-4 w-4" />
                 </Button>

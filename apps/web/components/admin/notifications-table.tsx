@@ -30,7 +30,7 @@ interface Row {
 }
 
 const STATUS_TONE: Record<string, string> = {
-  sent: 'text-status-success border-status-success/30',
+  sent: 'text-txt-primary border-status-success/30',
   failed: 'text-status-error border-status-error/30',
   dry_run: 'text-txt-secondary',
 };

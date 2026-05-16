@@ -43,10 +43,10 @@ interface TalebAlertRow {
 }
 
 const AGENT_DISPLAY: Record<AgentName, { label: string; tone: string }> = {
-  soros: { label: 'Soros', tone: 'text-brand-purple' },
+  soros: { label: 'Soros', tone: 'text-txt-primary' },
   taleb: { label: 'Taleb', tone: 'text-status-danger' },
   simons: { label: 'Simons', tone: 'text-status-info' },
-  graham: { label: 'Graham', tone: 'text-status-success' },
+  graham: { label: 'Graham', tone: 'text-txt-primary' },
   dow: { label: 'Dow', tone: 'text-status-info' },
   shiller: { label: 'Shiller', tone: 'text-status-warning' },
   keynes: { label: 'Keynes', tone: 'text-txt-secondary' },
@@ -123,13 +123,13 @@ export default async function AgentMonitoringPage() {
       {/* KPI cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <KpiCard
-          icon={<Activity className="h-4 w-4 text-status-success" />}
+          icon={<Activity className="h-4 w-4 text-txt-primary" />}
           label="14일 누적 호출"
           value={totals.calls.toLocaleString('ko-KR')}
           hint={daily.length === 0 ? '데이터 없음' : `${daily.length} 일자별 행`}
         />
         <KpiCard
-          icon={<DollarSign className="h-4 w-4 text-brand-purple" />}
+          icon={<DollarSign className="h-4 w-4 text-txt-primary" />}
           label="14일 누적 비용"
           value={fmtUsd(totals.cost)}
           hint="Sonnet 기준 추정 (cache reads 90% off 적용)"

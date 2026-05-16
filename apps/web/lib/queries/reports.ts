@@ -128,11 +128,14 @@ export async function getStockDetail(date: string, ticker: string): Promise<Stoc
     sb.from('stocks').select('*').eq('ticker', ticker).maybeSingle(),
     sb.from('ai_scores').select('*').eq('date', date).eq('ticker', ticker).maybeSingle(),
     sb.from('korea_market').select('*').eq('date', date).eq('ticker', ticker).maybeSingle(),
+    // Pull up to ~1Y of history so the ScoreTrend chart can offer
+    // 1W/1M/3M/6M/1Y period filters client-side. The chart slices the
+    // window on demand so we only round-trip once.
     sb.from('ai_scores')
       .select('date, final_score, signal')
       .eq('ticker', ticker)
       .order('date', { ascending: false })
-      .limit(30),
+      .limit(260),
     sb.from('ai_commentary')
       .select('headline, body, short_term, mid_term, catalysts, risks, model, created_at')
       .eq('ticker', ticker)

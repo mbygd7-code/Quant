@@ -40,8 +40,8 @@ interface StockRow {
 }
 
 const TONE_CLASS: Record<string, string> = {
-  success: 'border-status-success/40 text-status-success',
-  positive: 'border-brand-purple/40 text-brand-purple',
+  success: 'border-status-success/40 text-txt-primary',
+  positive: 'border-brand-purple/40 text-txt-primary',
   neutral: 'border-border-divider text-txt-secondary',
   warning: 'border-status-warning/40 text-status-warning',
   danger: 'border-status-danger/40 text-status-danger',
@@ -123,7 +123,7 @@ export default async function AgentSignalsPage() {
         <Card>
           <CardContent className="p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-semibold">
-              <Activity className="h-4 w-4 text-brand-purple" />
+              <Activity className="h-4 w-4 text-txt-primary" />
               최근 시그널 변경 ({changes.length})
             </div>
             <div className="space-y-1">
@@ -146,7 +146,7 @@ export default async function AgentSignalsPage() {
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       {isUpgrade ? (
-                        <ArrowUpRight className="h-3.5 w-3.5 text-status-success shrink-0" />
+                        <ArrowUpRight className="h-3.5 w-3.5 text-txt-primary shrink-0" />
                       ) : isDowngrade ? (
                         <ArrowDownRight className="h-3.5 w-3.5 text-status-danger shrink-0" />
                       ) : (

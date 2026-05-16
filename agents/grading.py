@@ -67,6 +67,45 @@ def grade_band(grade: SignalGrade) -> GradeBand:
     return _BAND_BY_GRADE[grade]
 
 
+#: Confidence floor for the strongest signal grade. When voter agreement
+#: is weak (single voter drives the whole signal) we don't want to put
+#: a "강한 관심" sticker on the result — that combo confused users
+#: ("강한 관심 with 50% confidence?"). Below this threshold, the grade
+#: is demoted one step.
+STRONG_BUY_CONFIDENCE_FLOOR = 0.70
+BUY_CONFIDENCE_FLOOR = 0.50
+
+
+def apply_confidence_gate(
+    baseline: SignalGrade,
+    confidence: float | Decimal | None,
+) -> tuple[SignalGrade, bool]:
+    """Demote a strong directional grade when voter agreement is weak.
+
+    Returns ``(adjusted_grade, demoted)``.
+
+    Rules:
+        STRONG_BUY + confidence < 0.70 → BUY    (강한 관심 → 관심)
+        BUY        + confidence < 0.50 → HOLD   (관심 → 관망)
+        Negative grades (CAUTION/RISK) are NOT demoted — when the system
+        is uncertain about a risk call, the safe move is to keep showing
+        the warning rather than soften it.
+
+    confidence=None passes through unchanged. The cycle worker writes
+    confidence as a non-null value but defence-in-depth is cheap here.
+    """
+    if confidence is None:
+        return baseline, False
+    c = float(confidence)
+    if math.isnan(c):
+        return baseline, False
+    if baseline == "STRONG_BUY" and c < STRONG_BUY_CONFIDENCE_FLOOR:
+        return "BUY", True
+    if baseline == "BUY" and c < BUY_CONFIDENCE_FLOOR:
+        return "HOLD", True
+    return baseline, False
+
+
 def apply_taleb_constraint(
     baseline: SignalGrade, severity: int | None
 ) -> tuple[SignalGrade, bool]:

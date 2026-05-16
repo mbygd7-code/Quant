@@ -245,13 +245,15 @@ export async function discoverUnaddedStocksAction(
 
   let filtered = orderedTickers.filter((t) => metaByTicker.has(t)).slice(0, limit);
 
-  // Fallback: korea_market / ai_scores only cover the existing watchlist
-  // (our pipeline doesn't ingest the whole KRX universe). When the curated
-  // ranking returns nothing for the unadded set, fall back to live NAVER
-  // snapshots so each mode still shows differentiated rankings instead
-  // of the same alphabetical list.
+  // korea_market / ai_scores only cover the existing watchlist universe —
+  // our backend ingests just the 56 tracked names, not the full ~2,500-strong
+  // KRX. So the curated ranking returns at most a handful of unadded rows
+  // (often zero or one). Top up with a NAVER live-snapshot pass so each
+  // section reaches the requested `limit` and the four modes show
+  // *differentiated* rankings instead of the same one-name placeholder.
   let liveSnapshots: Map<string, NaverLiveSnap> | null = null;
-  if (filtered.length === 0) {
+  if (filtered.length < limit) {
+    const alreadyHave = new Set(filtered);
     const { data: anyStocks } = await sb
       .from('stocks')
       .select('ticker, name, sector, market')
@@ -260,16 +262,21 @@ export async function discoverUnaddedStocksAction(
       .order('ticker', { ascending: true })
       .limit(80); // cap NAVER fan-out
     for (const s of anyStocks ?? []) {
-      metaByTicker.set(s.ticker as string, {
+      const t = s.ticker as string;
+      if (alreadyHave.has(t)) continue;
+      metaByTicker.set(t, {
         name: s.name as string,
         sector: s.sector as string | null,
         market: s.market as string,
       });
     }
-    const universe = (anyStocks ?? []).map((s) => s.ticker as string);
+    const universe = (anyStocks ?? [])
+      .map((s) => s.ticker as string)
+      .filter((t) => !alreadyHave.has(t));
     if (universe.length > 0) {
       liveSnapshots = await fetchNaverSnapshots(universe);
-      // Sort by mode using live data
+      // Sort the fallback pool by mode using live data, then append after
+      // the curated head so curated picks still rank first when present.
       const cmp = (a: string, b: string): number => {
         const sa = liveSnapshots!.get(a);
         const sb_ = liveSnapshots!.get(b);
@@ -282,12 +289,13 @@ export async function discoverUnaddedStocksAction(
         if (mode === 'foreign_buy') {
           return (sb_?.foreignRetentionRate ?? 0) - (sa?.foreignRetentionRate ?? 0);
         }
-        // ai_pick — no AI scores, use volume as a proxy so it's different
-        // from popular (which uses value). Volume favors lower-priced
-        // active names; value favors blue-chips.
+        // ai_pick — no AI scores for these, use volume as a proxy so it
+        // differs from popular (which uses value). Volume favors lower-
+        // priced active names; value favors blue-chips.
         return (sb_?.volume ?? 0) - (sa?.volume ?? 0);
       };
-      filtered = [...universe].sort(cmp).slice(0, limit);
+      const topUp = [...universe].sort(cmp).slice(0, limit - filtered.length);
+      filtered = [...filtered, ...topUp];
     }
   }
   if (filtered.length === 0) return [];

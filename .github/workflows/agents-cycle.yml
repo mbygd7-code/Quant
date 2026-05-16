@@ -37,6 +37,11 @@ on:
         description: 'Tier filter (S,A,B). Empty = all tiers.'
         required: false
         default: 'S,A,B'
+      favorites_only:
+        description: 'Restrict Stage-2 LLM analysis to LNB favorites union (overrides tier)'
+        type: boolean
+        required: false
+        default: true
       require_change:
         description: 'Skip quiet tickers (price/volume/macro all flat)'
         type: boolean
@@ -70,16 +75,22 @@ jobs:
         # Manual dispatch uses inputs.tier directly.
         run: |
           if [ -n "${{ github.event.schedule }}" ]; then
+            # Cron-fired runs now default to LNB favorites only — the
+            # cycle worker falls back to the tier filter if no user has
+            # favorited anything yet. tier= still serves the safety-net
+            # fallback inside run_cycle().
             case "${{ github.event.schedule }}" in
-              "0 22 * * *") TIER="S,A,B" ;;   # 07 KST  full universe
-              "0 3 * * *")  TIER="S" ;;        # 12 KST  core only
-              "0 7 * * *")  TIER="S" ;;        # 16 KST  core only
+              "0 22 * * *") TIER="S,A,B" ;;   # 07 KST  full universe fallback
+              "0 3 * * *")  TIER="S" ;;        # 12 KST  core fallback
+              "0 7 * * *")  TIER="S" ;;        # 16 KST  core fallback
               *)            TIER="S,A,B" ;;
             esac
             echo "tier=$TIER" >> "$GITHUB_OUTPUT"
+            echo "favorites_only=true" >> "$GITHUB_OUTPUT"
             echo "require_change=true" >> "$GITHUB_OUTPUT"
           else
             echo "tier=${{ inputs.tier }}" >> "$GITHUB_OUTPUT"
+            echo "favorites_only=${{ inputs.favorites_only }}" >> "$GITHUB_OUTPUT"
             echo "require_change=${{ inputs.require_change }}" >> "$GITHUB_OUTPUT"
           fi
 
@@ -94,6 +105,9 @@ jobs:
           TIER="${{ steps.tier-from-schedule.outputs.tier }}"
           if [ -n "$TIER" ]; then
             ARGS="$ARGS --tier $TIER"
+          fi
+          if [ "${{ steps.tier-from-schedule.outputs.favorites_only }}" = "true" ]; then
+            ARGS="$ARGS --favorites-only"
           fi
           if [ "${{ steps.tier-from-schedule.outputs.require_change }}" = "true" ]; then
             ARGS="$ARGS --require-change"

@@ -25,6 +25,7 @@ export interface AiScore {
   fundamental_score: number | null;
   volume_flow_score: number | null;
   risk_penalty: number | null;
+  kr_fear_greed_score: number | null;
   final_score: number;
   signal: Signal;
   rationale_json: {

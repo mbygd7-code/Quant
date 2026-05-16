@@ -26,8 +26,10 @@ from datetime import date as Date
 from datetime import timedelta
 
 import numpy as np
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.model_selection import TimeSeriesSplit
+from sklearn.metrics import brier_score_loss, roc_auc_score
+from sklearn.model_selection import GroupKFold, TimeSeriesSplit
 
 from db.supabase_client import get_admin_client
 from signals.__schemas__.prediction import Prediction
@@ -47,6 +49,23 @@ class InsufficientDataError(RuntimeError):
 class TrainResult:
     rows: int
     cv_auc_mean: float
+    feature_importances: dict[str, float]
+
+
+@dataclass
+class CalibratedTrainResult:
+    """Result of the calibrated/group-aware training path.
+
+    Adds Brier score (calibration goodness) on top of AUC, and a per-fold
+    breakdown so we can spot regime shifts (training on a bull window then
+    testing in a bear one).
+    """
+    rows: int
+    n_groups: int          # distinct trading days used as folds
+    auc_mean: float
+    auc_std: float
+    brier_mean: float
+    brier_std: float
     feature_importances: dict[str, float]
 
 
@@ -91,6 +110,160 @@ class GBMPredictor:
             cv_auc_mean=float(np.mean(aucs)),
             feature_importances={k: float(v) for k, v in importances.items()},
         )
+
+    # ──────────────────────────────────────────────────────
+    # Calibrated training (Phase F per audit recommendation)
+    # ──────────────────────────────────────────────────────
+    def train_calibrated(
+        self,
+        start_date: Date,
+        end_date: Date,
+        *,
+        n_splits: int = 5,
+    ) -> CalibratedTrainResult:
+        """Train with sigmoid calibration + group-aware K-fold by date.
+
+        Addresses the audit's "cross-ticker information leak" finding —
+        the legacy ``train()`` uses TimeSeriesSplit which lets the same
+        trading day appear in both train and test folds via different
+        tickers. ``GroupKFold(groups=date)`` prevents that.
+
+        Sigmoid calibration on top of GBM tames over-confident probabilities,
+        which matters because our downstream confidence indicator is
+        ``|prob_up - 0.5| * 2`` — uncalibrated GBM often outputs 0.05/0.95
+        even when the empirical hit rate is 30%/70%.
+        """
+        X, y, groups = self._build_training_set_with_groups(start_date, end_date)
+        if len(X) < MIN_TRAINING_ROWS:
+            raise InsufficientDataError(
+                f"Need >= {MIN_TRAINING_ROWS} labeled rows, got {len(X)}. "
+                "Run the daily pipeline for several weeks first."
+            )
+        n_groups = len(np.unique(groups))
+        if n_groups < n_splits:
+            raise InsufficientDataError(
+                f"Need >= {n_splits} distinct trading days for GroupKFold, "
+                f"got {n_groups}. Wait for more cron runs to accumulate."
+            )
+
+        gkf = GroupKFold(n_splits=n_splits)
+        aucs: list[float] = []
+        briers: list[float] = []
+        for fold_idx, (train_idx, valid_idx) in enumerate(gkf.split(X, y, groups)):
+            base = self._build_model()
+            # Wrap with sigmoid calibration. cv='prefit' would skip the
+            # internal CV but we want the cross-validated probabilities
+            # for honest calibration, so cv=3 here. The outer GroupKFold
+            # still prevents same-day leakage between train/valid.
+            cal = CalibratedClassifierCV(base, method="sigmoid", cv=3)
+            cal.fit(X[train_idx], y[train_idx])
+            proba = cal.predict_proba(X[valid_idx])[:, 1]
+            try:
+                auc = roc_auc_score(y[valid_idx], proba)
+            except ValueError:
+                # Single-class fold (rare with binary target on tiny data).
+                auc = 0.5
+            brier = brier_score_loss(y[valid_idx], proba)
+            aucs.append(float(auc))
+            briers.append(float(brier))
+            log.info(
+                "GBM calibrated fold %d: AUC=%.3f, Brier=%.4f",
+                fold_idx, auc, brier,
+            )
+
+        # Final fit on full history (calibrated) — used by predict().
+        final = CalibratedClassifierCV(self._build_model(), method="sigmoid", cv=3)
+        final.fit(X, y)
+        self._model = final  # type: ignore[assignment]
+
+        # Pull importances from the underlying classifier(s). Calibrated
+        # wrapper exposes them via the first base_estimator_.
+        try:
+            base_est = final.calibrated_classifiers_[0].estimator
+            importances = dict(
+                zip(FEATURE_NAMES, base_est.feature_importances_, strict=True)
+            )
+        except (AttributeError, IndexError):
+            importances = {name: 0.0 for name in FEATURE_NAMES}
+
+        return CalibratedTrainResult(
+            rows=len(X),
+            n_groups=int(n_groups),
+            auc_mean=float(np.mean(aucs)),
+            auc_std=float(np.std(aucs)),
+            brier_mean=float(np.mean(briers)),
+            brier_std=float(np.std(briers)),
+            feature_importances={k: float(v) for k, v in importances.items()},
+        )
+
+    def _build_training_set_with_groups(
+        self, start_date: Date, end_date: Date,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Same as ``_build_training_set`` but also returns the date-keyed
+        group label for GroupKFold. Re-uses the underlying builder so we
+        don't fork the feature pipeline."""
+        # Delegate to the existing path then re-derive groups from the
+        # builder's iteration order. The legacy method is currently
+        # date-major (outer loop = date) so reconstructing groups is
+        # straightforward — but we re-implement here to keep the contract
+        # explicit.
+        sb = self._db
+        tickers = [
+            r["ticker"] for r in (
+                sb.table("stocks").select("ticker").eq("is_watchlist", True)
+                  .execute().data or []
+            )
+        ]
+        rows_x: list[np.ndarray] = []
+        rows_y: list[int] = []
+        rows_g: list[int] = []  # group label = days since epoch
+        epoch = Date(1970, 1, 1)
+
+        cursor = start_date
+        while cursor <= end_date:
+            for ticker in tickers:
+                try:
+                    feat = self._builder.build(ticker, cursor)
+                    label = self._target_label(ticker, cursor)
+                    if label is None:
+                        continue
+                    rows_x.append(feat.as_array())
+                    rows_y.append(int(label))
+                    rows_g.append((cursor - epoch).days)
+                except Exception:  # noqa: BLE001
+                    continue
+            cursor = cursor + timedelta(days=1)
+
+        if not rows_x:
+            return np.empty((0, len(FEATURE_NAMES))), np.empty(0), np.empty(0)
+        return (
+            np.vstack(rows_x),
+            np.array(rows_y),
+            np.array(rows_g),
+        )
+
+    def _target_label(self, ticker: str, on_date: Date) -> int | None:
+        """Look up the next-trading-day close vs today; binary label."""
+        sb = self._db
+        rows = (
+            sb.table("korea_market")
+            .select("date, close")
+            .eq("ticker", ticker)
+            .gte("date", on_date.isoformat())
+            .order("date", ascending=True)
+            .limit(2)
+            .execute()
+            .data
+            or []
+        )
+        if len(rows) < 2:
+            return None
+        today_close = rows[0].get("close")
+        next_close = rows[1].get("close")
+        if not today_close or not next_close or today_close == 0:
+            return None
+        ret = (next_close / today_close) - 1
+        return 1 if ret >= TARGET_RETURN_THRESHOLD else 0
 
     # ──────────────────────────────────────────────────────
     # Predict

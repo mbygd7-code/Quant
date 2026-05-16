@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { KR_TICKER_RE } from '@/lib/ticker';
+
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
@@ -102,7 +104,8 @@ export async function GET(req: NextRequest) {
   const tickers = tickersParam
     .split(',')
     .map((s) => s.trim())
-    .filter((s) => /^\d{6}$/.test(s))
+    .map((s) => s.toUpperCase())
+    .filter((s) => KR_TICKER_RE.test(s))
     .slice(0, 30);
   if (tickers.length === 0) {
     return NextResponse.json({ error: 'tickers= required (6-digit, comma-separated)' }, { status: 400 });

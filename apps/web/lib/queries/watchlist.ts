@@ -1,4 +1,5 @@
 import { getQueryClient } from '@/lib/supabase/query-client';
+import { gradeToLabel, type SignalGrade } from '@/lib/signal-resolver';
 import type { Role, Signal, Stock } from '@/lib/types';
 
 export interface WatchlistRow {
@@ -35,7 +36,11 @@ export async function getWatchlistForUser(
   }
   if (tickers.length === 0) return [];
 
-  // 2) Latest ai_scores date for these tickers
+  // 2) Resolution strategy — prefer the new character-system signal
+  // (`final_signals`) but fall back to legacy `ai_scores` for tickers
+  // the character cycle hasn't analysed yet. We fetch both and merge
+  // with final_signals winning. Once the cutover is complete, the
+  // ai_scores fallback can be removed.
   const { data: latest } = await sb
     .from('ai_scores')
     .select('date')
@@ -44,11 +49,18 @@ export async function getWatchlistForUser(
     .maybeSingle();
   const latestDate = latest?.date as string | undefined;
 
-  // 3) Parallel fetch — stocks meta + ai_scores + korea_market quote
-  const [stocksRes, scoresRes, quotesRes] = await Promise.all([
+  // 3) Parallel fetch — stocks meta + final_signals + ai_scores fallback + quote
+  const [stocksRes, finalSignalsRes, scoresRes, quotesRes] = await Promise.all([
     sb.from('stocks')
       .select('ticker, name, market, sector')
       .in('ticker', tickers),
+    // final_signals can have multiple rows per ticker (one per cycle_at).
+    // We pull a generous window and dedupe to "latest per ticker" client-side.
+    sb.from('final_signals')
+      .select('ticker, signal_grade, confidence, weighted_score, cycle_at, taleb_severity, taleb_override')
+      .in('ticker', tickers)
+      .order('cycle_at', { ascending: false })
+      .limit(tickers.length * 5),
     latestDate
       ? sb.from('ai_scores')
           .select('ticker, signal, final_score')
@@ -71,9 +83,39 @@ export async function getWatchlistForUser(
       sector: s.sector as string | null,
     });
   }
-  const scoreByTicker = new Map<string, { signal: Signal; final_score: number }>();
+
+  // final_signals is the preferred source — dedupe to latest per ticker.
+  const characterByTicker = new Map<
+    string,
+    { signal: Signal; final_score: number }
+  >();
+  for (const row of (finalSignalsRes.data ?? []) as Array<{
+    ticker: string;
+    signal_grade: SignalGrade;
+    confidence: number | null;
+    weighted_score: number | null;
+  }>) {
+    if (characterByTicker.has(row.ticker)) continue;  // first row = latest
+    characterByTicker.set(row.ticker, {
+      signal: gradeToLabel(row.signal_grade),
+      // Use confidence (0..1) where available; otherwise normalize
+      // weighted_score (-2..+2) → (0..1) so the UI metric stays consistent.
+      final_score:
+        row.confidence ??
+        (row.weighted_score != null
+          ? (row.weighted_score + 2) / 4
+          : 0),
+    });
+  }
+
+  // Legacy fallback for any ticker without a final_signals row yet.
+  const scoreByTicker = new Map<string, { signal: Signal; final_score: number }>(
+    characterByTicker,
+  );
   for (const s of scoresRes.data ?? []) {
-    scoreByTicker.set(s.ticker as string, {
+    const ticker = s.ticker as string;
+    if (scoreByTicker.has(ticker)) continue;
+    scoreByTicker.set(ticker, {
       signal: s.signal as Signal,
       final_score: s.final_score as number,
     });

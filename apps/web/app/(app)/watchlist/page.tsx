@@ -1,6 +1,5 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, LineChart } from 'lucide-react';
+import { Plus } from 'lucide-react';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +10,7 @@ import { getWatchlistForUser } from '@/lib/queries/watchlist';
 import { ROLE_WATCHLIST_LIMIT, SIGNAL_ORDER, type Role, type Signal } from '@/lib/types';
 import { WatchlistTable } from '@/components/watchlist/watchlist-table';
 import { AddStockDialog } from '@/components/watchlist/add-stock-dialog';
+import { BackButton } from '@/components/layout/back-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,22 +52,16 @@ export default async function WatchlistPage() {
 
   return (
     <div className="space-y-5 fade-in">
+      <BackButton fallbackHref="/stocks/kr" label="뒤로" />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-heading text-2xl font-semibold tracking-tight">관심 종목</h1>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight">주식리스트</h1>
           <div className="mt-1 text-sm text-txt-secondary">
             {sorted.length} / {limit === 9999 ? '∞' : limit} 종목 ·{' '}
             <Badge variant="outline" className="ml-1 align-middle">{role}</Badge>
           </div>
         </div>
-        {role === 'admin' ? (
-          <Button asChild className="bg-gradient-brand text-white hover:opacity-90">
-            <Link href="/stocks/kr">
-              <LineChart className="h-4 w-4 mr-1" />
-              국내주식
-            </Link>
-          </Button>
-        ) : (
+        {role !== 'admin' && (
           <AddStockDialog currentCount={sorted.length} limit={limit}>
             <Button className="bg-gradient-brand text-white hover:opacity-90">
               <Plus className="h-4 w-4 mr-1" />

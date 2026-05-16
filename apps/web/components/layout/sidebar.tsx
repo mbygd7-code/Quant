@@ -1,70 +1,161 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Activity,
-  BarChart3,
-  Bell,
-  ChartLine,
-  Database,
-  FlaskConical,
+  ChevronDown,
+  ChevronRight,
   Layers3,
-  LineChart,
   ListTodo,
-  Network,
-  Radio,
-  Scale,
-  Settings,
-  SlidersHorizontal,
-  Users,
+  Loader2,
+  Plus,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useFavorites } from '@/lib/use-favorites';
+import { KR_TICKER_RE } from '@/lib/ticker';
+import { FavoritePicker } from '@/components/watchlist/favorite-picker';
 
 type Role = 'user' | 'beta' | 'admin';
 
-interface Item {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  roles: Role[];
+interface WatchlistItem {
+  ticker: string;
+  name: string;
+  market: string;
+  sector: string | null;
+  signal: string | null;
+  final_score: number | null;
+  change_rate: number | null;
 }
 
-const NAV: Array<{ section: string; items: Item[] }> = [
-  {
-    section: '내 대시보드',
-    items: [
-      { href: '/dashboard', label: 'Dashboard', icon: BarChart3, roles: ['user', 'beta', 'admin'] },
-      { href: '/watchlist', label: 'Watchlist', icon: ListTodo, roles: ['user', 'beta', 'admin'] },
-      { href: '/stocks/kr', label: '국내주식', icon: LineChart, roles: ['admin'] },
-      { href: '/realtime', label: '실시간 시세', icon: Radio, roles: ['user', 'beta', 'admin'] },
-      { href: '/agent-signals', label: 'AI 시그널', icon: Activity, roles: ['user', 'beta', 'admin'] },
-      { href: '/reports', label: 'Reports', icon: ChartLine, roles: ['user', 'beta', 'admin'] },
-      { href: '/settings/agent-weights', label: 'AI 가중치', icon: SlidersHorizontal, roles: ['user', 'beta', 'admin'] },
-      { href: '/settings', label: 'Settings', icon: Settings, roles: ['user', 'beta', 'admin'] },
-    ],
-  },
-  {
-    section: 'Admin',
-    items: [
-      { href: '/mapping', label: 'Mapping', icon: Network, roles: ['admin'] },
-      { href: '/knowledge', label: 'Knowledge', icon: Database, roles: ['admin'] },
-      { href: '/weights', label: 'Weights', icon: Scale, roles: ['admin'] },
-      { href: '/backtest', label: 'Backtest', icon: FlaskConical, roles: ['admin'] },
-      { href: '/admin/users', label: 'Users', icon: Users, roles: ['admin'] },
-      { href: '/admin/data-quality', label: 'Data Quality', icon: LineChart, roles: ['admin'] },
-      { href: '/admin/agent-monitoring', label: 'AI 모니터링', icon: Activity, roles: ['admin'] },
-      { href: '/admin/notifications', label: 'Notifications', icon: Bell, roles: ['admin'] },
-    ],
-  },
-];
+function signalColor(signal: string | null): string {
+  switch (signal) {
+    case '강한 관심': return 'var(--status-success)';
+    case '관심':      return '#7CC97E';
+    case '관망':      return 'var(--txt-muted)';
+    case '주의':      return '#E9B247';
+    case '위험':      return 'var(--status-danger)';
+    default:          return 'var(--border-default)';
+  }
+}
+
+// Personal favorites — see `apps/web/lib/use-favorites.ts`. The hook is
+// shared with the /watchlist ★ toggle so both stay in lockstep.
 
 export function Sidebar({ role, variant = 'desktop' }: { role: Role; variant?: 'desktop' | 'sheet' }) {
   const pathname = usePathname();
+  void role;
+
+  const [universe, setUniverse] = useState<WatchlistItem[] | null>(null);
+  const [extraMeta, setExtraMeta] = useState<Map<string, { name: string; market: string; sector: string | null }>>(
+    () => new Map(),
+  );
+  const [openSection, setOpenSection] = useState(true);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Bumps to force a universe re-fetch after an external stock is promoted
+  // into the master watchlist (so the next picker open sees it natively).
+  const [universeRevision, setUniverseRevision] = useState(0);
+  const { tickers, add, remove, hydrated } = useFavorites();
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/watchlist-list', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((j: { items?: WatchlistItem[] }) => {
+        if (!cancelled) setUniverse(j.items ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setUniverse([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [universeRevision]);
+
+  const universeByTicker = useMemo(() => {
+    const m = new Map<string, WatchlistItem>();
+    for (const it of universe ?? []) m.set(it.ticker, it);
+    return m;
+  }, [universe]);
+
+  // Resolve names for favorites not in the universe (e.g. user-added tickers
+  // outside the AI-tracked watchlist). Fires whenever the favorites set or
+  // the universe changes — the API is cached upstream so re-calls are cheap.
+  useEffect(() => {
+    if (!hydrated || universe === null) return;
+    // A ticker is "missing a real name" if it's not in the universe at all
+    // OR the universe row's name is just the ticker code (placeholder added
+    // by an auto-create flow before NAVER resolution).
+    const missing = tickers.filter((t) => {
+      if (extraMeta.has(t)) return false;
+      const hit = universeByTicker.get(t);
+      if (!hit) return true;
+      return hit.name === t || hit.name.trim() === '';
+    });
+    if (missing.length === 0) return;
+    let cancelled = false;
+    fetch(`/api/stocks/resolve?tickers=${encodeURIComponent(missing.join(','))}`)
+      .then((r) => r.json())
+      .then((j: { items?: Array<{ ticker: string; name: string; market: string; sector: string | null }> }) => {
+        if (cancelled) return;
+        setExtraMeta((prev) => {
+          const next = new Map(prev);
+          for (const it of j.items ?? []) {
+            next.set(it.ticker, { name: it.name, market: it.market, sector: it.sector });
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        /* ignore — fallback label stays as ticker */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, tickers, universe, universeByTicker, extraMeta]);
+
+  // The LNB list = favorites projected onto the universe metadata. Tickers
+  // that aren't in the AI-tracked universe still render with a placeholder
+  // label so users can find them later (no signal dot, no live %).
+  const favoriteItems: WatchlistItem[] = useMemo(() => {
+    if (!hydrated) return [];
+    return tickers.map((t) => {
+      const hit = universeByTicker.get(t);
+      const meta = extraMeta.get(t);
+      // Prefer the resolved NAVER name when the universe row only has a
+      // placeholder (== ticker). Otherwise keep the universe metadata
+      // (signal dot, change %, sector, etc).
+      if (hit) {
+        const placeholder = hit.name === t || hit.name.trim() === '';
+        return placeholder && meta
+          ? {
+              ...hit,
+              name: meta.name,
+              market: hit.market || meta.market,
+              sector: hit.sector ?? meta.sector,
+            }
+          : hit;
+      }
+      return {
+        ticker: t,
+        name: meta?.name ?? t,
+        market: meta?.market ?? '',
+        sector: meta?.sector ?? null,
+        signal: null,
+        final_score: null,
+        change_rate: null,
+      } satisfies WatchlistItem;
+    });
+  }, [hydrated, tickers, universeByTicker, extraMeta]);
+
   const wrapperClass =
     variant === 'sheet'
       ? 'flex h-full flex-col w-full'
-      : 'hidden md:flex flex-col w-[192px] shrink-0 border-r border-border-divider';
+      : 'hidden md:flex flex-col w-[220px] shrink-0 border-r border-border-divider';
+
+  const onFavoritesPage =
+    pathname === '/favorites' || pathname.startsWith('/favorites/');
 
   return (
     <aside
@@ -76,46 +167,158 @@ export function Sidebar({ role, variant = 'desktop' }: { role: Role; variant?: '
         <span className="font-heading text-base font-semibold tracking-tight">QuantSignal</span>
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-3 space-y-5">
-        {NAV.map((group) => {
-          const visible = group.items.filter((i) => i.roles.includes(role));
-          if (visible.length === 0) return null;
-          return (
-            <div key={group.section}>
-              <p className="px-4 mb-1.5 text-[10px] uppercase tracking-wider text-txt-muted font-medium">
-                {group.section}
-              </p>
-              <ul className="space-y-0.5">
-                {visible.map((item) => {
-                  const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-                  const Icon = item.icon;
+      <nav className="flex-1 overflow-y-auto py-3">
+        {/* 관심주식 header — collapsible + add button. */}
+        <div className="flex items-center gap-0.5 mx-2 px-1 h-9">
+          <button
+            type="button"
+            onClick={() => setOpenSection((v) => !v)}
+            aria-label={openSection ? '관심주식 접기' : '관심주식 펼치기'}
+            className="p-1 rounded text-txt-muted hover:text-txt-primary hover:bg-[var(--sidebar-hover)] transition-colors"
+          >
+            {openSection ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
+          </button>
+          <Link
+            href="/favorites"
+            className={cn(
+              'flex items-center gap-2 flex-1 px-1.5 h-8 rounded-sm text-sm transition-colors',
+              onFavoritesPage
+                ? 'bg-[var(--sidebar-active-bg)] text-txt-primary font-medium'
+                : 'text-txt-secondary hover:text-txt-primary hover:bg-[var(--sidebar-hover)]',
+            )}
+          >
+            <ListTodo className="h-4 w-4 shrink-0" />
+            <span className="truncate">관심주식</span>
+            {hydrated && (
+              <span className="ml-auto text-[10px] text-txt-muted tabular-nums">
+                {favoriteItems.length}
+              </span>
+            )}
+          </Link>
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            aria-label="관심주식 추가"
+            title="관심주식 추가"
+            className="p-1 rounded text-txt-muted hover:text-txt-primary hover:bg-[var(--sidebar-hover)] transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
+
+        {openSection && (
+          <div className="mt-1 px-2">
+            {!hydrated ? (
+              <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-txt-muted">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                불러오는 중…
+              </div>
+            ) : favoriteItems.length === 0 ? (
+              <div className="px-3 py-3 text-[11px] text-txt-muted">
+                관심주식이 비어있습니다.
+                <br />
+                <Link
+                  href="/favorites"
+                  className="text-txt-primary hover:underline text-[10px]"
+                >
+                  관심주식 페이지 →
+                </Link>
+                <br />
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(true)}
+                  className="mt-1 inline-flex items-center gap-1 text-txt-primary hover:underline"
+                >
+                  <Plus className="h-3 w-3" /> 종목 추가
+                </button>
+              </div>
+            ) : (
+              <ul className="space-y-px">
+                {favoriteItems.map((it) => {
+                  // KR tickers (6-char alphanumeric) → KR detail; everything
+                  // else falls through to a generic stocks route.
+                  const isKr = KR_TICKER_RE.test(it.ticker.toUpperCase());
+                  const href = isKr
+                    ? `/stocks/kr/${it.ticker}`
+                    : `/stocks/${it.ticker.toLowerCase()}`;
+                  const active = pathname === href;
+                  const dot = signalColor(it.signal);
+                  const pct = it.change_rate;
+                  const pctCls =
+                    pct == null
+                      ? 'text-txt-muted'
+                      : pct > 0
+                        ? 'text-status-danger'
+                        : pct < 0
+                          ? 'text-status-info'
+                          : 'text-txt-muted';
                   return (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
+                    <li key={it.ticker} className="group">
+                      <div
                         className={cn(
-                          'flex items-center gap-2.5 mx-2 px-2 h-9 rounded-sm text-sm transition-colors',
+                          'flex items-center gap-2 pl-6 pr-1 h-9 rounded-sm text-[13px] font-medium transition-colors',
                           active
-                            ? 'bg-[var(--sidebar-active-bg)] text-brand-purple'
-                            : 'text-txt-secondary hover:text-txt-primary hover:bg-[var(--sidebar-hover)]',
+                            ? 'bg-[var(--sidebar-active-bg)] text-txt-primary'
+                            : 'text-txt-primary hover:text-txt-primary hover:bg-[var(--sidebar-hover)]',
                         )}
                       >
-                        <Icon className="h-4 w-4 shrink-0" />
-                        <span className="truncate">{item.label}</span>
-                      </Link>
+                        <span
+                          className="h-2 w-2 rounded-full shrink-0"
+                          style={{ background: dot }}
+                          aria-hidden
+                        />
+                        <Link
+                          href={href}
+                          className="truncate flex-1"
+                          title={`${it.name} (${it.ticker})${it.signal ? ` · ${it.signal}` : ''}`}
+                        >
+                          {it.name}
+                        </Link>
+                        {pct != null && (
+                          <span className={cn('text-[11px] font-medium tabular-nums', pctCls)}>
+                            {pct > 0 ? '+' : ''}
+                            {(pct * 100).toFixed(1)}%
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => remove(it.ticker)}
+                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-txt-muted hover:text-status-danger transition-opacity"
+                          aria-label={`${it.name} 제거`}
+                          title="제거"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
                     </li>
                   );
                 })}
               </ul>
-            </div>
-          );
-        })}
+            )}
+          </div>
+        )}
       </nav>
 
       <div className="px-4 py-3 text-[10px] text-txt-muted border-t border-border-divider">
         <Layers3 className="inline h-3 w-3 mr-1" />
         v0.1 · 매매 권유 아님
       </div>
+
+      <FavoritePicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        universe={universe}
+        existing={tickers}
+        onAdd={(t) => {
+          add(t);
+        }}
+        onUniverseChanged={() => setUniverseRevision((n) => n + 1)}
+      />
     </aside>
   );
 }
+

@@ -11,7 +11,7 @@ export function SectorChip({ sector, avgScore, counts }: Props) {
   const filled = Math.round(avgScore * 5);
   const dots = Array.from({ length: 5 }, (_, i) => i < filled);
   const tone =
-    avgScore >= 0.65 ? 'text-brand-purple'
+    avgScore >= 0.65 ? 'text-txt-primary'
     : avgScore >= 0.50 ? 'text-txt-secondary'
     : avgScore >= 0.35 ? 'text-status-warning'
     : 'text-status-error';

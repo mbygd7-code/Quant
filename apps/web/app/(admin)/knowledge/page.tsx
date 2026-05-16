@@ -97,7 +97,7 @@ export default async function KnowledgeListPage({
                 ))}
               </div>
               {c.positive_signal && (
-                <div className="mt-2 text-[11px] text-brand-purple">신호: {c.positive_signal}</div>
+                <div className="mt-2 text-[11px] text-txt-primary">신호: {c.positive_signal}</div>
               )}
             </Link>
           ))}

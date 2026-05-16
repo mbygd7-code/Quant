@@ -1,0 +1,114 @@
+name: GBM Retrain
+
+# Retrains the score-prediction GBM on the rolling 4-month window.
+#
+# Schedule: every Sunday 18:00 UTC = Monday 03:00 KST (before daily-pipeline
+# 06:00 KST so the new model is live for Monday's predictions).
+#
+# Manual: workflow_dispatch with optional start/end overrides for ad-hoc
+# retraining (e.g. after a regime change or feature schema bump).
+#
+# Notes:
+#   • signals/gbm_cli.py requires ≥ 200 labeled rows. With 50 watchlist
+#     tickers × ~22 trading days/month, 4 months is comfortably above that.
+#   • Model artifacts live in memory inside the GBMPredictor today;
+#     Phase 2 will serialize to Supabase Storage. Until then this workflow
+#     simply validates the training run succeeds and logs CV accuracy +
+#     feature importances — the orchestrator pipeline re-trains itself
+#     on every daily run, so the *practical* purpose of this workflow is:
+#       (a) early failure detection (catch broken training before 06:00 KST)
+#       (b) recording CV metrics over time as an audit trail
+#       (c) admin-triggered retrain from the web app via GitHub API.
+
+on:
+  schedule:
+    # 18:00 UTC Sunday = 03:00 KST Monday. Sits before daily-pipeline.
+    - cron: "0 18 * * 0"
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Training window start (YYYY-MM-DD). Empty = today − 120 days."
+        required: false
+        default: ""
+      end:
+        description: "Training window end (YYYY-MM-DD). Empty = today."
+        required: false
+        default: ""
+
+concurrency:
+  group: gbm-retrain
+  cancel-in-progress: false
+
+jobs:
+  retrain:
+    name: signals.gbm_cli train
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Compute training window
+        id: window
+        run: |
+          set -e
+          START="${{ github.event.inputs.start }}"
+          END="${{ github.event.inputs.end }}"
+          if [ -z "$END" ]; then
+            END=$(TZ=Asia/Seoul date +%Y-%m-%d)
+          fi
+          if [ -z "$START" ]; then
+            START=$(TZ=Asia/Seoul date -d "$END -120 days" +%Y-%m-%d)
+          fi
+          echo "start=$START" >> "$GITHUB_OUTPUT"
+          echo "end=$END"     >> "$GITHUB_OUTPUT"
+          echo "Training window: $START → $END"
+
+      - name: Train GBM
+        run: |
+          set -o pipefail
+          python -m signals.gbm_cli train \
+            --start="${{ steps.window.outputs.start }}" \
+            --end="${{ steps.window.outputs.end }}" \
+            2>&1 | tee gbm-train.log
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TIMEZONE:                  Asia/Seoul
+
+      - name: Show training summary
+        if: always()
+        run: |
+          echo "================ GBM TRAIN SUMMARY ================"
+          grep -E "Trained on|cv_auc|Top features|InsufficientData|ERROR" gbm-train.log \
+            | tail -n 30 || echo "(no summary lines found)"
+          echo "================ LAST 20 LINES ===================="
+          tail -n 20 gbm-train.log
+
+      - name: Upload training log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gbm-train-log-${{ steps.window.outputs.end }}
+          path: gbm-train.log
+          retention-days: 30
+
+      - name: Notify on failure
+        if: failure() && env.ADMIN_CHAT_ID != ''
+        env:
+          BOT_TOKEN:      ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ADMIN_CHAT_ID:  ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          RUN_URL:        ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -sS -X POST \
+            "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${ADMIN_CHAT_ID}" \
+            --data-urlencode "text=🚨 GBM Retrain 실패 — ${RUN_URL}"

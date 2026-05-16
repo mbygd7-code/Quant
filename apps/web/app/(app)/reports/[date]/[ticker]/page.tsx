@@ -26,6 +26,7 @@ const FACTOR_LABELS: Record<string, string> = {
   fundamental_score: '펀더멘털',
   volume_flow_score: '수급/거래대금',
   risk_penalty: '리스크 패널티',
+  kr_fear_greed_score: '한국 F&G',
 };
 
 export default async function StockDetailPage({
@@ -53,6 +54,7 @@ export default async function StockDetailPage({
       'fundamental_score',
       'volume_flow_score',
       'risk_penalty',
+      'kr_fear_greed_score',
     ] as const
   )
     .map((k) => ({
@@ -136,7 +138,7 @@ export default async function StockDetailPage({
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm font-medium text-brand-purple">{commentary.headline}</p>
+            <p className="text-sm font-medium text-txt-primary">{commentary.headline}</p>
             <p className="text-sm leading-relaxed text-txt-primary whitespace-pre-line">
               {commentary.body}
             </p>
@@ -162,13 +164,13 @@ export default async function StockDetailPage({
               <div className="grid gap-3 md:grid-cols-2">
                 {commentary.catalysts.length > 0 && (
                   <div>
-                    <div className="text-[11px] uppercase tracking-wider text-status-success mb-2">
+                    <div className="text-[11px] uppercase tracking-wider text-txt-primary mb-2">
                       카탈리스트
                     </div>
                     <ul className="space-y-1.5">
                       {commentary.catalysts.map((c, i) => (
                         <li key={i} className="flex gap-2 text-sm text-txt-primary">
-                          <span className="text-status-success shrink-0">•</span>
+                          <span className="text-txt-primary shrink-0">•</span>
                           <span>{c}</span>
                         </li>
                       ))}
@@ -207,7 +209,7 @@ export default async function StockDetailPage({
                 <ul className="space-y-2 text-sm text-txt-primary">
                   {reasons.map((r, i) => (
                     <li key={i} className="flex gap-2">
-                      <span className="text-brand-purple shrink-0">•</span>
+                      <span className="text-txt-primary shrink-0">•</span>
                       <span>{r}</span>
                     </li>
                   ))}
@@ -237,7 +239,7 @@ export default async function StockDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-heading">7요소 sub-score</CardTitle>
+          <CardTitle className="text-base font-heading">8요소 sub-score</CardTitle>
         </CardHeader>
         <CardContent>
           <SubscoreBar data={subscore} />
@@ -294,7 +296,7 @@ export default async function StockDetailPage({
                 href={n.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block text-sm text-brand-purple hover:underline"
+                className="block text-sm text-txt-primary hover:underline"
               >
                 {n.title} {n.source && <span className="text-xs text-txt-muted">· {n.source}</span>}
               </a>

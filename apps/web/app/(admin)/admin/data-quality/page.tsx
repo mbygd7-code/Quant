@@ -115,7 +115,7 @@ export default async function DataQualityPage() {
           </CardHeader>
           <CardContent>
             {recentNotifFailures.length === 0 ? (
-              <p className="text-sm text-status-success">최근 14일 발송 실패 없음 ✓</p>
+              <p className="text-sm text-txt-primary">최근 14일 발송 실패 없음 ✓</p>
             ) : (
               <ul className="space-y-2 text-xs">
                 {recentNotifFailures.map((n, i) => (
@@ -140,7 +140,7 @@ export default async function DataQualityPage() {
           </CardHeader>
           <CardContent>
             {errorRows.length === 0 ? (
-              <p className="text-sm text-status-success">최근 audit_logs 에러 없음 ✓</p>
+              <p className="text-sm text-txt-primary">최근 audit_logs 에러 없음 ✓</p>
             ) : (
               <ul className="space-y-2 text-xs">
                 {errorRows.map((e, i) => (

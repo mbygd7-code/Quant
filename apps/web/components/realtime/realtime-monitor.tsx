@@ -55,14 +55,16 @@ export function RealtimeMonitor({
     () => (paused ? [] : tracked.map((c) => c.symbol)),
     [tracked, paused],
   );
+  // String key derived from the symbol set — re-runs the snapshot effect
+  // only when the *content* changes, not on every parent re-render that
+  // produces a new `tracked` array identity (audit High #7).
+  const trackedKey = useMemo(() => tracked.map((c) => c.symbol).sort().join(','), [tracked]);
   const { state, ticks } = useFinnhubTrades(symbols);
 
   // Snapshot once per new symbol so cards show open/high/low/prevClose
-  // even before the first WS trade fires. We rely on the ref to dedupe
-  // (StrictMode double-mounts effects) instead of a cancelled flag,
-  // because cancelled would drop the first mount's in-flight result on
-  // unmount while the ref-guard already prevents the second mount from
-  // re-fetching.
+  // even before the first WS trade fires. Ref-guard dedupes (StrictMode
+  // double-mounts effects) without dropping the first mount's in-flight
+  // request via a cancelled flag.
   const fetchedSnapshotRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     for (const c of tracked) {
@@ -81,7 +83,10 @@ export function RealtimeMonitor({
           }));
         });
     }
-  }, [tracked]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally
+    // keyed by content via trackedKey; reading `tracked` is fine because the
+    // ref-guard prevents duplicate fetches.
+  }, [trackedKey]);
 
   // Local list filter (curated + us_kr_mapping) — runs synchronously
   const localMatches = useMemo(() => {
@@ -173,7 +178,7 @@ export function RealtimeMonitor({
             실시간 시세 모니터
           </h1>
           <div className="mt-1 flex items-center gap-2 text-sm text-txt-secondary">
-            <Activity className="h-3.5 w-3.5 text-status-success" />
+            <Activity className="h-3.5 w-3.5 text-txt-primary" />
             Finnhub WebSocket · 미국주식 체결 실시간 (IEX) · 최대 {MAX_TRACKED}종목
             <ConnBadge state={state} />
           </div>
@@ -222,7 +227,7 @@ export function RealtimeMonitor({
               <p className="font-medium">NEXT_PUBLIC_FINNHUB_KEY가 설정되지 않았습니다.</p>
               <p className="text-txt-secondary">
                 <a
-                  className="underline text-brand-purple"
+                  className="underline text-txt-primary"
                   href="https://finnhub.io/dashboard"
                   target="_blank"
                   rel="noreferrer"
@@ -325,7 +330,7 @@ function ConnBadge({ state }: { state: ConnState }) {
   const map: Record<ConnState, { label: string; cls: string }> = {
     idle: { label: '대기', cls: 'text-txt-muted' },
     connecting: { label: '연결 중', cls: 'text-status-warning' },
-    open: { label: 'LIVE', cls: 'text-status-success' },
+    open: { label: 'LIVE', cls: 'text-txt-primary' },
     closed: { label: '재연결 중', cls: 'text-status-warning' },
     error: { label: '오류', cls: 'text-status-danger' },
     'no-key': { label: 'API KEY 없음', cls: 'text-status-danger' },
@@ -391,9 +396,14 @@ function QuoteCard({
   return (
     <Card
       className={cn(
-        'transition-colors',
-        flash === 'up' && 'border-status-success/60 bg-status-success/5',
-        flash === 'down' && 'border-status-danger/60 bg-status-danger/5',
+        'transition-shadow transition-colors',
+        // Tick flash via ring/border only — DON'T touch bg-card so the
+        // card's solid surface (white in light, #1A1A1A in dark) never
+        // disappears, even briefly. Previously we swapped bg → translucent
+        // green which let the page background bleed through and made the
+        // card look like it lost its surface.
+        flash === 'up' && 'border-status-success/70 ring-2 ring-status-success/30',
+        flash === 'down' && 'border-status-danger/70 ring-2 ring-status-danger/30',
       )}
     >
       <CardContent className="p-4 space-y-3">
@@ -435,7 +445,7 @@ function QuoteCard({
                 className={cn(
                   'flex items-center gap-1 text-sm font-medium tabular-nums',
                   // US convention (green up, red down) — matches Finnhub source
-                  isUp === true && 'text-status-success',
+                  isUp === true && 'text-txt-primary',
                   isUp === false && 'text-status-danger',
                   isUp === null && 'text-txt-muted',
                 )}

@@ -39,7 +39,7 @@ export default async function InvitePage({
         <div className="mx-auto mb-3 h-12 w-12 sidebar-symbol" />
         <h1 className="font-heading text-2xl font-semibold">QuantSignal 가입</h1>
         <p className="mt-1 text-sm text-txt-secondary">
-          {invite.email} · 권한 <span className="text-brand-purple">{invite.role}</span>
+          {invite.email} · 권한 <span className="text-txt-primary">{invite.role}</span>
         </p>
       </div>
       <InviteForm token={token} email={invite.email} />
