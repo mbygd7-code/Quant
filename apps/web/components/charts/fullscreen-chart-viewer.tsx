@@ -2017,65 +2017,207 @@ function FullscreenTooltip({
       ? v.toLocaleString('ko-KR')
       : `$${v.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
   };
-  const changeColor = row.isUp
-    ? variant === 'kr' ? '#F26D6D' : '#3DD68C'
-    : variant === 'kr' ? '#5BA8F2' : '#F26D6D';
+  const fmtVolLocal = (v: number): string => {
+    if (!Number.isFinite(v)) return '—';
+    if (v >= 1e8) return `${(v / 1e8).toFixed(1)}억`;
+    if (v >= 1e4) return `${(v / 1e4).toFixed(1)}만`;
+    return v.toLocaleString();
+  };
+  const upColor = variant === 'kr' ? '#F26D6D' : '#3DD68C';
+  const downColor = variant === 'kr' ? '#5BA8F2' : '#F26D6D';
+  const changeColor = row.isUp ? upColor : downColor;
   const dayChange = row.close - row.open;
   const dayChangePct = (dayChange / row.open) * 100;
+  const hasAnyIndicator =
+    row.ma5 != null ||
+    row.ma20 != null ||
+    row.ma60 != null ||
+    row.ma120 != null ||
+    (row.bbUpper != null && row.bbLower != null) ||
+    row.rsi != null;
+  const hasComparePct = compareLabel && row.comparePct != null;
   return (
-    <div className="rounded-md border border-border-default bg-bg-secondary/95 backdrop-blur-sm p-3 text-[11px] shadow-lg min-w-[220px]">
-      <div className="text-txt-secondary text-[10px] font-mono mb-1.5 pb-1 border-b border-border-subtle/40">{row.date}</div>
-      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 tabular-nums">
-        <span className="text-txt-muted">시가 (O)</span><span className="text-right font-mono">{fmt(row.open)}</span>
-        <span className="text-txt-muted">고가 (H)</span><span className="text-right font-mono text-status-success">{fmt(row.high)}</span>
-        <span className="text-txt-muted">저가 (L)</span><span className="text-right font-mono text-status-danger">{fmt(row.low)}</span>
-        <span className="text-txt-muted">종가 (C)</span>
-        <span className="text-right font-mono font-semibold" style={{ color: changeColor }}>{fmt(row.close)}</span>
-        <span className="text-txt-muted">일중 변동</span>
-        <span className="text-right font-mono font-semibold" style={{ color: changeColor }}>
-          {dayChange >= 0 ? '+' : ''}{fmt(dayChange)} ({dayChangePct >= 0 ? '+' : ''}{dayChangePct.toFixed(2)}%)
-        </span>
-        <span className="text-txt-muted">기간 누적</span>
-        <span className="text-right font-mono" style={{ color: row.closePct >= 0 ? '#3DD68C' : '#F26D6D' }}>
-          {row.closePct >= 0 ? '+' : ''}{row.closePct.toFixed(2)}%
-        </span>
-        {row.volume > 0 && (<>
-          <span className="text-txt-muted">거래량</span><span className="text-right font-mono">{row.volume.toLocaleString()}</span>
-        </>)}
-        {row.ma5 != null && (<>
-          <span className="text-txt-muted">MA5</span><span className="text-right font-mono" style={{ color: '#22D3EE' }}>{fmt(row.ma5)}</span>
-        </>)}
-        {row.ma20 != null && (<>
-          <span className="text-txt-muted">MA20</span><span className="text-right font-mono" style={{ color: '#F59E0B' }}>{fmt(row.ma20)}</span>
-        </>)}
-        {row.ma60 != null && (<>
-          <span className="text-txt-muted">MA60</span><span className="text-right font-mono" style={{ color: '#A855F7' }}>{fmt(row.ma60)}</span>
-        </>)}
-        {row.ma120 != null && (<>
-          <span className="text-txt-muted">MA120</span><span className="text-right font-mono" style={{ color: '#EC4899' }}>{fmt(row.ma120)}</span>
-        </>)}
-        {row.bbUpper != null && row.bbLower != null && (<>
-          <span className="text-txt-muted">BB ↑/↓</span>
-          <span className="text-right font-mono" style={{ color: 'rgba(168,85,247,0.85)' }}>
-            {fmt(row.bbUpper)} / {fmt(row.bbLower)}
-          </span>
-        </>)}
-        {row.rsi != null && (<>
-          <span className="text-txt-muted">RSI(14)</span>
-          <span
-            className="text-right font-mono"
-            style={{ color: row.rsi >= 70 ? '#F26D6D' : row.rsi <= 30 ? '#3DD68C' : 'inherit' }}
-          >
-            {row.rsi.toFixed(1)}
-          </span>
-        </>)}
-        {compareLabel && row.comparePct != null && (<>
-          <span className="text-txt-muted">{compareLabel} %</span>
-          <span className="text-right font-mono" style={{ color: row.comparePct >= 0 ? '#3DD68C' : '#F26D6D' }}>
-            {row.comparePct >= 0 ? '+' : ''}{row.comparePct.toFixed(2)}%
-          </span>
-        </>)}
+    <div
+      // FULLY opaque background + heavier blur + stronger shadow so
+      // numbers are legible over any candle background. Sized minimum
+      // 280px so the OHLC two-column grid breathes properly.
+      className="rounded-lg border-2 border-border-default bg-bg-primary backdrop-blur-md min-w-[280px] overflow-hidden"
+      style={{
+        boxShadow:
+          '0 10px 32px rgba(0,0,0,0.30), 0 0 0 1px rgba(255,255,255,0.04)',
+      }}
+    >
+      {/* ── Date header — large mono, prominent */}
+      <div className="px-3.5 py-2 bg-bg-secondary/60 border-b border-border-default/60">
+        <div className="text-txt-primary text-[14px] font-mono font-bold tabular-nums">
+          {row.date}
+        </div>
       </div>
+
+      {/* ── Hero block: close price + day change pill */}
+      <div className="px-3.5 py-3 border-b border-border-subtle/50">
+        <div className="flex items-baseline justify-between mb-1.5">
+          <span className="text-txt-secondary text-[11px] font-semibold uppercase tracking-wider">
+            종가
+          </span>
+          <span
+            className="font-mono font-bold text-[22px] leading-none tabular-nums"
+            style={{ color: changeColor }}
+          >
+            {fmt(row.close)}
+          </span>
+        </div>
+        <div
+          className="flex items-center justify-end gap-1.5 text-[14px] font-mono font-bold tabular-nums px-2 py-1 rounded-md ml-auto w-fit"
+          style={{
+            color: changeColor,
+            background: `${changeColor}1A`,
+            border: `1px solid ${changeColor}33`,
+          }}
+        >
+          <span aria-hidden>{dayChange >= 0 ? '▲' : '▼'}</span>
+          <span>
+            {dayChange >= 0 ? '+' : ''}
+            {fmt(dayChange)}
+          </span>
+          <span className="opacity-90 text-[13px]">
+            ({dayChange >= 0 ? '+' : ''}
+            {dayChangePct.toFixed(2)}%)
+          </span>
+        </div>
+      </div>
+
+      {/* ── OHLV grid (2×2) */}
+      <div className="px-3.5 py-3 grid grid-cols-2 gap-x-5 gap-y-2.5 border-b border-border-subtle/50">
+        <TooltipStat label="시가" value={fmt(row.open)} />
+        <TooltipStat label="고가" value={fmt(row.high)} valueColor="var(--status-success)" />
+        <TooltipStat label="저가" value={fmt(row.low)} valueColor="var(--status-danger)" />
+        {row.volume > 0 && (
+          <TooltipStat label="거래량" value={fmtVolLocal(row.volume)} />
+        )}
+      </div>
+
+      {/* ── Period cumulative */}
+      <div className="px-3.5 py-2 flex items-center justify-between border-b border-border-subtle/50">
+        <span className="text-txt-muted text-[12px] font-semibold">기간 누적</span>
+        <span
+          className="font-mono font-bold text-[14px] tabular-nums px-2 py-0.5 rounded"
+          style={{
+            color: row.closePct >= 0 ? '#3DD68C' : '#F26D6D',
+            background: row.closePct >= 0
+              ? 'rgba(61,214,140,0.12)'
+              : 'rgba(242,109,109,0.12)',
+          }}
+        >
+          {row.closePct >= 0 ? '▲ +' : '▼ '}
+          {row.closePct.toFixed(2)}%
+        </span>
+      </div>
+
+      {/* ── Indicators (MA / BB / RSI) — collapsible visually with subtle bg */}
+      {hasAnyIndicator && (
+        <div className="px-3.5 py-2.5 bg-bg-secondary/30 border-b border-border-subtle/50 space-y-1.5">
+          <div className="text-[10px] font-semibold tracking-wider uppercase text-txt-muted mb-1.5">
+            지표
+          </div>
+          <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 tabular-nums">
+            {row.ma5 != null && (
+              <TooltipIndicator label="MA5" value={fmt(row.ma5)} color="#22D3EE" />
+            )}
+            {row.ma20 != null && (
+              <TooltipIndicator label="MA20" value={fmt(row.ma20)} color="#F59E0B" />
+            )}
+            {row.ma60 != null && (
+              <TooltipIndicator label="MA60" value={fmt(row.ma60)} color="#A855F7" />
+            )}
+            {row.ma120 != null && (
+              <TooltipIndicator label="MA120" value={fmt(row.ma120)} color="#EC4899" />
+            )}
+            {row.bbUpper != null && row.bbLower != null && (
+              <TooltipIndicator
+                label="BB ↑/↓"
+                value={`${fmt(row.bbUpper)} / ${fmt(row.bbLower)}`}
+                color="#A855F7"
+              />
+            )}
+            {row.rsi != null && (
+              <TooltipIndicator
+                label="RSI(14)"
+                value={row.rsi.toFixed(1)}
+                color={row.rsi >= 70 ? '#F26D6D' : row.rsi <= 30 ? '#3DD68C' : 'var(--text-primary)'}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Compare overlay (if active) */}
+      {hasComparePct && (
+        <div className="px-3.5 py-2 flex items-center justify-between bg-status-info/[0.06]">
+          <span className="text-txt-muted text-[12px] font-semibold truncate">
+            vs {compareLabel}
+          </span>
+          <span
+            className="font-mono font-bold text-[14px] tabular-nums"
+            style={{ color: (row.comparePct ?? 0) >= 0 ? '#3DD68C' : '#F26D6D' }}
+          >
+            {(row.comparePct ?? 0) >= 0 ? '+' : ''}
+            {(row.comparePct ?? 0).toFixed(2)}%
+          </span>
+        </div>
+      )}
     </div>
+  );
+}
+
+function TooltipStat({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] font-semibold tracking-wider uppercase text-txt-muted">
+        {label}
+      </span>
+      <span
+        className="font-mono font-bold text-[14px] tabular-nums leading-tight"
+        style={{ color: valueColor ?? 'var(--text-primary)' }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function TooltipIndicator({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <>
+      <span className="text-[12px] font-semibold text-txt-secondary flex items-center gap-1.5">
+        <span
+          className="inline-block w-2.5 h-0.5 rounded-full"
+          style={{ background: color }}
+        />
+        {label}
+      </span>
+      <span
+        className="text-right font-mono font-bold text-[13px] tabular-nums"
+        style={{ color }}
+      >
+        {value}
+      </span>
+    </>
   );
 }

@@ -938,56 +938,131 @@ function ChartTooltip({ raw, variant }: { raw: unknown; variant: 'kr' | 'us' }) 
     variant === 'kr'
       ? v.toLocaleString('ko-KR')
       : `$${v.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
-  const changeColor = row.isUp
-    ? variant === 'kr' ? '#F26D6D' : '#3DD68C'
-    : variant === 'kr' ? '#5BA8F2' : '#F26D6D';
+  const fmtVolLocal = (v: number): string => {
+    if (v >= 1e8) return `${(v / 1e8).toFixed(1)}억`;
+    if (v >= 1e4) return `${(v / 1e4).toFixed(1)}만`;
+    return v.toLocaleString();
+  };
+  const upColor = variant === 'kr' ? '#F26D6D' : '#3DD68C';
+  const downColor = variant === 'kr' ? '#5BA8F2' : '#F26D6D';
+  const changeColor = row.isUp ? upColor : downColor;
   const dayChange = row.close - row.open;
   const dayChangePct = (dayChange / row.open) * 100;
   return (
-    <div className="rounded-md border border-border-default bg-bg-secondary/95 backdrop-blur-sm p-2.5 text-[11px] shadow-lg min-w-[180px]">
-      <div className="text-txt-secondary text-[10px] font-mono mb-1.5 pb-1 border-b border-border-subtle/40">
-        {row.date}
+    // FULLY opaque + heavier shadow so every digit is scannable even
+    // over candle wicks. Sized 260px for breathing room.
+    <div
+      className="rounded-lg border-2 border-border-default bg-bg-primary backdrop-blur-md min-w-[260px] overflow-hidden"
+      style={{
+        boxShadow: '0 10px 32px rgba(0,0,0,0.30), 0 0 0 1px rgba(255,255,255,0.04)',
+      }}
+    >
+      {/* Date header */}
+      <div className="px-3.5 py-2 bg-bg-secondary/60 border-b border-border-default/60">
+        <div className="text-txt-primary text-[13px] font-mono font-bold tabular-nums">
+          {row.date}
+        </div>
       </div>
-      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 tabular-nums">
-        <span className="text-txt-muted">시가 (O)</span>
-        <span className="text-right font-mono">{fmt(row.open)}</span>
-        <span className="text-txt-muted">고가 (H)</span>
-        <span className="text-right font-mono text-status-success">{fmt(row.high)}</span>
-        <span className="text-txt-muted">저가 (L)</span>
-        <span className="text-right font-mono text-status-danger">{fmt(row.low)}</span>
-        <span className="text-txt-muted">종가 (C)</span>
-        <span className="text-right font-mono font-semibold" style={{ color: changeColor }}>
-          {fmt(row.close)}
-        </span>
-        <span className="text-txt-muted">일중 변동</span>
-        <span className="text-right font-mono font-semibold" style={{ color: changeColor }}>
-          {dayChange >= 0 ? '+' : ''}
-          {fmt(dayChange)} ({dayChangePct >= 0 ? '+' : ''}
-          {dayChangePct.toFixed(2)}%)
-        </span>
-        {row.volume > 0 && (
-          <>
-            <span className="text-txt-muted">거래량</span>
-            <span className="text-right font-mono">{row.volume.toLocaleString()}</span>
-          </>
-        )}
-        {row.ma20 != null && (
-          <>
-            <span className="text-txt-muted">MA20</span>
-            <span className="text-right font-mono" style={{ color: '#F59E0B' }}>
-              {fmt(row.ma20)}
-            </span>
-          </>
-        )}
-        {row.ma60 != null && (
-          <>
-            <span className="text-txt-muted">MA60</span>
-            <span className="text-right font-mono" style={{ color: '#A855F7' }}>
-              {fmt(row.ma60)}
-            </span>
-          </>
-        )}
+
+      {/* Hero: close + day change pill */}
+      <div className="px-3.5 py-3 border-b border-border-subtle/50">
+        <div className="flex items-baseline justify-between mb-1.5">
+          <span className="text-txt-secondary text-[11px] font-semibold uppercase tracking-wider">
+            종가
+          </span>
+          <span
+            className="font-mono font-bold text-[20px] leading-none tabular-nums"
+            style={{ color: changeColor }}
+          >
+            {fmt(row.close)}
+          </span>
+        </div>
+        <div
+          className="flex items-center justify-end gap-1.5 text-[13px] font-mono font-bold tabular-nums px-2 py-1 rounded-md ml-auto w-fit"
+          style={{
+            color: changeColor,
+            background: `${changeColor}1A`,
+            border: `1px solid ${changeColor}33`,
+          }}
+        >
+          <span aria-hidden>{dayChange >= 0 ? '▲' : '▼'}</span>
+          <span>
+            {dayChange >= 0 ? '+' : ''}
+            {fmt(dayChange)}
+          </span>
+          <span className="opacity-90 text-[12px]">
+            ({dayChange >= 0 ? '+' : ''}
+            {dayChangePct.toFixed(2)}%)
+          </span>
+        </div>
       </div>
+
+      {/* OHL grid */}
+      <div className="px-3.5 py-3 grid grid-cols-3 gap-x-3 gap-y-1">
+        <CompactStat label="시가" value={fmt(row.open)} />
+        <CompactStat label="고가" value={fmt(row.high)} color="var(--status-success)" />
+        <CompactStat label="저가" value={fmt(row.low)} color="var(--status-danger)" />
+      </div>
+
+      {/* Volume + MA */}
+      {(row.volume > 0 || row.ma20 != null || row.ma60 != null) && (
+        <div className="px-3.5 py-2.5 bg-bg-secondary/30 border-t border-border-subtle/50 space-y-1.5">
+          {row.volume > 0 && (
+            <div className="flex items-center justify-between">
+              <span className="text-txt-muted text-[12px] font-semibold">거래량</span>
+              <span className="font-mono font-bold text-[13px] tabular-nums">
+                {fmtVolLocal(row.volume)}
+              </span>
+            </div>
+          )}
+          {row.ma20 != null && (
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-[12px] font-semibold text-txt-secondary">
+                <span className="inline-block w-2.5 h-0.5 rounded-full" style={{ background: '#F59E0B' }} />
+                MA20
+              </span>
+              <span className="font-mono font-bold text-[13px] tabular-nums" style={{ color: '#F59E0B' }}>
+                {fmt(row.ma20)}
+              </span>
+            </div>
+          )}
+          {row.ma60 != null && (
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-[12px] font-semibold text-txt-secondary">
+                <span className="inline-block w-2.5 h-0.5 rounded-full" style={{ background: '#A855F7' }} />
+                MA60
+              </span>
+              <span className="font-mono font-bold text-[13px] tabular-nums" style={{ color: '#A855F7' }}>
+                {fmt(row.ma60)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CompactStat({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string;
+  color?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] font-semibold tracking-wider uppercase text-txt-muted">
+        {label}
+      </span>
+      <span
+        className="font-mono font-bold text-[13px] tabular-nums leading-tight"
+        style={{ color: color ?? 'var(--text-primary)' }}
+      >
+        {value}
+      </span>
     </div>
   );
 }
