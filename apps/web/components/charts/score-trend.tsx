@@ -751,19 +751,21 @@ export function ScoreTrend({
 
      {mae !== null && mape !== null && (
        <div className="mb-2.5 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[13px] text-[color:var(--text-secondary)] font-medium">
-         <span className="text-txt-secondary font-semibold">
-           예측 적합도 <span className="text-txt-muted font-normal">({overlap.length}일 비교)</span>:
-         </span>
-         <span>
+         <MetricItem info={METRIC_INFO.predictionFit}>
+           <span className="text-txt-secondary font-semibold">
+             예측 적합도 <span className="text-txt-muted font-normal">({overlap.length}일 비교)</span>
+           </span>
+         </MetricItem>
+         <MetricItem info={METRIC_INFO.mae}>
            <span className="text-txt-muted text-[12px] mr-1">MAE</span>
            <span className="text-[color:var(--text-primary)] font-mono tabular-nums font-bold text-[14px]">{mae.toFixed(3)}</span>
-         </span>
-         <span>
+         </MetricItem>
+         <MetricItem info={METRIC_INFO.mape}>
            <span className="text-txt-muted text-[12px] mr-1">MAPE</span>
            <span className="text-[color:var(--text-primary)] font-mono tabular-nums font-bold text-[14px]">{mape.toFixed(1)}%</span>
-         </span>
+         </MetricItem>
          {directionalAcc !== null && (
-           <span>
+           <MetricItem info={METRIC_INFO.directionAcc}>
              <span className="text-txt-muted text-[12px] mr-1">방향 일치</span>
              <span
                className="font-mono tabular-nums font-bold text-[14px]"
@@ -775,14 +777,13 @@ export function ScoreTrend({
                        ? 'rgb(220,72,72)'
                        : 'var(--text-primary)',
                }}
-               title="day-over-day 점수 변동 방향이 일치한 비율 (50% = coin flip)"
              >
                {directionalAcc.toFixed(0)}%
              </span>
-           </span>
+           </MetricItem>
          )}
          {skillScore !== null && (
-           <span title="모델 MAE vs naive baseline MAE. 양수 = 모델이 naive를 이김, 음수 = 모델 무용.">
+           <MetricItem info={METRIC_INFO.skill}>
              <span className="text-txt-muted text-[12px] mr-1">skill</span>
              <span
                className="font-mono tabular-nums font-bold text-[14px]"
@@ -798,29 +799,32 @@ export function ScoreTrend({
                {skillScore >= 0 ? '+' : ''}
                {(skillScore * 100).toFixed(0)}%
              </span>
-           </span>
+           </MetricItem>
          )}
          {reliability !== null && reliabilityTier && (
-           <span
-             className={cn(
-               'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-bold ml-auto border',
-               reliabilityTier === 'high'
-                 ? 'bg-status-success/15 text-status-success border-status-success/30'
-                 : reliabilityTier === 'medium'
-                   ? 'bg-status-warning/15 text-status-warning border-status-warning/30'
-                   : 'bg-status-danger/15 text-status-danger border-status-danger/30',
-             )}
-             title="샘플수(30%) + MAPE(35%) + 방향일치(35%) 가중합 신뢰도"
-           >
-             <span>신뢰도</span>
-             <span>
-               {reliabilityTier === 'high'
-                 ? '높음'
-                 : reliabilityTier === 'medium'
-                   ? '보통'
-                   : '낮음'}
-             </span>
-             <span className="font-mono tabular-nums">({Math.round(reliability)})</span>
+           <span className="ml-auto">
+             <MetricItem info={METRIC_INFO.reliability} align="right">
+               <span
+                 className={cn(
+                   'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-bold border',
+                   reliabilityTier === 'high'
+                     ? 'bg-status-success/15 text-status-success border-status-success/30'
+                     : reliabilityTier === 'medium'
+                       ? 'bg-status-warning/15 text-status-warning border-status-warning/30'
+                       : 'bg-status-danger/15 text-status-danger border-status-danger/30',
+                 )}
+               >
+                 <span>신뢰도</span>
+                 <span>
+                   {reliabilityTier === 'high'
+                     ? '높음'
+                     : reliabilityTier === 'medium'
+                       ? '보통'
+                       : '낮음'}
+                 </span>
+                 <span className="font-mono tabular-nums">({Math.round(reliability)})</span>
+               </span>
+             </MetricItem>
            </span>
          )}
        </div>
@@ -834,7 +838,7 @@ export function ScoreTrend({
          <span className="text-status-info font-bold">
            점수 ↔ 주가 <span className="text-status-info/70 font-normal">({priceMetrics.sampleSize}일)</span>:
          </span>
-         <span title="Pearson 상관계수. +1: 완벽 동조, 0: 무관, −1: 정반대. |값| ≥ 0.5면 의미 있음.">
+         <MetricItem info={METRIC_INFO.scorePriceCorr}>
            <span className="text-txt-muted text-[12px] mr-1">상관계수</span>
            <span
              className="font-mono tabular-nums font-bold text-[14px]"
@@ -850,9 +854,9 @@ export function ScoreTrend({
              {priceMetrics.scorePriceCorr >= 0 ? '+' : ''}
              {priceMetrics.scorePriceCorr.toFixed(2)}
            </span>
-         </span>
+         </MetricItem>
          {priceMetrics.scorePriceDirAcc !== null && (
-           <span title="점수가 오른 다음날 주가도 올랐는지의 비율. 50%는 동전 던지기 수준.">
+           <MetricItem info={METRIC_INFO.scorePriceDir}>
              <span className="text-txt-muted text-[12px] mr-1">방향 일치</span>
              <span
                className="font-mono tabular-nums font-bold text-[14px]"
@@ -867,10 +871,10 @@ export function ScoreTrend({
              >
                {priceMetrics.scorePriceDirAcc.toFixed(0)}%
              </span>
-           </span>
+           </MetricItem>
          )}
          {priceMetrics.leadDays !== null && priceMetrics.leadCorr !== null && (
-           <span title="점수가 N일 앞서 주가를 예측했을 때의 최고 상관도. 선행성이 있으면 모델 가치 ↑.">
+           <MetricItem info={METRIC_INFO.leadDays}>
              <span className="text-txt-muted text-[12px] mr-1">선행성</span>
              <span
                className="font-mono tabular-nums font-bold text-[14px]"
@@ -884,7 +888,7 @@ export function ScoreTrend({
                +{priceMetrics.leadDays}일 ({priceMetrics.leadCorr >= 0 ? '+' : ''}
                {priceMetrics.leadCorr.toFixed(2)})
              </span>
-           </span>
+           </MetricItem>
          )}
          {Math.abs(priceMetrics.scorePriceCorr) < 0.2 && (
            <span className="inline-flex items-center gap-1 text-status-warning text-[12px] font-semibold ml-auto px-2 py-0.5 rounded bg-status-warning/10 border border-status-warning/30">
@@ -1198,7 +1202,199 @@ export function ScoreTrend({
   );
 }
 
-// ─── Legend with hover popovers ─────────────────────────────
+// ─── Metric-row hover popover ───────────────────────────────
+// Wraps a single metric span (MAE, MAPE, 방향 일치, skill, 신뢰도,
+// 상관계수, 선행성, etc.) and shows a detailed explanation popover
+// on hover. Keeps the metric row dense but exposes the math behind
+// every number on demand.
+
+interface MetricPopInfo {
+  title: string;
+  english?: string;
+  what: string;
+  how: string[];
+  tip?: string;
+}
+
+function MetricItem({
+  info,
+  children,
+  align = 'left',
+}: {
+  info: MetricPopInfo;
+  children: React.ReactNode;
+  align?: 'left' | 'right';
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <span
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="relative cursor-help inline-flex items-baseline"
+    >
+      {/* Underline indicates 'this is hoverable' */}
+      <span className="border-b border-dashed border-current/30 hover:border-current/70 transition-colors">
+        {children}
+      </span>
+      {hovered && (
+        <div
+          className={cn(
+            'absolute top-full z-50 mt-2 w-[340px] max-w-[92vw] text-left cursor-default',
+            align === 'right' ? 'right-0' : 'left-0',
+          )}
+        >
+          <div
+            className="rounded-lg border-2 border-border-default bg-bg-primary p-4 text-[12px]"
+            style={{
+              boxShadow: '0 10px 32px rgba(0,0,0,0.30), 0 0 0 1px rgba(255,255,255,0.04)',
+            }}
+          >
+            <div className="pb-2 mb-2.5 border-b border-border-default/40">
+              <div className="text-txt-primary text-[14px] font-bold">
+                {info.title}
+              </div>
+              {info.english && (
+                <div className="text-[11px] text-brand-purple italic mt-0.5">
+                  {info.english}
+                </div>
+              )}
+            </div>
+            <div className="space-y-2.5 leading-relaxed">
+              <div>
+                <div className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold mb-1">
+                  무엇
+                </div>
+                <div className="text-[13px] text-txt-primary">{info.what}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold mb-1">
+                  어떻게 계산
+                </div>
+                <ul className="text-[12px] text-txt-secondary space-y-1 pl-3 list-disc marker:text-brand-purple">
+                  {info.how.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+              {info.tip && (
+                <div className="rounded bg-status-info/[0.08] border border-status-info/30 p-2.5 text-[12px] text-txt-secondary">
+                  <strong className="text-status-info block mb-0.5">💡 해석</strong>
+                  {info.tip}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** Static catalog of metric explanations — keyed for direct lookup
+ *  in the row markup. Easier to keep prose consistent in one place
+ *  than to inline 9 popovers. */
+const METRIC_INFO: Record<string, MetricPopInfo> = {
+  predictionFit: {
+    title: '예측 적합도',
+    english: 'Prediction Goodness-of-Fit',
+    what: '모델 예측이 실제 측정값과 얼마나 일치하는지 평가하는 지표 모음.',
+    how: [
+      '비교 표본: 모델 예측이 존재하는 과거 N일',
+      '여러 각도(절대 오차, 비율, 방향성)로 정확도 측정',
+      '한 가지 숫자가 아닌 4~5개 메트릭을 함께 봐야 함',
+    ],
+    tip: 'N이 7일 미만이면 통계적으로 의미 약함. 데이터 누적 후 재평가 권장.',
+  },
+  mae: {
+    title: 'MAE',
+    english: 'Mean Absolute Error — 평균 절대 오차',
+    what: '예측이 실측에서 평균 얼마나 빗나갔는지를 점수 단위로 표시.',
+    how: [
+      '공식: mean(|실측 − 예측|)',
+      '점수 스케일 0~1 기준이므로 0.05 = 평균 5점 빗나감',
+      '단위가 데이터와 동일해서 해석 직관적',
+    ],
+    tip: '0.05 이하 우수, 0.10 이상 부정확. 작을수록 정확.',
+  },
+  mape: {
+    title: 'MAPE',
+    english: 'Mean Absolute Percentage Error — 평균 절대 비율 오차',
+    what: 'MAE를 실측 대비 비율(%)로 환산해서 데이터 크기와 무관하게 비교.',
+    how: [
+      '공식: mean(|실측 − 예측| / max(0.01, |실측|)) × 100',
+      '점수가 작을 때 분모 폭주 방지를 위해 0.01 최소값 적용',
+      '값이 작은 점수(예: 0.01)에서는 부풀려질 수 있음',
+    ],
+    tip: '10% 이하 ✓ 양호, 30% 넘으면 ✗ 의심. 모델 신뢰 한계.',
+  },
+  directionAcc: {
+    title: '방향 일치율 (예측)',
+    english: 'Directional Accuracy',
+    what: '점수가 어제 대비 오를지(↑) 내릴지(↓)를 모델이 맞춘 비율.',
+    how: [
+      '공식: ΔScore와 ΔPredicted 부호가 같은 날 / 전체 일',
+      'Δ < 0.005인 거의 평탄한 날은 제외 (방향 정의 모호)',
+      '50% = 동전 던지기, 100% = 완벽',
+    ],
+    tip: '60% 이상이면 의미 있는 모델. 50% 미만이면 그냥 어제값 쓰는 게 나음.',
+  },
+  skill: {
+    title: 'Skill Score',
+    english: 'Skill Score — 기상학에서 유래',
+    what: 'Naive baseline("내일 = 오늘") 대비 얼마나 우수한가.',
+    how: [
+      '공식: 1 − (모델 MAE / naive MAE)',
+      '0% = naive 수준, 양수 = 우수, 음수 = naive보다 못함',
+      '단순 평균 회귀로 잘 안 풀리는 점수 시계열에 중요',
+    ],
+    tip: '+20% 이상이면 충분히 가치 있는 모델. 음수면 무용 — 모델 재학습 필요.',
+  },
+  reliability: {
+    title: '신뢰도 (Reliability)',
+    english: 'Reliability Score (0~100)',
+    what: 'MAE/MAPE/방향일치/샘플량을 종합한 한 줄 신뢰 지표.',
+    how: [
+      '샘플량 신호 (30%): min(100, overlap/14 × 100)',
+      'MAPE 신호 (35%): max(0, 100 − MAPE/30 × 100)',
+      '방향일치 신호 (35%): 그대로 사용',
+      '가중합 → 0~100 점수',
+    ],
+    tip: '70+ 높음 — 참고할 만, 50~69 보통 — 다른 근거 같이 보기, < 50 낮음 — 데이터 부족.',
+  },
+  scorePriceCorr: {
+    title: '점수 ↔ 주가 상관계수',
+    english: 'Pearson Correlation',
+    what: 'AI 점수와 실제 주가가 같이 움직이는 정도. -1 ~ +1 사이.',
+    how: [
+      '공식: cov(점수, 주가) / (σ점수 × σ주가)',
+      '+1 = 완벽 동조, 0 = 무관, -1 = 정반대',
+      '두 시계열의 levels(절댓값) 기준 — 추세 동조성',
+    ],
+    tip: '|값| ≥ 0.5이면 의미 있는 동조성. < 0.2면 거의 무관해서 모델 가치 낮음.',
+  },
+  scorePriceDir: {
+    title: '방향 일치율 (점수↔주가)',
+    english: 'Score-Price Direction Match',
+    what: '점수가 오른 다음날 주가도 오르는지의 비율.',
+    how: [
+      '공식: sign(ΔScore[t]) == sign(ΔPrice[t]) 비율',
+      '|ΔScore| < 0.01인 평탄한 날 제외',
+      '점수가 "사라(↑)" 했을 때 주가도 따라 오르는지 검증',
+    ],
+    tip: '60% 이상이면 점수가 주가 방향 예측에 가치 있음. 50% 이하면 coin flip.',
+  },
+  leadDays: {
+    title: '선행성 (Lead Days)',
+    english: 'Lead-Lag Correlation',
+    what: '점수가 주가를 며칠 앞서 예측하는지 — 최고 상관도가 잡히는 lag.',
+    how: [
+      'lag k = 1,2,3 으로 corr(점수[t], 주가[t+k]) 계산',
+      '|상관도|가 최대인 k 채택',
+      '+2일 = 점수가 2일 후 주가와 가장 상관',
+    ],
+    tip: '+1~3일 lag에서 |r| ≥ 0.5 잡히면 점수가 선행지표로 가치 ↑. 진짜 우월한 모델.',
+  },
+};
 // Each legend item explains, on hover:
 //   • What data sources back the line
 //   • How the value is computed
