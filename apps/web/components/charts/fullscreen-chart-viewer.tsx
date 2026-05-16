@@ -426,43 +426,6 @@ export function FullscreenChartViewer({
     return () => window.removeEventListener('keydown', onKey);
   }, [dragSelection]);
 
-  // ── Magnetic snap (Space held) ───────────────────────────────
-  // Press-and-hold Space to enable TradingView-style magnetic
-  // crosshair: cursor Y snaps to the nearest candle O/H/L/C level,
-  // cursor X snaps to the candle's center. During drag this also
-  // snaps the selection edges so the measure rectangle locks onto
-  // bar boundaries.
-  const [spaceHeld, setSpaceHeld] = useState(false);
-  // Recharts' OWN active index — the candle under the vertical
-  // Tooltip cursor. Captured via the chart's onMouseMove so the snap
-  // Y always references the SAME candle the vertical line is on,
-  // regardless of how Recharts' internal slot math distributes the
-  // candles (which doesn't always equal innerWidth/N exactly when
-  // band padding or edge insets are in play).
-  const [rechartsActiveIdx, setRechartsActiveIdx] = useState<number | null>(null);
-  useEffect(() => {
-    const isTextInput = (target: EventTarget | null): boolean => {
-      const tag = (target as HTMLElement | null)?.tagName;
-      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-    };
-    const onDown = (e: KeyboardEvent) => {
-      if (e.code !== 'Space') return;
-      // Don't hijack space typed into the compare ticker input.
-      if (isTextInput(e.target)) return;
-      e.preventDefault();           // suppress page-scroll on space
-      setSpaceHeld(true);
-    };
-    const onUp = (e: KeyboardEvent) => {
-      if (e.code !== 'Space') return;
-      setSpaceHeld(false);
-    };
-    window.addEventListener('keydown', onDown);
-    window.addEventListener('keyup', onUp);
-    return () => {
-      window.removeEventListener('keydown', onDown);
-      window.removeEventListener('keyup', onUp);
-    };
-  }, []);
 
   // ── Resizable volume pane ──────────────────────────────────
   // Pros use a draggable divider between price and volume so they
@@ -852,74 +815,6 @@ export function FullscreenChartViewer({
   const obvAxisShown = showVolume && volumeHeight >= 220;
   const sharedLeftMargin = obvAxisShown ? 64 : 8;
 
-  // ── Snap helper used by the magnetic crosshair (Space held) ──
-  // Given a mouse position within the price container, returns the
-  // snapped {x, y}:
-  //   • idx → SLOT-based candle index — matches Recharts' own
-  //           Tooltip cursor calculation so the vertical line and
-  //           the Y snap always reference the same candle. (The old
-  //           Math.round(ratio × N-1) calc disagreed with Recharts at
-  //           slot boundaries, causing the Y snap to use a different
-  //           candle than the one under the vertical line.)
-  //   • x → center of that slot (candle center column).
-  //   • y → whichever of THAT candle's open / close / high / low
-  //         price levels is closest to the cursor Y.
-  // Falls back to passing through when data is unavailable.
-  const snapToCandle = (
-    rawX: number,
-    rawY: number,
-    containerW: number,
-    containerH: number,
-  ): { x: number; y: number; idx: number } => {
-    if (data.length === 0 || periodHigh == null || periodLow == null) {
-      return { x: rawX, y: rawY, idx: -1 };
-    }
-    const MARGIN_TOP = 12;
-    const MARGIN_RIGHT = 64;
-    const innerLeft = sharedLeftMargin;
-    const innerRight = Math.max(innerLeft + 1, containerW - MARGIN_RIGHT);
-    const innerWidth = innerRight - innerLeft;
-    const innerHeight = Math.max(1, containerH - MARGIN_TOP);
-    const slot = innerWidth / data.length;
-    // Prefer Recharts' own activeTooltipIndex when available — that
-    // is the exact candle under the vertical Tooltip cursor line,
-    // and using it guarantees the snap target matches what the user
-    // sees. Fall back to slot-based math when Recharts hasn't fired
-    // its first onMouseMove yet (e.g. on the very first frame).
-    const idx =
-      rechartsActiveIdx != null && rechartsActiveIdx >= 0 && rechartsActiveIdx < data.length
-        ? rechartsActiveIdx
-        : Math.max(
-            0,
-            Math.min(data.length - 1, Math.floor((rawX - innerLeft) / slot)),
-          );
-    const candle = data[idx];
-    // Recharts ~5% padding on auto domain → mirror it.
-    const pad = (periodHigh - periodLow) * 0.05;
-    const yMax = periodHigh + pad;
-    const yMin = Math.max(0, periodLow - pad);
-    const priceToY = (p: number) =>
-      MARGIN_TOP + ((yMax - p) / (yMax - yMin)) * innerHeight;
-    const yCandidates = [
-      priceToY(candle.high),
-      priceToY(candle.low),
-      priceToY(candle.open),
-      priceToY(candle.close),
-    ];
-    let snappedY = yCandidates[0];
-    let bestDist = Math.abs(snappedY - rawY);
-    for (const c of yCandidates) {
-      const d = Math.abs(c - rawY);
-      if (d < bestDist) {
-        snappedY = c;
-        bestDist = d;
-      }
-    }
-    // Snapped X = center of the slot (matches CandleShape's `cx`
-    // which Recharts uses for the candle center column).
-    const snappedX = innerLeft + (idx + 0.5) * slot;
-    return { x: snappedX, y: snappedY, idx };
-  };
 
   const compareLabel = compareEnabled && compareResolved
     ? compareResolved.label
@@ -1209,42 +1104,20 @@ export function FullscreenChartViewer({
         >
           {/* Price pane — wrapped in a `relative` div so we can paint
               a DOM crosshair overlay on top regardless of Recharts'
-              internal API. Also hosts the click-drag measure tool.
-              Cursor style flips to crosshair while Space is held so
-              the user gets immediate feedback that snap mode is on. */}
+              internal API. Also hosts the click-drag measure tool. */}
           <div
             ref={priceContainerRef}
-            className={cn(
-              'relative select-none',
-              spaceHeld && 'cursor-crosshair',
-            )}
+            className="relative select-none"
             onMouseDown={(e) => {
-              // Only primary button starts a selection.
               if (e.button !== 0) return;
               const rect = e.currentTarget.getBoundingClientRect();
-              let x = e.clientX - rect.left;
-              let y = e.clientY - rect.top;
-              // Space held → snap the drag origin onto the nearest
-              // candle so the selection starts on a bar boundary.
-              if (spaceHeld) {
-                const snapped = snapToCandle(x, y, rect.width, rect.height);
-                x = snapped.x;
-                y = snapped.y;
-              }
+              const x = e.clientX - rect.left;
               setDragSelection({ startX: x, currentX: x, active: true });
             }}
             onMouseMove={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
-              let x = e.clientX - rect.left;
-              let y = e.clientY - rect.top;
-              // Space held → magnetic snap. Cursor Y locks onto the
-              // nearest candle's O/H/L/C; cursor X (and drag edges)
-              // lock onto the candle's center column.
-              if (spaceHeld) {
-                const snapped = snapToCandle(x, y, rect.width, rect.height);
-                x = snapped.x;
-                y = snapped.y;
-              }
+              const x = e.clientX - rect.left;
+              const y = e.clientY - rect.top;
               if (Number.isFinite(y) && y >= 0 && y <= rect.height) {
                 setCursorY(y);
               }
@@ -1257,14 +1130,9 @@ export function FullscreenChartViewer({
             onMouseUp={(e) => {
               if (!dragSelection) return;
               const rect = e.currentTarget.getBoundingClientRect();
-              let x = e.clientX - rect.left;
-              const y = e.clientY - rect.top;
-              if (spaceHeld) {
-                x = snapToCandle(x, y, rect.width, rect.height).x;
-              }
+              const x = e.clientX - rect.left;
               const width = Math.abs(x - dragSelection.startX);
               if (width < 4) {
-                // Treat as plain click (no drag) — clear any prior selection.
                 setDragSelection(null);
               } else {
                 setDragSelection({
@@ -1276,8 +1144,6 @@ export function FullscreenChartViewer({
             }}
             onMouseLeave={() => {
               setCursorY(null);
-              // If user was mid-drag and left the chart, freeze the
-              // selection at the current X (window mouseup will end it).
             }}
           >
           <ResponsiveContainer width="100%" height={priceHeight}>
@@ -1285,25 +1151,6 @@ export function FullscreenChartViewer({
               data={data}
               syncId="fs-chart"
               margin={{ top: 12, right: 64, bottom: 0, left: sharedLeftMargin }}
-              // Capture Recharts' own activeTooltipIndex so the magnetic
-              // snap (Space held) references the exact same candle the
-              // vertical Tooltip cursor is highlighting. Different field
-              // names across Recharts versions, so we defensively read
-              // both 'activeTooltipIndex' and 'activeIndex'.
-              onMouseMove={(state: unknown) => {
-                const s = state as {
-                  activeTooltipIndex?: number;
-                  activeIndex?: number;
-                } | null;
-                const idx =
-                  s?.activeTooltipIndex ??
-                  s?.activeIndex ??
-                  null;
-                if (typeof idx === 'number' && Number.isFinite(idx)) {
-                  setRechartsActiveIdx(idx);
-                }
-              }}
-              onMouseLeave={() => setRechartsActiveIdx(null)}
             >
               <CartesianGrid stroke="var(--border-subtle)" strokeOpacity="0.5" strokeDasharray="2 4" />
               <XAxis
@@ -1477,20 +1324,6 @@ export function FullscreenChartViewer({
               )}
             </ComposedChart>
           </ResponsiveContainer>
-
-          {/* Magnetic-snap status badge — only visible while Space is
-              held. Sits top-center of the price pane so the user gets
-              clear feedback that they're in snap mode (and how to
-              exit). */}
-          {spaceHeld && (
-            <div className="pointer-events-none absolute top-3 right-4 z-30 px-2.5 py-1 rounded-md bg-brand-purple/90 text-white text-[10px] font-semibold tracking-wide shadow-lg flex items-center gap-1.5 backdrop-blur-sm">
-              <span aria-hidden>🧲</span>
-              <span>스냅 ON</span>
-              <span className="opacity-70 font-normal italic ml-0.5">
-                (Space 떼면 해제)
-              </span>
-            </div>
-          )}
 
           {/* DOM-level crosshair overlay — positioned absolutely on top
               of the price chart. Uses native mouse coordinates so it
