@@ -1053,16 +1053,13 @@ export function ScoreTrend({
           <Legend
             wrapperStyle={{ fontSize: 11, paddingTop: 4 }}
             iconType="plainline"
-            formatter={(value) => {
-              if (value === 'actual') return '실측 점수';
-              if (value === 'predicted') return modelLabel;
-              if (value === 'naive_predicted') return '순진 baseline (어제=오늘)';
-              if (value === 'band_high') return '95% 신뢰구간';
-              if (value === 'ma5') return 'MA5';
-              if (value === 'ma20') return 'MA20';
-              if (value === 'price_norm') return '주가 (정규화)';
-              return String(value);
-            }}
+            content={(props: unknown) => (
+              <LegendWithPopover
+                raw={props}
+                modelLabel={modelLabel}
+                overlapDays={overlap.length}
+              />
+            )}
           />
 
           {/* Confidence band — Area painted between band_low and band_high.
@@ -1194,5 +1191,268 @@ export function ScoreTrend({
      </ClientOnly>
      </div>
     </div>
+  );
+}
+
+// ─── Legend with hover popovers ─────────────────────────────
+// Each legend item explains, on hover:
+//   • What data sources back the line
+//   • How the value is computed
+//   • What it represents in interpretation
+// Lets users self-serve "이 점수가 어떻게 만들어지는 건지?" without
+// leaving the chart.
+
+interface LegendInfo {
+  /** Heading shown at the top of the popover */
+  title: string;
+  /** What the line/area actually represents */
+  what: string;
+  /** Data sources or formula used to compute it */
+  how: string[];
+  /** How to read this in context of the chart */
+  read?: string;
+}
+
+function buildLegendInfo(modelLabel: string, overlapDays: number): Record<string, LegendInfo> {
+  return {
+    actual: {
+      title: '실측 점수',
+      what: '매일 06:00 KST에 산출된 실제 AI 종합 점수 (0.0 ~ 1.0).',
+      how: [
+        '입력: 미국장 마감 시세 + 글로벌 거시 지표',
+        '입력: KR 뉴스 감성 분석 (Claude Sonnet)',
+        '입력: 6 voters(그레이엄·다우·터링·시러·케인즈·탈레브) 의견',
+        '입력: RAG 청크 매칭 (섹터·종목 관련 시나리오)',
+        '출력: 종합 점수 → 5단계 신호 (강한관심·관심·관망·주의·위험)',
+      ],
+      read: '확정된 분석 결과. 이미 발생한 날의 점수이며 변하지 않아요.',
+    },
+    predicted: {
+      title: `예측 점수 (${modelLabel.replace('예측 (', '').replace(')', '')})`,
+      what: '모델이 추정한 점수의 흐름. 과거(backcast) + 미래 5영업일(forecast).',
+      how: [
+        '모델: GradientBoostingRegressor (사이킷런)',
+        '학습 데이터: 최근 120일 (~4개월) 실측 점수',
+        '특성: 점수 시계열, 거래량 추세, 거시 변동 등',
+        '과거 구간 = 회고 검증 (실측과 비교해 오차 측정)',
+        '미래 구간 = 5영업일 추정 (월~금 다음 거래일)',
+      ],
+      read: '실측선과 가까울수록 모델이 잘 학습된 상태. 위의 MAE/MAPE/skill 지표 함께 보세요.',
+    },
+    naive_predicted: {
+      title: '순진 baseline (어제 = 오늘)',
+      what: '"내일 점수 = 오늘 점수" 가정한 가장 단순한 예측.',
+      how: [
+        '공식: naive[t] = actual[t-1] (전일 점수 그대로)',
+        '추가 입력·계산 없음',
+        '"이 모델 가치 있나?" 판단의 기준선',
+        'Skill score = 1 − (모델MAE / naive MAE)',
+      ],
+      read: 'AI 예측이 이 선을 충분히 못 이기면 굳이 ML 쓸 가치 없음. Skill +20% 이상 권장.',
+    },
+    band_high: {
+      title: '95% 신뢰구간',
+      what: '예측의 불확실성 범위 — 95% 확률로 실제값이 이 안에 위치.',
+      how: [
+        '모델 잭나이프 또는 분산 추정 기반',
+        '구간 폭이 좁을수록 모델 확신도 ↑',
+        '미래로 갈수록 자연스럽게 넓어짐 (누적 불확실성)',
+        '주황색 음영 영역으로 시각화',
+      ],
+      read: '구간이 등급 경계(0.65 / 0.35)를 넘나들면 결과 신호가 바뀔 수도 있다는 뜻.',
+    },
+    ma5: {
+      title: 'MA5 (5일 이동평균선)',
+      what: '실측 점수의 5일 단순 이동평균.',
+      how: [
+        '공식: MA5[t] = mean(actual[t-4..t])',
+        '점수 단기 추세를 부드럽게 표현',
+        '데이터 부족 시 (5일 미만) 렌더링 안 됨',
+      ],
+      read: 'MA5가 우상향 = 단기 점수 상승세. MA20과 교차하면 추세 전환 가능 신호.',
+    },
+    ma20: {
+      title: 'MA20 (20일 이동평균선)',
+      what: '실측 점수의 20일 단순 이동평균.',
+      how: [
+        '공식: MA20[t] = mean(actual[t-19..t])',
+        '점수 중기 추세 기준선',
+        '~1개월 평균 점수 레벨',
+      ],
+      read: 'MA20 위 = 평균보다 강한 점수. 가격의 MA20과 함께 보면 더 강력.',
+    },
+    price_norm: {
+      title: '주가 (정규화)',
+      what: '실제 종목 가격을 점수 시작값에 비례 변환해서 overlay.',
+      how: [
+        '데이터 소스: NAVER 일봉 (api.stock.naver.com)',
+        '공식: overlay[i] = scoreStart × (price[i] / price[0])',
+        '가격이 0% 변하면 직선, 12% 떨어지면 12% 비례 하락',
+        '점수와 같은 단위로 비교 가능하도록 정규화',
+      ],
+      read: '점수와 주가가 같은 방향으로 움직이는지 확인. 점수가 1~3일 앞서 움직이면 선행지표.',
+    },
+  };
+}
+
+interface LegendPayloadItem {
+  dataKey?: string;
+  value?: string;
+  color?: string;
+  payload?: { stroke?: string; strokeDasharray?: string };
+}
+
+function LegendWithPopover({
+  raw,
+  modelLabel,
+  overlapDays,
+}: {
+  raw: unknown;
+  modelLabel: string;
+  overlapDays: number;
+}) {
+  const r = raw as { payload?: LegendPayloadItem[] } | null;
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const info = useMemo(
+    () => buildLegendInfo(modelLabel, overlapDays),
+    [modelLabel, overlapDays],
+  );
+  if (!r?.payload || r.payload.length === 0) return null;
+  const labelFor = (key: string): string => {
+    if (key === 'actual') return '실측 점수';
+    if (key === 'predicted') return modelLabel;
+    if (key === 'naive_predicted') return '순진 baseline (어제=오늘)';
+    if (key === 'band_high') return '95% 신뢰구간';
+    if (key === 'ma5') return 'MA5';
+    if (key === 'ma20') return 'MA20';
+    if (key === 'price_norm') return '주가 (정규화)';
+    return key;
+  };
+  return (
+    <ul
+      className="recharts-default-legend"
+      style={{ padding: 0, margin: 0, textAlign: 'center', position: 'relative' }}
+    >
+      {r.payload.map((item) => {
+        const key = item.dataKey ?? '';
+        const detail = info[key];
+        const isHovered = hoveredKey === key;
+        return (
+          <li
+            key={key}
+            onMouseEnter={() => setHoveredKey(key)}
+            onMouseLeave={() => setHoveredKey(null)}
+            style={{
+              display: 'inline-block',
+              marginRight: 10,
+              position: 'relative',
+              cursor: detail ? 'help' : 'default',
+            }}
+          >
+            {/* SVG icon — match Recharts default appearance */}
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 32 32"
+              style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: 4 }}
+              aria-label={`${labelFor(key)} legend icon`}
+            >
+              <line
+                x1="0" y1="16" x2="32" y2="16"
+                stroke={item.color}
+                strokeWidth="4"
+                strokeDasharray={item.payload?.strokeDasharray}
+              />
+            </svg>
+            <span
+              style={{
+                color: item.color,
+                fontSize: 11,
+                fontWeight: 600,
+                textDecoration: detail ? 'underline dotted 1px' : 'none',
+                textUnderlineOffset: 3,
+              }}
+            >
+              {labelFor(key)}
+            </span>
+            {isHovered && detail && (
+              <div
+                role="tooltip"
+                style={{
+                  position: 'absolute',
+                  bottom: '100%',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  marginBottom: 10,
+                  width: 360,
+                  maxWidth: '90vw',
+                  zIndex: 50,
+                  textAlign: 'left',
+                  cursor: 'default',
+                }}
+              >
+                <div
+                  className="rounded-lg border-2 border-border-default bg-bg-primary p-4 text-[12px]"
+                  style={{
+                    boxShadow:
+                      '0 10px 32px rgba(0,0,0,0.30), 0 0 0 1px rgba(255,255,255,0.04)',
+                  }}
+                >
+                  <div className="flex items-center gap-2 pb-2 mb-2 border-b border-border-default/40">
+                    <span
+                      className="inline-block w-3 h-3 rounded-full shrink-0"
+                      style={{ background: item.color }}
+                    />
+                    <strong className="text-txt-primary text-[14px] font-bold">
+                      {detail.title}
+                    </strong>
+                  </div>
+                  <div className="space-y-3 leading-relaxed">
+                    <div>
+                      <div className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold mb-1">
+                        무엇
+                      </div>
+                      <div className="text-[13px] text-txt-primary">
+                        {detail.what}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold mb-1">
+                        어떻게 만들어지나
+                      </div>
+                      <ul className="text-[12px] text-txt-secondary space-y-1 pl-3 list-disc marker:text-brand-purple">
+                        {detail.how.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    {detail.read && (
+                      <div className="rounded bg-status-info/[0.08] border border-status-info/30 p-2.5 text-[12px] text-txt-secondary">
+                        <strong className="text-status-info block mb-0.5">💡 해석</strong>
+                        {detail.read}
+                      </div>
+                    )}
+                  </div>
+                  {/* Arrow pointing down to legend item */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: 0,
+                      height: 0,
+                      borderLeft: '8px solid transparent',
+                      borderRight: '8px solid transparent',
+                      borderTop: '8px solid var(--border-default)',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
