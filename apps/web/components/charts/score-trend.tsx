@@ -750,21 +750,23 @@ export function ScoreTrend({
      </div>
 
      {mae !== null && mape !== null && (
-       <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[color:var(--text-secondary)]">
-         <span className="text-txt-muted">
-           예측 적합도 ({overlap.length}일 비교):
+       <div className="mb-2.5 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[13px] text-[color:var(--text-secondary)] font-medium">
+         <span className="text-txt-secondary font-semibold">
+           예측 적합도 <span className="text-txt-muted font-normal">({overlap.length}일 비교)</span>:
          </span>
          <span>
-           MAE <span className="text-[color:var(--text-primary)] font-mono tabular-nums font-medium">{mae.toFixed(3)}</span>
+           <span className="text-txt-muted text-[12px] mr-1">MAE</span>
+           <span className="text-[color:var(--text-primary)] font-mono tabular-nums font-bold text-[14px]">{mae.toFixed(3)}</span>
          </span>
          <span>
-           MAPE <span className="text-[color:var(--text-primary)] font-mono tabular-nums font-medium">{mape.toFixed(1)}%</span>
+           <span className="text-txt-muted text-[12px] mr-1">MAPE</span>
+           <span className="text-[color:var(--text-primary)] font-mono tabular-nums font-bold text-[14px]">{mape.toFixed(1)}%</span>
          </span>
          {directionalAcc !== null && (
            <span>
-             방향 일치{' '}
+             <span className="text-txt-muted text-[12px] mr-1">방향 일치</span>
              <span
-               className="font-mono tabular-nums font-medium"
+               className="font-mono tabular-nums font-bold text-[14px]"
                style={{
                  color:
                    directionalAcc >= 60
@@ -781,9 +783,9 @@ export function ScoreTrend({
          )}
          {skillScore !== null && (
            <span title="모델 MAE vs naive baseline MAE. 양수 = 모델이 naive를 이김, 음수 = 모델 무용.">
-             skill{' '}
+             <span className="text-txt-muted text-[12px] mr-1">skill</span>
              <span
-               className="font-mono tabular-nums font-medium"
+               className="font-mono tabular-nums font-bold text-[14px]"
                style={{
                  color:
                    skillScore >= 0.2
@@ -801,22 +803,24 @@ export function ScoreTrend({
          {reliability !== null && reliabilityTier && (
            <span
              className={cn(
-               'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ml-auto',
+               'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-bold ml-auto border',
                reliabilityTier === 'high'
-                 ? 'bg-status-success/15 text-status-success'
+                 ? 'bg-status-success/15 text-status-success border-status-success/30'
                  : reliabilityTier === 'medium'
-                   ? 'bg-status-warning/15 text-status-warning'
-                   : 'bg-status-danger/15 text-status-danger',
+                   ? 'bg-status-warning/15 text-status-warning border-status-warning/30'
+                   : 'bg-status-danger/15 text-status-danger border-status-danger/30',
              )}
              title="샘플수(30%) + MAPE(35%) + 방향일치(35%) 가중합 신뢰도"
            >
-             신뢰도{' '}
-             {reliabilityTier === 'high'
-               ? '높음'
-               : reliabilityTier === 'medium'
-                 ? '보통'
-                 : '낮음'}{' '}
-             ({Math.round(reliability)})
+             <span>신뢰도</span>
+             <span>
+               {reliabilityTier === 'high'
+                 ? '높음'
+                 : reliabilityTier === 'medium'
+                   ? '보통'
+                   : '낮음'}
+             </span>
+             <span className="font-mono tabular-nums">({Math.round(reliability)})</span>
            </span>
          )}
        </div>
@@ -826,14 +830,14 @@ export function ScoreTrend({
          Answers "do the AI score and real price actually move together?"
          which is the question users ask when the two lines diverge. */}
      {showPrice && priceMetrics.scorePriceCorr !== null && (
-       <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[color:var(--text-secondary)] rounded-md bg-status-info/[0.04] border border-status-info/15 px-3 py-1.5">
-         <span className="text-status-info font-semibold">
-           점수 ↔ 주가 ({priceMetrics.sampleSize}일):
+       <div className="mb-2.5 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[13px] text-[color:var(--text-secondary)] rounded-md bg-status-info/[0.04] border border-status-info/15 px-3.5 py-2 font-medium">
+         <span className="text-status-info font-bold">
+           점수 ↔ 주가 <span className="text-status-info/70 font-normal">({priceMetrics.sampleSize}일)</span>:
          </span>
          <span title="Pearson 상관계수. +1: 완벽 동조, 0: 무관, −1: 정반대. |값| ≥ 0.5면 의미 있음.">
-           상관계수{' '}
+           <span className="text-txt-muted text-[12px] mr-1">상관계수</span>
            <span
-             className="font-mono tabular-nums font-medium"
+             className="font-mono tabular-nums font-bold text-[14px]"
              style={{
                color:
                  Math.abs(priceMetrics.scorePriceCorr) >= 0.5
@@ -849,9 +853,9 @@ export function ScoreTrend({
          </span>
          {priceMetrics.scorePriceDirAcc !== null && (
            <span title="점수가 오른 다음날 주가도 올랐는지의 비율. 50%는 동전 던지기 수준.">
-             방향 일치{' '}
+             <span className="text-txt-muted text-[12px] mr-1">방향 일치</span>
              <span
-               className="font-mono tabular-nums font-medium"
+               className="font-mono tabular-nums font-bold text-[14px]"
                style={{
                  color:
                    priceMetrics.scorePriceDirAcc >= 60
@@ -867,9 +871,9 @@ export function ScoreTrend({
          )}
          {priceMetrics.leadDays !== null && priceMetrics.leadCorr !== null && (
            <span title="점수가 N일 앞서 주가를 예측했을 때의 최고 상관도. 선행성이 있으면 모델 가치 ↑.">
-             선행성{' '}
+             <span className="text-txt-muted text-[12px] mr-1">선행성</span>
              <span
-               className="font-mono tabular-nums font-medium"
+               className="font-mono tabular-nums font-bold text-[14px]"
                style={{
                  color:
                    Math.abs(priceMetrics.leadCorr) >= 0.5
@@ -883,7 +887,7 @@ export function ScoreTrend({
            </span>
          )}
          {Math.abs(priceMetrics.scorePriceCorr) < 0.2 && (
-           <span className="text-status-warning text-[10px] ml-auto">
+           <span className="inline-flex items-center gap-1 text-status-warning text-[12px] font-semibold ml-auto px-2 py-0.5 rounded bg-status-warning/10 border border-status-warning/30">
              ⚠ 점수와 주가가 거의 무관함 — 모델 재학습 검토
            </span>
          )}
