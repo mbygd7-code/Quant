@@ -85,6 +85,7 @@ export default function HelpPage() {
             iconColor="#F26D6D"
             title="시가 / 종가"
             short="O / C"
+            english="Open / Close — 개장가 / 종가"
             body="시가는 그날 거래가 시작될 때의 가격, 종가는 마감 때 가격. 한국 시장 기준 09:00 시작 → 15:30 종료."
             usage="종가가 시가보다 높으면 '오른 날'(빨강), 낮으면 '내린 날'(파랑). 한국 시장은 빨강이 상승, 파랑이 하락이에요. 미국은 반대 (초록 상승, 빨강 하락)."
           />
@@ -93,22 +94,25 @@ export default function HelpPage() {
             iconColor="#48A698"
             title="고가 / 저가"
             short="H / L"
+            english="High / Low — 최고가 / 최저가"
             body="그날 도달한 가장 높은 가격과 가장 낮은 가격. 캔들봉의 위·아래 가느다란 선(꼬리)이 이것을 표시해요."
             usage="고가-저가 차이가 크면 그날 변동성이 큰 날. 작으면 박스권에서 움직인 잔잔한 날."
           />
           <TermCard
             icon={BarChart3}
             iconColor="#5BA8F2"
-            title="거래량 (Volume)"
-            short="V"
+            title="거래량"
+            short="V — Volume"
+            english="Volume — 거래된 주식 수량"
             body="그날 거래된 주식의 수. 100만 = 100만 주가 손바뀜 했다는 뜻."
             usage="가격이 올랐을 때 거래량도 큼 = '진짜 추세'. 가격은 올랐는데 거래량 작음 = '의심해야 할 상승'. 거래량은 가격의 '신뢰도'예요."
           />
           <TermCard
             icon={TrendingUp}
             iconColor="#A855F7"
-            title="등락률 (%)"
+            title="등락률"
             short="±%"
+            english="Change Rate — 변동률"
             body="(현재가 − 전일 종가) ÷ 전일 종가 × 100. '오늘 얼마나 변했나'를 한 줄로 표현."
             usage="+5% 이상이면 강한 상승, ±1% 이하면 잔잔한 날. 한국 시장 ±30%가 일일 상한선(상하한가)."
           />
@@ -161,31 +165,35 @@ export default function HelpPage() {
             iconColor="#F59E0B"
             title="MA (이동평균선)"
             short="MA5 · 20 · 60 · 120"
+            english="Moving Average — 일정 기간 평균 가격을 연결한 선"
             body="최근 N일 종가의 평균을 잇는 선. MA20 = 20일 평균 가격선. 가격이 들쭉날쭉해도 '추세'를 부드럽게 보여줘요."
-            usage="MA20 위에 있으면 단기 상승세, 아래면 단기 하락세. MA20이 MA60을 위로 뚫으면(골든크로스) 추세 전환 신호로 봐요. 반대는 데드크로스."
+            usage="MA20 위에 있으면 단기 상승세, 아래면 단기 하락세. MA20이 MA60을 위로 뚫으면(골든크로스 = Golden Cross) 추세 전환 신호로 봐요. 반대는 데드크로스(Death Cross)."
           />
           <TermCard
             icon={Scale}
             iconColor="#A855F7"
             title="Bollinger Bands"
             short="BB ±2σ"
-            body="MA20에서 위·아래로 표준편차 2배만큼 띠를 그어요. 가격이 보통 이 안에서 움직여요."
-            usage="위쪽 띠 닿으면 '과열', 아래쪽 띠 닿으면 '과매도'. 띠가 좁아지면 '곧 큰 변동이 온다'는 신호 (변동성 축소 → 폭발)."
+            english="Bollinger Bands — 변동성 범위 띠 (1980년대 John Bollinger 개발)"
+            body="MA20에서 위·아래로 표준편차(σ, 시그마) 2배만큼 띠를 그어요. 가격이 통계적으로 약 95% 확률로 이 안에서 움직여요."
+            usage="위쪽 띠 닿으면 '과열', 아래쪽 띠 닿으면 '과매도'. 띠가 좁아지면(squeeze = 스퀴즈) '곧 큰 변동이 온다'는 신호 — 변동성 축소 후 폭발(breakout = 가격 돌파) 자주 발생."
           />
           <TermCard
             icon={Gauge}
             iconColor="#A855F7"
             title="RSI (상대강도지수)"
             short="RSI(14)"
-            body="0~100 사이 숫자. 최근 14일 동안 오른 폭과 내린 폭의 비율을 계산해요."
-            usage="70 이상 = 과매수(곧 조정 가능성), 30 이하 = 과매도(반등 가능성). 50 근처면 중립. 가격은 신고가인데 RSI는 못 따라오면 '하락 다이버전스' = 위험 신호."
+            english="Relative Strength Index — 1978년 J. Welles Wilder 개발"
+            body="0~100 사이 숫자. 최근 14일 동안 오른 폭과 내린 폭의 비율을 계산해요. 모멘텀(momentum = 추진력) 측정 지표."
+            usage="70 이상 = 과매수(곧 조정 가능성), 30 이하 = 과매도(반등 가능성). 50 근처면 중립. 가격은 신고가인데 RSI는 못 따라오면 '하락 다이버전스(bearish divergence)' = 위험 신호."
           />
           <TermCard
             icon={TrendingDown}
             iconColor="#A855F7"
             title="OBV (누적 매수/매도)"
             short="OBV"
-            body="오른 날 거래량은 +, 내린 날 거래량은 −로 더해가는 그래프. 1963년 Granville이 만든 고전 지표."
+            english="On-Balance Volume — 1963년 Joe Granville 개발"
+            body="오른 날 거래량은 +, 내린 날 거래량은 −로 더해가는 그래프. 매집(accumulation, 큰손이 사들이는 중)과 분배(distribution, 큰손이 던지는 중)를 가시화."
             usage="가격은 횡보인데 OBV가 오름 = 숨은 매집(곧 상승 가능). 가격은 신고가인데 OBV는 안 따라옴 = 분배(고점 의심)."
           />
         </div>
@@ -318,32 +326,36 @@ export default function HelpPage() {
             iconColor="#48A698"
             title="MAE / MAPE"
             short="평균 오차"
-            body="MAE = 실측 ↔ 예측 차이의 절댓값 평균. MAPE = 그걸 비율(%)로. 0에 가까울수록 정확."
-            usage="MAE 0.05 = 평균 5점(0~100 스케일)빗나감 = 우수. 10% MAPE 이하면 ✓, 30% 넘으면 ✗."
+            english="MAE = Mean Absolute Error / MAPE = Mean Absolute Percentage Error"
+            body="MAE = 실측 ↔ 예측 차이의 절댓값(absolute value) 평균. MAPE = 그걸 비율(%, percentage)로 표시. 0에 가까울수록 정확. '평균 얼마나 빗나갔나'를 한 숫자로."
+            usage="MAE 0.05 = 평균 5점(0~100 스케일) 빗나감 = 우수. MAPE 10% 이하면 ✓ 좋음, 30% 넘으면 ✗ 의심."
           />
           <TermCard
             icon={Gauge}
             iconColor="#A855F7"
-            title="방향 일치 %"
-            short="Direction"
-            body="day-over-day 변동의 부호(↑/↓)가 일치한 비율. 50%는 동전 던지기 수준."
+            title="방향 일치율"
+            short="Direction Accuracy"
+            english="Directional Accuracy — 등락 방향(↑/↓) 적중률"
+            body="Day-over-Day(DoD = 전일 대비) 변동의 부호가 일치한 비율. 50%는 coin flip(동전 던지기 = 무작위) 수준. 가격은 비슷한데 방향은 자주 틀린 평균 회귀 모델을 가려내는 지표."
             usage="60% 이상이면 의미 있는 모델. 50% 미만이면 그냥 어제값 쓰는 게 나음."
           />
           <TermCard
             icon={Sparkles}
             iconColor="#F59E0B"
-            title="skill +N%"
-            short="Skill Score"
-            body="naive baseline(='내일 = 오늘') 대비 얼마나 우수한가. 1 − (모델MAE / naiveMAE)."
-            usage="양수면 모델이 가치 있음. 음수면 단순 예측보다 못한 무용 모델."
+            title="Skill Score"
+            short="skill +N%"
+            english="Skill Score — 기상학에서 유래한 모델 우수성 지표"
+            body="Naive baseline(= 가장 단순한 예측: '내일 = 오늘') 대비 얼마나 우수한가. 공식: 1 − (모델MAE / naiveMAE). 양수면 모델 가치, 음수면 무용."
+            usage="+30% 이상이면 충분히 가치 있는 모델. 0% 근처 = 단순 예측 수준, 음수면 모델이 오히려 해가 됨."
           />
           <TermCard
             icon={CheckCircle2}
             iconColor="#48A698"
-            title="신뢰도 (높음/보통/낮음)"
-            short="0~100"
-            body="샘플량(30%) + MAPE(35%) + 방향일치(35%) 가중합."
-            usage="70+ 높음 — 참고할만, 50~69 보통 — 다른 근거 같이 보기, < 50 낮음 — 데이터 부족."
+            title="신뢰도"
+            short="Reliability 0~100"
+            english="Reliability Score — 샘플량·정확도·방향성 합성"
+            body="샘플량(30%) + MAPE(35%) + 방향일치(35%) 가중합. 한 종목의 예측을 '얼마나 신뢰할 수 있나' 하나의 점수로 압축."
+            usage="70+ 높음 — 참고할만, 50~69 보통 — 다른 근거 같이 보기, < 50 낮음 — 데이터 부족하니 추가 누적 후 재평가."
           />
         </div>
       </Section>
@@ -407,6 +419,46 @@ export default function HelpPage() {
         </div>
       </Section>
 
+      {/* ─── 10. 추가 용어 사전 ─────────────────────────── */}
+      <Section id="glossary" icon={Sigma} title="10. 추가 용어 사전 (Glossary)" subtitle="앞 섹션에 못 다룬 줄임말과 용어 모음 — 영문 원형 + 한글 의미 + 사용 맥락">
+        <div className="space-y-6">
+          {GLOSSARY.map((group) => (
+            <div key={group.title}>
+              <h3 className="text-lg font-bold text-txt-primary mb-3 pb-2 border-b-2 border-brand-purple/30 inline-block">
+                {group.title}
+              </h3>
+              <dl className="grid md:grid-cols-2 gap-3">
+                {group.terms.map((t) => (
+                  <div
+                    key={t.abbr}
+                    className="rounded-lg border border-border-subtle/60 bg-bg-secondary p-3.5 hover:border-brand-purple/30 transition-colors"
+                  >
+                    <dt className="flex items-baseline gap-2 flex-wrap mb-1">
+                      <span className="text-[15px] font-bold text-txt-primary font-mono">
+                        {t.abbr}
+                      </span>
+                      {t.korean && (
+                        <span className="text-[13px] text-txt-secondary font-semibold">
+                          {t.korean}
+                        </span>
+                      )}
+                    </dt>
+                    {t.english && (
+                      <p className="text-[12px] text-brand-purple italic font-medium mb-1">
+                        {t.english}
+                      </p>
+                    )}
+                    <dd className="text-[14px] text-txt-secondary leading-relaxed">
+                      {t.desc}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ))}
+        </div>
+      </Section>
+
       {/* ─── Footer ───────────────────────────────────── */}
       <section className="rounded-xl border border-border-subtle/60 bg-bg-tertiary/30 p-5 text-center text-sm text-txt-muted">
         <p className="leading-relaxed">
@@ -455,12 +507,16 @@ function Section({
 }
 
 function TermCard({
-  icon: Icon, iconColor, title, short, body, usage,
+  icon: Icon, iconColor, title, short, english, body, usage,
 }: {
   icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
   iconColor: string;
   title: string;
   short: string;
+  /** Full English name expanded — e.g. 'MA' → 'Moving Average'.
+   *  Surfaces directly under the title so users don't have to look
+   *  up the abbreviation elsewhere. */
+  english?: string;
   body: string;
   usage: string;
 }) {
@@ -476,6 +532,11 @@ function TermCard({
         <div className="flex-1 min-w-0">
           <h3 className="text-[18px] font-bold text-txt-primary">{title}</h3>
           <p className="text-[13px] font-mono text-txt-muted mt-0.5">{short}</p>
+          {english && (
+            <p className="text-[12px] text-brand-purple mt-1 font-medium italic">
+              {english}
+            </p>
+          )}
         </div>
       </div>
       <p className="text-[15px] text-txt-secondary leading-relaxed mb-3">
@@ -552,6 +613,7 @@ const TOC = [
   { href: '#voters',    label: '6 전문가',      icon: Users },
   { href: '#accuracy',  label: '정확도 지표',   icon: Target },
   { href: '#shortcuts', label: '단축키 · 도구', icon: KeyRound },
+  { href: '#glossary',  label: '용어 사전',     icon: Sigma },
 ] as const;
 
 const SIGNAL_TIERS = [
@@ -589,6 +651,196 @@ const SIGNAL_TIERS = [
     color: '#DC4848',
     icon: ArrowDownRight,
     body: '명확한 하락/리스크 신호 집중. 분산 점검과 변동성 대비 필요. 추격매수 절대 금지.',
+  },
+];
+
+// ── Glossary entries: abbreviations, Korean name, English original,
+// short description. Grouped by category so users can scan to the
+// area they need. Includes EVERY abbreviation surfaced in the UI
+// (and a few adjacent ones) so beginners don't need to leave the page.
+const GLOSSARY: {
+  title: string;
+  terms: Array<{
+    abbr: string;
+    korean?: string;
+    english?: string;
+    desc: string;
+  }>;
+}[] = [
+  {
+    title: '📈 가격 · 캔들봉',
+    terms: [
+      { abbr: 'OHLC', korean: '시·고·저·종 4가격', english: 'Open / High / Low / Close',
+        desc: '하나의 봉(period)을 구성하는 4가지 가격. 캔들 차트의 가장 기본.' },
+      { abbr: 'OHLV', korean: '시·고·저·거래량', english: 'Open / High / Low / Volume',
+        desc: 'OHLC + 거래량의 약어. 차트 헤더에 O/H/L/V로 표시되는 4종.' },
+      { abbr: '양봉 / 음봉', korean: '상승봉 / 하락봉', english: 'Bullish candle / Bearish candle',
+        desc: '양봉 = 종가 ≥ 시가, 한국에선 빨강. 음봉 = 종가 < 시가, 한국에선 파랑. 미국은 반대.' },
+      { abbr: 'Wick', korean: '꼬리', english: 'Wick / Shadow',
+        desc: '캔들 몸통 위·아래로 뻗은 가는 선. 위 꼬리는 그날 고가까지의 도전, 아래 꼬리는 저점 매수 흔적.' },
+      { abbr: 'Body', korean: '몸통', english: 'Real Body',
+        desc: '시가와 종가 사이의 직사각형. 두꺼울수록 그날 강한 한 방향 흐름.' },
+      { abbr: 'Spread', korean: '스프레드', english: 'Spread — 매수·매도 호가 차이',
+        desc: '동시 호가창의 매수1호가와 매도1호가 차이. 좁을수록 유동성 풍부.' },
+      { abbr: 'Tick', korean: '호가단위', english: 'Tick size',
+        desc: '한 번에 움직일 수 있는 최소 가격 단위. 한국에선 가격대별로 다름 (예: 1만원~10만원 구간 100원).' },
+    ],
+  },
+  {
+    title: '📊 기술적 지표 (Technical Indicators)',
+    terms: [
+      { abbr: 'MA', korean: '이동평균선', english: 'Moving Average',
+        desc: '최근 N일 종가 평균을 잇는 선. 추세 부드럽게 보여줌. MA5/20/60/120일이 흔함.' },
+      { abbr: 'EMA', korean: '지수 이동평균', english: 'Exponential Moving Average',
+        desc: '최근 데이터에 더 큰 가중치를 둔 MA. 변화에 빠르게 반응. (이 서비스는 단순 MA 사용)' },
+      { abbr: 'BB', korean: '볼린저 밴드', english: 'Bollinger Bands',
+        desc: 'MA20 ± 표준편차 2배 띠. 가격이 위 띠 = 과열, 아래 띠 = 과매도.' },
+      { abbr: 'RSI', korean: '상대강도지수', english: 'Relative Strength Index',
+        desc: '0~100 모멘텀 지표. 70 ↑ 과매수, 30 ↓ 과매도.' },
+      { abbr: 'OBV', korean: '온밸런스 볼륨', english: 'On-Balance Volume',
+        desc: '상승일 거래량 +, 하락일 −로 누적. 매집 vs 분배 가시화.' },
+      { abbr: 'MACD', korean: '맥디', english: 'Moving Average Convergence Divergence',
+        desc: 'EMA12 − EMA26 + 신호선. 모멘텀 전환점 잡는 데 사용. (현재 UI엔 미표시)' },
+      { abbr: 'VWAP', korean: '거래량 가중 평균가', english: 'Volume-Weighted Average Price',
+        desc: '거래량 가중치를 둔 평균가. 대형 펀드의 진입 기준선으로 자주 사용.' },
+      { abbr: 'ATR', korean: '평균 진폭', english: 'Average True Range',
+        desc: '평균 일중 변동폭. 손절·익절 폭 산정에 활용. (현재 UI엔 미표시)' },
+      { abbr: 'σ', korean: '시그마 / 표준편차', english: 'Sigma / Standard Deviation',
+        desc: '데이터가 평균에서 얼마나 흩어져 있는지. ±1σ 안에 약 68%, ±2σ 안에 약 95% 데이터 포함.' },
+      { abbr: 'Breakout', korean: '돌파', english: 'Breakout',
+        desc: '가격이 저항선 또는 박스권 위쪽 경계를 뚫고 올라가는 현상. 거래량 동반 시 신뢰도 ↑.' },
+      { abbr: 'Breakdown', korean: '이탈', english: 'Breakdown',
+        desc: '가격이 지지선 또는 박스권 아래쪽 경계를 뚫고 내려가는 현상. 매도 압력 신호.' },
+      { abbr: 'Golden Cross', korean: '골든크로스', english: 'Golden Cross',
+        desc: 'MA20이 MA60(혹은 단기MA가 장기MA를) 위로 뚫는 현상. 추세 전환 상승 신호로 해석.' },
+      { abbr: 'Death Cross', korean: '데드크로스', english: 'Death Cross',
+        desc: '단기MA가 장기MA를 아래로 뚫는 현상. 추세 전환 하락 신호.' },
+      { abbr: 'Divergence', korean: '다이버전스', english: 'Divergence',
+        desc: '가격은 신고가/신저가인데 지표(예: RSI)는 못 따라오는 현상. 추세 전환 가능성.' },
+      { abbr: 'Support / Resistance', korean: '지지 / 저항', english: 'Support / Resistance',
+        desc: '지지선 = 가격이 자주 반등하는 아래쪽 가격대. 저항선 = 자주 막히는 위쪽 가격대.' },
+    ],
+  },
+  {
+    title: '💰 재무 지표 (Financial Ratios)',
+    terms: [
+      { abbr: 'PER (P/E)', korean: '주가수익비율', english: 'Price-to-Earnings Ratio',
+        desc: '주가 ÷ 주당순이익(EPS). 낮을수록 저평가. 코스피 평균 10~15배 정도.' },
+      { abbr: 'PBR (P/B)', korean: '주가순자산비율', english: 'Price-to-Book Ratio',
+        desc: '주가 ÷ 주당순자산(BPS). 1 미만이면 청산가치 이하 = 저평가 가능성.' },
+      { abbr: 'EPS', korean: '주당순이익', english: 'Earnings Per Share',
+        desc: '순이익 ÷ 발행주식수. 한 주당 회사가 1년에 번 돈.' },
+      { abbr: 'BPS', korean: '주당순자산', english: 'Book-value Per Share',
+        desc: '순자산 ÷ 발행주식수. 한 주당 회사의 청산 가치.' },
+      { abbr: 'ROE', korean: '자기자본이익률', english: 'Return on Equity',
+        desc: '순이익 ÷ 자기자본. 회사가 주주 돈으로 얼마나 벌었나. 15%+ 우량 기준.' },
+      { abbr: 'ROA', korean: '총자산이익률', english: 'Return on Assets',
+        desc: '순이익 ÷ 총자산. 자산 활용 효율성.' },
+      { abbr: 'DPS', korean: '주당배당금', english: 'Dividend Per Share',
+        desc: '한 주당 받는 연간 배당금.' },
+      { abbr: 'Dividend Yield', korean: '배당수익률', english: 'Dividend Yield',
+        desc: '연간 DPS ÷ 현재 주가 × 100. "이 가격에 사면 배당으로 몇 % 받나"' },
+      { abbr: 'CAPE', korean: '경기조정 PER', english: 'Cyclically Adjusted P/E (Shiller PE)',
+        desc: 'Shiller가 만든 10년 평균 실질 EPS 기반 PER. 시장 전체 거품 판단에 활용.' },
+      { abbr: 'Market Cap', korean: '시가총액', english: 'Market Capitalization',
+        desc: '주가 × 발행주식수. 회사 전체 가치. 코스피 1위 삼성전자 약 500조원.' },
+    ],
+  },
+  {
+    title: '🤖 AI · 통계 · ML',
+    terms: [
+      { abbr: 'AI', korean: '인공지능', english: 'Artificial Intelligence',
+        desc: '데이터에서 패턴을 학습하는 컴퓨터 시스템 통칭.' },
+      { abbr: 'ML', korean: '기계 학습', english: 'Machine Learning',
+        desc: '명시적 코드 대신 데이터로부터 규칙을 자동 학습. AI의 한 분야.' },
+      { abbr: 'LLM', korean: '대규모 언어 모델', english: 'Large Language Model',
+        desc: 'GPT·Claude 같은 자연어 처리 모델. 이 서비스의 AI 종합 코멘트 생성에 사용.' },
+      { abbr: 'GBM / GBR', korean: '그래디언트 부스팅', english: 'Gradient Boosting Machine / Regressor',
+        desc: '여러 개의 약한 결정 트리를 순차적으로 결합해 예측. 점수 예측 모델로 사용.' },
+      { abbr: 'OLS', korean: '최소제곱법', english: 'Ordinary Least Squares',
+        desc: '직선 회귀의 가장 기본. 데이터에서 가장 잘 맞는 직선 찾기. 점수 예측 fallback 모델.' },
+      { abbr: 'MAE', korean: '평균 절대 오차', english: 'Mean Absolute Error',
+        desc: '|실측 − 예측|의 평균. 단위는 원본 데이터와 동일.' },
+      { abbr: 'MAPE', korean: '평균 절대 비율 오차', english: 'Mean Absolute Percentage Error',
+        desc: 'MAE를 비율(%)로. 데이터 크기와 무관하게 비교 가능.' },
+      { abbr: 'RMSE', korean: '평균 제곱근 오차', english: 'Root Mean Square Error',
+        desc: '큰 오차에 더 큰 페널티를 주는 정확도 지표.' },
+      { abbr: 'AUC', korean: 'ROC 곡선 아래 면적', english: 'Area Under the (ROC) Curve',
+        desc: '분류 모델 성능 지표. 0.5 = 무작위, 1.0 = 완벽.' },
+      { abbr: 'CI', korean: '신뢰구간', english: 'Confidence Interval',
+        desc: '예측의 불확실성 범위. 95% CI = 95% 확률로 이 안에 실제값 위치.' },
+      { abbr: 'Backtest', korean: '백테스트', english: 'Back-test',
+        desc: '과거 데이터로 전략을 시뮬레이션. 미래 검증의 한계는 있지만 최소 기준선.' },
+      { abbr: 'Drawdown', korean: '낙폭', english: 'Drawdown',
+        desc: '고점 대비 최대 하락폭. 백테스트에서 위험도 평가 핵심 지표.' },
+      { abbr: 'Sharpe Ratio', korean: '샤프 비율', english: 'Sharpe Ratio',
+        desc: '수익률 ÷ 변동성. 1 이상이면 우량 전략, 2 이상이면 우수.' },
+      { abbr: 'Naive Baseline', korean: '순진 기준선', english: 'Naive Baseline',
+        desc: '"내일 = 오늘"이라고 가정한 가장 단순한 예측. 모델이 이걸 못 이기면 무용.' },
+    ],
+  },
+  {
+    title: '🏛️ 시장 · 거래 용어',
+    terms: [
+      { abbr: 'KOSPI', korean: '코스피', english: 'Korea Composite Stock Price Index',
+        desc: '한국거래소 유가증권시장 지수. 대형주 중심 (삼성전자·SK하이닉스 등).' },
+      { abbr: 'KOSDAQ', korean: '코스닥', english: 'Korean Securities Dealers Automated Quotations',
+        desc: '한국 중소·벤처 종목 시장. 셀트리온·에코프로 등.' },
+      { abbr: 'KRX', korean: '한국거래소', english: 'Korea Exchange',
+        desc: '코스피·코스닥을 운영하는 거래소.' },
+      { abbr: 'NYSE', korean: '뉴욕증권거래소', english: 'New York Stock Exchange',
+        desc: '세계 최대 거래소. 대형 우량주(블루칩) 위주.' },
+      { abbr: 'NASDAQ', korean: '나스닥', english: 'National Association of Securities Dealers Automated Quotations',
+        desc: '미국 기술주 중심 거래소. 애플·마이크로소프트·엔비디아 등.' },
+      { abbr: 'ETF', korean: '상장지수펀드', english: 'Exchange-Traded Fund',
+        desc: '주식처럼 거래되는 펀드. 한 번에 여러 종목에 분산 투자.' },
+      { abbr: 'ETN', korean: '상장지수증권', english: 'Exchange-Traded Note',
+        desc: 'ETF와 비슷하지만 증권사 신용 기반. 발행사 부도 위험 존재.' },
+      { abbr: 'IPO', korean: '기업공개', english: 'Initial Public Offering',
+        desc: '비상장 회사가 처음 주식을 거래소에 상장하는 과정.' },
+      { abbr: 'Bull / Bear', korean: '강세장 / 약세장', english: 'Bull / Bear Market',
+        desc: '강세장 = 지수 +20% 이상 상승 추세. 약세장 = 고점 대비 -20% 이상 하락.' },
+      { abbr: 'Bid / Ask', korean: '매수호가 / 매도호가', english: 'Bid / Ask',
+        desc: '사겠다고 부르는 가격 / 팔겠다고 부르는 가격. 동시호가창의 양쪽 호가.' },
+      { abbr: '상한가 / 하한가', korean: '±30% 한계', english: 'Daily Price Limit',
+        desc: '한국 시장에서 하루 ±30% 이상 변동 못 함. 거래정지 트리거.' },
+      { abbr: '시가총액', korean: '시총', english: 'Market Cap',
+        desc: '주가 × 총 발행 주식수. 회사 전체 가치 평가 지표.' },
+      { abbr: '대형주 / 중형주 / 소형주', korean: 'Large/Mid/Small Cap',
+        english: 'Large-cap / Mid-cap / Small-cap',
+        desc: '시가총액 기준 분류. 한국 기준 대형주 = 시총 상위 100, 중형 = 101~300, 소형 = 그 외.' },
+      { abbr: '대장주', korean: '섹터 대표', english: 'Leader Stock',
+        desc: '한 섹터에서 거래량·시총·주가 모두 1위인 종목. 섹터 흐름을 가장 잘 반영.' },
+      { abbr: '횡보', korean: '박스권 움직임', english: 'Sideways / Consolidation',
+        desc: '가격이 일정 범위에서 오르내리며 추세 없음. 돌파를 기다리는 구간.' },
+      { abbr: '추세', korean: '방향성', english: 'Trend',
+        desc: '가격이 일관된 방향(상승·하락·횡보)으로 이어지는 흐름.' },
+      { abbr: '모멘텀', korean: '추진력', english: 'Momentum',
+        desc: '가격 변화의 강도. 강한 모멘텀 = 큰 폭의 연속 상승/하락.' },
+      { abbr: '변동성', korean: '진폭', english: 'Volatility',
+        desc: '가격 흔들림의 크기. σ로 측정. 변동성 높음 = 위험 + 기회 모두 큼.' },
+      { abbr: '유동성', korean: '거래 활발도', english: 'Liquidity',
+        desc: '얼마나 쉽게 사고팔 수 있는가. 거래량과 비례. 유동성 낮으면 슬리피지 위험.' },
+      { abbr: '슬리피지', korean: '체결 미끄러짐', english: 'Slippage',
+        desc: '주문가와 실제 체결가 차이. 큰 주문이나 유동성 낮을 때 발생.' },
+    ],
+  },
+  {
+    title: '🔔 이 서비스 고유 용어',
+    terms: [
+      { abbr: '5단계 신호', korean: '강한 관심·관심·관망·주의·위험', english: 'Five-Tier Signal',
+        desc: 'AI 종합점수(0~1)를 5단계 등급으로 분류. 자세히는 섹션 5 참고.' },
+      { abbr: 'Voter', korean: '6 전문가', english: 'AI Persona Voter',
+        desc: '그레이엄·다우·터링·시러·케인즈·탈레브 6명의 투자 거장 관점을 코드로 재현. 다수결로 합의 도출.' },
+      { abbr: 'Watchlist', korean: '관심주식', english: 'Watch List',
+        desc: 'AI가 매일 분석·예측하는 50종목. LNB 좌측 사이드바에 표시.' },
+      { abbr: 'Master 종목', korean: '마스터 등록', english: 'Master Universe',
+        desc: '데이터는 수집되지만 매일 AI 분석은 안 되는 외부 종목. 관심주식 외 추가 항목.' },
+      { abbr: 'RAG', korean: '검색 증강 생성', english: 'Retrieval-Augmented Generation',
+        desc: 'LLM이 답할 때 외부 지식 베이스를 검색해서 활용하는 패턴. 이 서비스의 투자 시나리오 청크 검색에 사용.' },
+      { abbr: '청크', korean: '지식 단위', english: 'Knowledge Chunk',
+        desc: 'RAG에서 검색되는 한 단위. "Nvidia 상승이 한국 HBM 관련주에 미치는 영향" 같은 투자 판단 단위로 작성.' },
+    ],
   },
 ];
 
