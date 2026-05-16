@@ -426,6 +426,36 @@ export function FullscreenChartViewer({
     return () => window.removeEventListener('keydown', onKey);
   }, [dragSelection]);
 
+  // ── Space-held tooltip expansion ─────────────────────────────
+  // Default tooltip stays compact (original dense layout) so the
+  // chart isn't dominated by the panel. Press-and-hold Space to
+  // expand to the big detailed view; release to collapse back.
+  // Lets pros pull up the rich readout on demand without it
+  // covering candles when not needed.
+  const [tooltipExpanded, setTooltipExpanded] = useState(false);
+  useEffect(() => {
+    const isTextInput = (target: EventTarget | null): boolean => {
+      const tag = (target as HTMLElement | null)?.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    };
+    const onDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return;
+      if (isTextInput(e.target)) return;
+      e.preventDefault();   // suppress page-scroll
+      setTooltipExpanded(true);
+    };
+    const onUp = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return;
+      setTooltipExpanded(false);
+    };
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    return () => {
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup', onUp);
+    };
+  }, []);
+
 
   // ── Resizable volume pane ──────────────────────────────────
   // Pros use a draggable divider between price and volume so they
@@ -1199,7 +1229,12 @@ export function FullscreenChartViewer({
               <Tooltip
                 cursor={CROSSHAIR_CURSOR}
                 content={(p: unknown) => (
-                  <FullscreenTooltip raw={p} variant={variant} compareLabel={compareLabel} />
+                  <FullscreenTooltip
+                    raw={p}
+                    variant={variant}
+                    compareLabel={compareLabel}
+                    expanded={tooltipExpanded}
+                  />
                 )}
               />
 
@@ -2005,8 +2040,8 @@ function VolumeShape(p: VolumeShapeProps) {
 }
 
 function FullscreenTooltip({
-  raw, variant, compareLabel,
-}: { raw: unknown; variant: 'kr' | 'us'; compareLabel: string }) {
+  raw, variant, compareLabel, expanded,
+}: { raw: unknown; variant: 'kr' | 'us'; compareLabel: string; expanded: boolean }) {
   const r = raw as { active?: boolean; payload?: Array<{ payload?: Row }> } | null;
   if (!r?.active || !r.payload || r.payload.length === 0) return null;
   const row = r.payload[0]?.payload;
@@ -2028,6 +2063,56 @@ function FullscreenTooltip({
   const changeColor = row.isUp ? upColor : downColor;
   const dayChange = row.close - row.open;
   const dayChangePct = (dayChange / row.open) * 100;
+
+  // ── Compact (default) layout ─────────────────────────────
+  // Original dense style — small footprint so it doesn't dominate
+  // the chart. Hint at the bottom tells the user how to expand.
+  if (!expanded) {
+    return (
+      <div className="rounded-md border border-border-default bg-bg-secondary/95 backdrop-blur-sm p-3 text-[11px] shadow-lg min-w-[220px]">
+        <div className="text-txt-secondary text-[10px] font-mono mb-1.5 pb-1 border-b border-border-subtle/40">
+          {row.date}
+        </div>
+        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 tabular-nums">
+          <span className="text-txt-muted">시가 (O)</span>
+          <span className="text-right font-mono">{fmt(row.open)}</span>
+          <span className="text-txt-muted">고가 (H)</span>
+          <span className="text-right font-mono text-status-success">{fmt(row.high)}</span>
+          <span className="text-txt-muted">저가 (L)</span>
+          <span className="text-right font-mono text-status-danger">{fmt(row.low)}</span>
+          <span className="text-txt-muted">종가 (C)</span>
+          <span className="text-right font-mono font-semibold" style={{ color: changeColor }}>
+            {fmt(row.close)}
+          </span>
+          <span className="text-txt-muted">일중 변동</span>
+          <span className="text-right font-mono font-semibold" style={{ color: changeColor }}>
+            {dayChange >= 0 ? '+' : ''}{fmt(dayChange)} ({dayChangePct >= 0 ? '+' : ''}{dayChangePct.toFixed(2)}%)
+          </span>
+          {row.volume > 0 && (<>
+            <span className="text-txt-muted">거래량</span>
+            <span className="text-right font-mono">{fmtVolLocal(row.volume)}</span>
+          </>)}
+          {row.ma20 != null && (<>
+            <span className="text-txt-muted">MA20</span>
+            <span className="text-right font-mono" style={{ color: '#F59E0B' }}>{fmt(row.ma20)}</span>
+          </>)}
+          {row.ma60 != null && (<>
+            <span className="text-txt-muted">MA60</span>
+            <span className="text-right font-mono" style={{ color: '#A855F7' }}>{fmt(row.ma60)}</span>
+          </>)}
+        </div>
+        <div className="mt-2 pt-1.5 border-t border-border-subtle/40 text-[9px] text-txt-muted italic flex items-center gap-1">
+          <kbd className="px-1 py-px text-[8px] rounded border border-border-subtle/60 bg-bg-tertiary/40 font-mono font-bold not-italic">
+            Space
+          </kbd>
+          <span>누르면 자세히</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Expanded (Space held) layout ─────────────────────────
+  // Big, rich panel with full hierarchy and indicator breakdown.
   const hasAnyIndicator =
     row.ma5 != null ||
     row.ma20 != null ||
