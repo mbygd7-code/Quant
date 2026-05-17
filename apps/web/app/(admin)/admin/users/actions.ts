@@ -2,61 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { randomBytes } from 'crypto';
 
 import { getAdminWriteClient, recordAudit } from '@/lib/audit';
-
-function generateInviteCode(): string {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/O/0/1
-  const bytes = randomBytes(12);
-  return Array.from(bytes).map((b) => alphabet[b % alphabet.length]).join('');
-}
-
-const inviteSchema = z.object({
-  email: z.string().email(),
-  role: z.enum(['admin', 'beta', 'user']).default('beta'),
-});
-
-export async function createInvite(
-  raw: z.infer<typeof inviteSchema>,
-): Promise<{ ok?: true; code?: string; invite_url?: string; email_sent?: boolean; error?: string; warning?: string }> {
-  const parsed = inviteSchema.safeParse(raw);
-  if (!parsed.success) return { error: parsed.error.message };
-
-  const sb = getAdminWriteClient();
-  const code = generateInviteCode();
-  const expires_at = new Date(Date.now() + 7 * 86400_000).toISOString();
-
-  const { error } = await sb.from('invite_codes').insert({
-    code,
-    email: parsed.data.email,
-    role: parsed.data.role,
-    expires_at,
-  });
-  if (error) return { error: error.message };
-
-  const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-  const invite_url = `${siteUrl}/invite/${code}`;
-
-  let email_sent = false;
-  let warning: string | undefined;
-  try {
-    await sb.auth.admin.inviteUserByEmail(parsed.data.email, { redirectTo: invite_url });
-    email_sent = true;
-  } catch (exc) {
-    warning = `이메일 발송 실패 — 링크를 직접 공유: ${(exc as Error).message}`;
-  }
-
-  await recordAudit({
-    action: 'user.invite',
-    resource_type: 'invite_codes',
-    resource_id: code,
-    changes: { email: parsed.data.email, role: parsed.data.role },
-  });
-
-  revalidatePath('/admin/users');
-  return { ok: true, code, invite_url, email_sent, warning };
-}
 
 const roleSchema = z.object({ role: z.enum(['admin', 'beta', 'user']) });
 

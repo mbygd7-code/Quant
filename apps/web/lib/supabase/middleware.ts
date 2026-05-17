@@ -8,7 +8,6 @@ const ADMIN_PREFIXES = ['/mapping', '/knowledge', '/weights', '/backtest', '/adm
 const PUBLIC_PREFIXES = [
   '/login',
   '/signup',
-  '/invite',
   '/forgot-password',
   '/reset-password',
   '/terms',
@@ -69,7 +68,7 @@ export async function updateSession(request: NextRequest) {
 
   // Already-logged-in user hits a pure auth page → push to dashboard.
   // /pending stays accessible because they may still need to see it.
-  if (user && (path === '/login' || path === '/signup' || path.startsWith('/invite'))) {
+  if (user && (path === '/login' || path === '/signup')) {
     const url = request.nextUrl.clone();
     url.pathname = '/dashboard';
     return NextResponse.redirect(url);

@@ -109,17 +109,12 @@ export function LoginForm() {
         {isSubmitting ? '로그인 중...' : '로그인'}
       </Button>
 
-      <div className="flex items-center justify-between gap-2 text-xs text-txt-muted">
-        <span>
-          아직 계정이 없으신가요?{' '}
-          <Link href="/signup" className="text-txt-primary hover:underline">
-            회원가입
-          </Link>
-        </span>
-        <Link href="/invite" className="hover:text-txt-primary">
-          초대 코드로 가입
+      <p className="text-center text-xs text-txt-muted">
+        아직 계정이 없으신가요?{' '}
+        <Link href="/signup" className="text-txt-primary hover:underline">
+          회원가입
         </Link>
-      </div>
+      </p>
     </form>
   );
 }
