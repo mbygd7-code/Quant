@@ -3,12 +3,29 @@ import { createClient as createAdminSupabase } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
 
 const ADMIN_PREFIXES = ['/mapping', '/knowledge', '/weights', '/backtest', '/admin'];
+
+// Routes accessible without a session.
 const PUBLIC_PREFIXES = [
   '/login',
+  '/signup',
   '/invite',
+  '/forgot-password',
+  '/reset-password',
+  '/terms',
+  '/privacy',
   '/api/auth',
   '/api/dev-login',
   '/api/dev-whoami',
+];
+
+// Routes a logged-in but un-approved user is allowed to visit.
+// Anything else bounces to /pending until admin approval lands.
+const PENDING_ALLOWED_PREFIXES = [
+  '/pending',
+  '/api/auth',
+  '/logout',
+  '/terms',
+  '/privacy',
 ];
 
 export async function updateSession(request: NextRequest) {
@@ -50,11 +67,20 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && ADMIN_PREFIXES.some((p) => path.startsWith(p))) {
-    // profiles 테이블의 RLS 정책(admin_read_all_profiles)이 자기 자신을 EXISTS로 참조해
-    // anon 컨텍스트에서 무한 재귀 에러를 일으킨다. 본인 role 한 줄을 읽을 뿐이므로
-    // service_role 클라이언트로 RLS를 우회한다 (CLAUDE.md §G — 서버 환경에서 허용).
+  // Already-logged-in user hits a pure auth page → push to dashboard.
+  // /pending stays accessible because they may still need to see it.
+  if (user && (path === '/login' || path === '/signup' || path.startsWith('/invite'))) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/dashboard';
+    return NextResponse.redirect(url);
+  }
+
+  // Approval + role checks both need the profiles row. Read it once
+  // with service_role to bypass the recursive RLS policy
+  // (admin_read_all_profiles references profiles in its USING clause).
+  if (user) {
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    let approval: string | null = null;
     let role: string | null = null;
     if (serviceRoleKey) {
       const adminClient = createAdminSupabase(
@@ -64,24 +90,39 @@ export async function updateSession(request: NextRequest) {
       );
       const { data: profile } = await adminClient
         .from('profiles')
-        .select('role')
+        .select('role, approval_status')
         .eq('id', user.id)
         .maybeSingle();
+      approval = profile?.approval_status ?? null;
       role = profile?.role ?? null;
     } else {
-      // service_role 없으면 anon 시도 (RLS 재귀 fix 후엔 이 경로가 정상이다).
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, approval_status')
         .eq('id', user.id)
         .maybeSingle();
+      approval = profile?.approval_status ?? null;
       role = profile?.role ?? null;
     }
 
-    if (role !== 'admin') {
-      const url = request.nextUrl.clone();
-      url.pathname = '/dashboard';
-      return NextResponse.redirect(url);
+    // Pending / rejected / expired users may only see /pending and a
+    // handful of safe pages.
+    if (approval && approval !== 'approved') {
+      const allowed = PENDING_ALLOWED_PREFIXES.some((p) => path.startsWith(p));
+      if (!allowed) {
+        const url = request.nextUrl.clone();
+        url.pathname = '/pending';
+        return NextResponse.redirect(url);
+      }
+    }
+
+    // Approved users — enforce admin-only prefixes.
+    if (approval === 'approved' && ADMIN_PREFIXES.some((p) => path.startsWith(p))) {
+      if (role !== 'admin') {
+        const url = request.nextUrl.clone();
+        url.pathname = '/dashboard';
+        return NextResponse.redirect(url);
+      }
     }
   }
 
