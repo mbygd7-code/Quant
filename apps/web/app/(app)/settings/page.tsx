@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TelegramLink } from '@/components/settings/telegram-link';
 import { NotificationToggle } from '@/components/settings/notification-toggle';
+import { AccountSection } from '@/components/settings/account-section';
 import { createClient } from '@/lib/supabase/server';
 import { DEV_BYPASS_AUTH } from '@/lib/supabase/query-client';
 
@@ -71,6 +72,15 @@ export default async function SettingsPage() {
           <p className="mt-3 text-xs text-txt-muted">
             강한 관심·위험 신호별 토글은 추후 추가 예정입니다.
           </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base font-heading">계정 관리</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AccountSection currentEmail={profile.email} />
         </CardContent>
       </Card>
 
