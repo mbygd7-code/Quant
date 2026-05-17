@@ -1,0 +1,71 @@
+name: Expire Pending Signups
+
+# Daily sweep: any 'pending' profile that has been waiting longer
+# than 5 KRX business days flips to 'expired'. The user can then
+# reapply from /pending.
+#
+# Runs at 00:00 UTC = 09:00 KST every day. Cheap (a single Supabase
+# read + 0-N updates) so we run it daily, not weekdays-only — picks
+# up Sun/Mon edge cases where the window closes over a weekend.
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Log what would be expired without writing (true/false)"
+        required: false
+        default: "false"
+
+concurrency:
+  group: expire-pending-signups
+  cancel-in-progress: false
+
+jobs:
+  expire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Run expiry sweep
+        run: |
+          set -o pipefail
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python -m scripts.expire_pending_signups --dry-run 2>&1 | tee expire.log
+          else
+            python -m scripts.expire_pending_signups 2>&1 | tee expire.log
+          fi
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: expire-pending-log
+          path: expire.log
+          retention-days: 14
+
+      - name: Notify on failure
+        if: failure() && env.ADMIN_CHAT_ID != ''
+        env:
+          BOT_TOKEN:      ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ADMIN_CHAT_ID:  ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          RUN_URL:        ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -sS -X POST \
+            "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${ADMIN_CHAT_ID}" \
+            --data-urlencode "text=🚨 Expire Pending Signups 실패 — ${RUN_URL}"
