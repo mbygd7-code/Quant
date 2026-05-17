@@ -14,8 +14,13 @@ export default async function LoginPage({
         <h1 className="font-heading text-2xl font-semibold tracking-tight">
           QuantSignal
         </h1>
-        <p className="mt-1 text-sm text-txt-secondary">
-          글로벌 선행 신호를 한국 관심종목에 번역해 드립니다
+        <p className="mt-2 text-sm font-medium text-txt-primary">
+          AI 시대, 든든한 투자 파트너
+        </p>
+        <p className="mt-1 text-xs text-txt-secondary leading-relaxed">
+          세계 시장의 흐름과 국내 종목 데이터를
+          <br />
+          매일 함께 분석해 신호로 전달합니다
         </p>
       </div>
       {error && (
