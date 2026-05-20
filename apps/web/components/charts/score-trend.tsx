@@ -890,11 +890,26 @@ export function ScoreTrend({
              </span>
            </MetricItem>
          )}
-         {Math.abs(priceMetrics.scorePriceCorr) < 0.2 && (
-           <span className="inline-flex items-center gap-1 text-status-warning text-[12px] font-semibold ml-auto px-2 py-0.5 rounded bg-status-warning/10 border border-status-warning/30">
+         {/* Reliability indicator — data-volume aware.
+               < 30 day pairs: skip the "model is broken" verdict because
+               statistical inference on a small sample is unreliable.
+               Show a softer "still accumulating" hint instead.
+               ≥ 30 day pairs AND |corr| < 0.2: the original warning applies. */}
+         {priceMetrics.sampleSize < 30 ? (
+           <span
+             className="inline-flex items-center gap-1 text-status-info text-[12px] font-medium ml-auto px-2 py-0.5 rounded bg-status-info/10 border border-status-info/30"
+             title="학습용 score↔price 표본이 30일 미만이면 통계적으로 의미 있는 상관 판단이 어렵습니다. 매일 데이터가 누적되며 점진적으로 신뢰도가 올라갑니다."
+           >
+             🟡 데이터 누적 중 ({priceMetrics.sampleSize}일치) — 예측은 참고용
+           </span>
+         ) : Math.abs(priceMetrics.scorePriceCorr) < 0.2 ? (
+           <span
+             className="inline-flex items-center gap-1 text-status-warning text-[12px] font-semibold ml-auto px-2 py-0.5 rounded bg-status-warning/10 border border-status-warning/30"
+             title={`표본 ${priceMetrics.sampleSize}일치 기준 상관계수 ${priceMetrics.scorePriceCorr.toFixed(2)} — 통계적으로 점수와 주가가 거의 무관합니다.`}
+           >
              ⚠ 점수와 주가가 거의 무관함 — 모델 재학습 검토
            </span>
-         )}
+         ) : null}
        </div>
      )}
 
