@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { createClient } from '@/lib/supabase/client';
+import { createUserAction } from '@/app/actions/auth';
 
 const schema = z.object({
   id: z
@@ -33,11 +34,6 @@ const schema = z.object({
 });
 type Values = z.infer<typeof schema>;
 
-/** ID → synthetic email used internally by Supabase Auth. */
-function idToEmail(id: string): string {
-  return `${id.toLowerCase()}@quantsignal.local`;
-}
-
 export function SignupForm() {
   const router = useRouter();
   const {
@@ -47,37 +43,23 @@ export function SignupForm() {
   } = useForm<Values>({ resolver: zodResolver(schema) });
 
   async function onSubmit(values: Values) {
-    const supabase = createClient();
-    const email = idToEmail(values.id);
-
-    const { error: signUpError } = await supabase.auth.signUp({
-      email,
-      password: values.password,
-      options: { data: { display_name: values.id } },
-    });
-    if (signUpError) {
-      const m = signUpError.message.toLowerCase();
-      if (m.includes('already') || m.includes('registered')) {
-        toast.error('이미 사용 중인 아이디입니다.');
-      } else if (m.includes('password')) {
-        toast.error('비밀번호 정책 오류 — Supabase 설정에서 최소 길이를 4로 낮춰주세요.');
-      } else {
-        toast.error(`가입 실패: ${signUpError.message}`);
-      }
+    // Create the user via the admin API (server action) — bypasses the
+    // dashboard's "Enable Email signups" toggle and auto-confirms the
+    // email so no mail is sent.
+    const result = await createUserAction(values.id, values.password);
+    if (!result.ok || !result.email) {
+      toast.error(result.error ?? '가입 실패');
       return;
     }
 
-    // Auto-login. With email confirmation OFF in the dashboard this works
-    // immediately; if confirmation is still ON the signIn will fail and
-    // the user sees the dashboard message guiding them to flip the toggle.
+    // Set browser session by signing in client-side with the same creds.
+    const supabase = createClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
+      email: result.email,
       password: values.password,
     });
     if (signInError) {
-      toast.error(
-        '가입은 완료됐지만 자동 로그인 실패. Supabase Dashboard에서 "Confirm email"을 꺼주세요.',
-      );
+      toast.error(`가입은 완료됐지만 자동 로그인 실패: ${signInError.message}`);
       return;
     }
 

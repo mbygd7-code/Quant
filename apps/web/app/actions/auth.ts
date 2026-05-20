@@ -83,3 +83,44 @@ export async function signOutAction(): Promise<void> {
   await supabase.auth.signOut();
   redirect('/login');
 }
+
+/**
+ * Create a user via the admin API.
+ *
+ * Bypasses the dashboard's "Enable Email signups" toggle — that gate
+ * only blocks the public `supabase.auth.signUp()` flow, whereas
+ * `auth.admin.createUser` is privileged. `email_confirm: true` skips
+ * confirmation entirely so the user can log in immediately.
+ *
+ * Caller (the signup form) handles the subsequent signInWithPassword
+ * on the client side so the session cookies are set in the browser.
+ */
+export async function createUserAction(
+  rawId: string,
+  password: string,
+): Promise<{ ok?: true; email?: string; error?: string }> {
+  const id = rawId.trim().toLowerCase();
+  if (!/^[a-z0-9_]{3,20}$/.test(id)) {
+    return { error: '아이디는 영문 소문자/숫자/_ 3~20자' };
+  }
+  if (password.length < 6) {
+    return { error: '비밀번호는 6자 이상' };
+  }
+
+  const email = `${id}@quantsignal.local`;
+  const admin = createAdminClient();
+  const { error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { display_name: id },
+  });
+  if (error) {
+    const m = error.message.toLowerCase();
+    if (m.includes('already') || m.includes('registered') || m.includes('exists')) {
+      return { error: '이미 사용 중인 아이디입니다.' };
+    }
+    return { error: error.message };
+  }
+  return { ok: true, email };
+}
