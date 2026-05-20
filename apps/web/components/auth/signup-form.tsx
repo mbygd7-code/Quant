@@ -17,7 +17,6 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -123,13 +122,6 @@ export function SignupForm() {
       >
         {isSubmitting ? '가입 중...' : '가입하고 시작하기'}
       </Button>
-
-      <p className="text-center text-xs text-txt-muted">
-        이미 계정이 있으신가요?{' '}
-        <Link href="/login" className="text-txt-primary hover:underline">
-          로그인
-        </Link>
-      </p>
     </form>
   );
 }
