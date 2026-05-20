@@ -1065,7 +1065,6 @@ export function ScoreTrend({
               <LegendWithPopover
                 raw={props}
                 modelLabel={modelLabel}
-                overlapDays={overlap.length}
               />
             )}
           />
@@ -1413,7 +1412,7 @@ interface LegendInfo {
   read?: string;
 }
 
-function buildLegendInfo(modelLabel: string, overlapDays: number): Record<string, LegendInfo> {
+function buildLegendInfo(modelLabel: string): Record<string, LegendInfo> {
   return {
     actual: {
       title: '실측 점수',
@@ -1505,17 +1504,15 @@ interface LegendPayloadItem {
 function LegendWithPopover({
   raw,
   modelLabel,
-  overlapDays,
 }: {
   raw: unknown;
   modelLabel: string;
-  overlapDays: number;
 }) {
   const r = raw as { payload?: LegendPayloadItem[] } | null;
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const info = useMemo(
-    () => buildLegendInfo(modelLabel, overlapDays),
-    [modelLabel, overlapDays],
+    () => buildLegendInfo(modelLabel),
+    [modelLabel],
   );
   if (!r?.payload || r.payload.length === 0) return null;
   const labelFor = (key: string): string => {

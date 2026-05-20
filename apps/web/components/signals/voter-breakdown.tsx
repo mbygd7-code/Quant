@@ -607,7 +607,7 @@ function SorosSynthesis({
               style={{ color: verdictTone }}
               aria-hidden
             >
-              "
+              &ldquo;
             </div>
 
             <div className="relative px-6 py-5">

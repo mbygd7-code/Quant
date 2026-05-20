@@ -1374,7 +1374,6 @@ export function FullscreenChartViewer({
             // not 56px to the left of it when OBV axis is active.
             const MARGIN_LEFT = sharedLeftMargin;
             const containerH = priceContainerRef.current?.clientHeight ?? priceHeight;
-            const containerW = priceContainerRef.current?.clientWidth ?? 0;
             const innerH = containerH - MARGIN_TOP;        // bottom margin is 0
             if (innerH <= 0) return null;
             // Don't render when cursor is in the margin band.

@@ -354,7 +354,7 @@ export function HelpSearch() {
       {open && query.trim().length > 0 && filtered.length === 0 && (
         <div className="absolute z-30 mt-2 w-full rounded-xl border-2 border-border-default bg-bg-secondary shadow-2xl px-4 py-5 text-center">
           <div className="text-[14px] text-txt-secondary">
-            '<span className="font-mono font-semibold text-txt-primary">{query}</span>'에 해당하는 항목 없음
+            &lsquo;<span className="font-mono font-semibold text-txt-primary">{query}</span>&rsquo;에 해당하는 항목 없음
           </div>
           <div className="text-[12px] text-txt-muted mt-1">
             다른 약자나 한글 키워드로 시도해보세요
