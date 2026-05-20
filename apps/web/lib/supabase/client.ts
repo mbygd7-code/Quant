@@ -6,9 +6,11 @@ export function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       auth: {
-        // PKCE를 끔. 6자리 OTP 코드 흐름엔 verifier 불필요하고,
-        // PKCE 활성 시 verifier 저장 실패가 send 자체를 막는 케이스가 있어 implicit으로 고정.
-        flowType: 'implicit',
+        // PKCE로 고정. 회원가입 confirm / 비밀번호 재설정 메일 링크가
+        // `?code=...` 형식이라 exchangeCodeForSession이 필요한데, 이때
+        // verifier가 쿠키에 저장돼 있어야 서버 callback에서 교환 성공.
+        // signInWithPassword는 PKCE를 사용하지 않으므로 로그인엔 영향 없음.
+        flowType: 'pkce',
       },
     },
   );
