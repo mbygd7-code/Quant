@@ -1,25 +1,48 @@
 -- 00000000000027_simple_signup.sql
 -- Drastic simplification per family-mode request: auto-approve every
--- new signup, drop the pending queue from the default flow. The
--- approval columns + admin UI stay in place so we can re-enable later
--- by just changing the trigger default back, but the day-to-day flow
--- becomes "sign up → log in → dashboard."
+-- new signup, drop the pending queue from the default flow.
 --
--- Email confirmation is also disabled — this migration only handles
--- the DB side; the operator must turn off "Confirm email" in
--- Supabase Dashboard → Authentication → Sign In / Up. (Lower the
--- password min length to 4 in the same place.)
+-- Self-contained: if migration 26's columns aren't present yet (e.g.
+-- 26 was skipped or never ran), we add them here with the new default
+-- of 'approved' so this file works as a standalone install.
+--
+-- Operator must also (one-time, Supabase Dashboard):
+--   Authentication → Providers → Email: "Confirm email" OFF
+--   Authentication → Policies: min password length = 4
 
--- ── 1. Flip every outstanding pending row to approved ──────────
--- Otherwise existing test accounts would still be blocked.
+-- ── 1. Ensure the approval columns exist ───────────────────────
+ALTER TABLE profiles
+    ADD COLUMN IF NOT EXISTS approval_status  VARCHAR(20)  NOT NULL DEFAULT 'approved',
+    ADD COLUMN IF NOT EXISTS approval_note    TEXT,
+    ADD COLUMN IF NOT EXISTS approved_by      UUID         REFERENCES profiles(id),
+    ADD COLUMN IF NOT EXISTS approved_at      TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS reapplied_at     TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS reapply_count    INTEGER      NOT NULL DEFAULT 0;
+
+-- Change the default in case 26 already created it with 'pending'.
+ALTER TABLE profiles ALTER COLUMN approval_status SET DEFAULT 'approved';
+
+-- (Re)enforce the 4 valid states.
+ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_approval_status_check;
+ALTER TABLE profiles ADD CONSTRAINT profiles_approval_status_check
+    CHECK (approval_status IN ('pending', 'approved', 'rejected', 'expired'));
+
+-- ── 2. Flip every non-approved row to approved ─────────────────
 UPDATE profiles
    SET approval_status = 'approved',
-       approved_at     = COALESCE(approved_at, NOW())
- WHERE approval_status IN ('pending', 'expired');
+       approved_at     = COALESCE(approved_at, created_at, NOW())
+ WHERE approval_status IS NULL
+    OR approval_status IN ('pending', 'expired');
 
--- ── 2. handle_new_user — every signup is approved immediately ──
--- We keep the invite_token branch as dead code in case we ever
--- restore the gated flow; the only difference now is the default
+-- Partial index for the (now-likely-empty) pending queue. Kept so the
+-- admin UI still works if we ever flip a row back to 'pending'.
+CREATE INDEX IF NOT EXISTS profiles_pending_expiry_idx
+    ON profiles (approval_status, created_at, reapplied_at)
+ WHERE approval_status = 'pending';
+
+-- ── 3. handle_new_user — every signup is approved immediately ──
+-- Keep the invite_token branch as dead code in case we restore the
+-- gated flow later; the only difference now is the default value of
 -- resolved_approval.
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER
