@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import {
   addFavoriteAction,
+  listMyFavoritesAction,
   removeFavoriteAction,
   syncFavoritesAction,
 } from '@/app/actions/favorites';
@@ -69,20 +70,35 @@ export function useFavorites(): UseFavoritesResult {
     setTickers(initial);
     setHydrated(true);
 
-    // One-shot bulk sync on mount — handles the case where the user added
-    // favorites offline / on another device and the localStorage layer is
-    // ahead of the server. Throttled so we don't hammer it on every page
-    // navigation.
+    // First-mount sync. Direction depends on which side has data:
+    //   - localStorage empty + server has rows  → SEED localStorage from server
+    //     (typical for "logged in on a fresh browser" — without this we'd
+    //     wipe the server's record by syncing the empty array upward).
+    //   - localStorage has rows                 → push to server (preserves
+    //     the original "added offline / another device" path).
+    // Throttled so we don't hammer it on every page navigation.
     try {
       const lastSync = Number(localStorage.getItem(SYNCED_KEY) ?? '0');
       if (Date.now() - lastSync > SYNC_THROTTLE_MS) {
-        void syncFavoritesAction(initial).then((res) => {
-          if ('ok' in res && res.ok) {
+        if (initial.length === 0) {
+          void listMyFavoritesAction().then((serverTickers) => {
+            if (serverTickers.length > 0) {
+              writeAndBroadcast(serverTickers);
+              setTickers(serverTickers);
+            }
             try {
               localStorage.setItem(SYNCED_KEY, String(Date.now()));
             } catch {}
-          }
-        });
+          });
+        } else {
+          void syncFavoritesAction(initial).then((res) => {
+            if ('ok' in res && res.ok) {
+              try {
+                localStorage.setItem(SYNCED_KEY, String(Date.now()));
+              } catch {}
+            }
+          });
+        }
       }
     } catch {
       /* localStorage unavailable — skip server sync this turn */
