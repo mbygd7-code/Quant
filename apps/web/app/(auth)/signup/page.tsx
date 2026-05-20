@@ -21,7 +21,7 @@ export default async function SignupPage() {
           QuantSignal 가입
         </h1>
         <p className="mt-1 text-sm text-txt-secondary">
-          가입 후 이메일 인증 + 관리자 승인까지 영업일 5일 이내 처리됩니다.
+          아이디와 비밀번호만 입력하면 바로 시작할 수 있습니다.
         </p>
       </div>
 

@@ -1,14 +1,11 @@
 'use client';
 
 /**
- * Email + password login.
+ * Simple ID + password login.
  *
- * The primary auth path. Forgot password flow lives at /forgot-password.
- * Magic-link/OTP is intentionally disabled — Supabase still allows it,
- * but we don't expose any UI for it.
- *
- * Local-dev quick login is reachable via the `/api/dev-login` endpoint
- * (curl-only, no UI button) — it's a 403 in production builds.
+ * ID is mapped to a synthetic `<id>@quantsignal.local` email under the
+ * hood — same convention as signup-form.tsx. No magic link, no OTP,
+ * no email confirmation.
  */
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -23,16 +20,18 @@ import { Label } from '@/components/ui/label';
 import { createClient } from '@/lib/supabase/client';
 
 const schema = z.object({
-  email: z.string().email('올바른 이메일을 입력해주세요'),
+  id: z.string().min(1, '아이디를 입력해주세요'),
   password: z.string().min(1, '비밀번호를 입력해주세요'),
 });
 type Values = z.infer<typeof schema>;
 
+function idToEmail(id: string): string {
+  return `${id.toLowerCase()}@quantsignal.local`;
+}
+
 export function LoginForm() {
   const router = useRouter();
   const search = useSearchParams();
-  // Honor the ?next= hint set by middleware when an unauthenticated
-  // request bounced off a protected route.
   const nextPath = search.get('next') || '/dashboard';
 
   const {
@@ -43,19 +42,15 @@ export function LoginForm() {
 
   async function onSubmit(values: Values) {
     const supabase = createClient();
+    // Accept either raw ID or full email (for legacy admin accounts that
+    // signed up with a real address before the simplification).
+    const email = values.id.includes('@') ? values.id : idToEmail(values.id);
     const { error } = await supabase.auth.signInWithPassword({
-      email: values.email,
+      email,
       password: values.password,
     });
     if (error) {
-      // Supabase 메시지 그대로 노출하면 enumeration 약점 — 한국어
-      // 일반 문구로 변환. (특정 사례만 구분: 이메일 미확인은 별도 안내)
-      const m = error.message.toLowerCase();
-      if (m.includes('email not confirmed')) {
-        toast.error('이메일 인증이 필요합니다. 가입 시 받은 확인 메일을 먼저 열어주세요.');
-      } else {
-        toast.error('이메일 또는 비밀번호가 올바르지 않습니다.');
-      }
+      toast.error('아이디 또는 비밀번호가 올바르지 않습니다.');
       return;
     }
     toast.success('로그인 완료');
@@ -66,30 +61,19 @@ export function LoginForm() {
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <div className="space-y-1.5">
-        <Label htmlFor="email">이메일</Label>
+        <Label htmlFor="id">아이디</Label>
         <Input
-          id="email"
-          type="email"
-          placeholder="you@example.com"
-          autoComplete="email"
+          id="id"
+          type="text"
+          autoComplete="username"
           autoFocus
-          {...register('email')}
+          {...register('id')}
         />
-        {errors.email && (
-          <p className="text-xs text-status-error">{errors.email.message}</p>
-        )}
+        {errors.id && <p className="text-xs text-status-error">{errors.id.message}</p>}
       </div>
 
       <div className="space-y-1.5">
-        <div className="flex items-baseline justify-between">
-          <Label htmlFor="password">비밀번호</Label>
-          <Link
-            href="/forgot-password"
-            className="text-[11px] text-txt-muted hover:text-txt-primary"
-          >
-            비밀번호를 잊으셨나요?
-          </Link>
-        </div>
+        <Label htmlFor="password">비밀번호</Label>
         <Input
           id="password"
           type="password"
