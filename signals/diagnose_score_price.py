@@ -191,9 +191,20 @@ def _print_md_table(headers: Iterable[str], rows: Iterable[Iterable[str]]) -> No
 
 def _fmt_rho(rho: float) -> str:
     if math.isnan(rho):
-        return "  n/a"
+        return "n/a"
     sign = "+" if rho >= 0 else ""
     return f"{sign}{rho:.3f}"
+
+
+def _rho_sort_key(row: list[str]) -> float:
+    """Sort key that pushes 'n/a' rows to the bottom regardless of rule."""
+    cell = row[1]
+    if cell == "n/a" or cell == "—":
+        return -1.0
+    try:
+        return abs(float(cell))
+    except ValueError:
+        return -1.0
 
 
 def _strength_tag(rho: float) -> str:
@@ -262,6 +273,48 @@ def diagnose(days: int) -> int:
         print(
             f"_skipped {skipped_no_price:,} rows lacking a t-day close in korea_market._\n"
         )
+        # When the skip count equals the score-row count, the join is fully
+        # broken — show samples so the user can see why.
+        if skipped_no_price == len(scores):
+            print("### Diagnostic: every score row failed price lookup\n")
+            print("First 5 score (ticker, date) keys:\n")
+            for s in scores[:5]:
+                close_t = prices.get((s.ticker, s.date))
+                print(
+                    f"  ai_scores: ticker={s.ticker!r:<12} date={s.date}  "
+                    f"→ korea_market hit: {close_t is not None}"
+                )
+            print("\nFirst 5 korea_market (ticker, date) keys:\n")
+            for k in list(prices.keys())[:5]:
+                print(f"  korea_market: ticker={k[0]!r:<12} date={k[1]}")
+            # Cross-check by ticker only (ignore date)
+            score_tickers = {s.ticker for s in scores}
+            price_tickers = {k[0] for k in prices.keys()}
+            common = score_tickers & price_tickers
+            print(
+                f"\n  unique tickers — ai_scores: {len(score_tickers)},  "
+                f"korea_market: {len(price_tickers)},  intersection: {len(common)}"
+            )
+            if not common:
+                print(
+                    "\n  ⚠️ Zero ticker overlap. Likely a format mismatch "
+                    "(e.g. one side has leading zeros, the other does not)."
+                )
+            else:
+                # Same ticker exists in both — must be a date mismatch.
+                sample = next(iter(common))
+                score_dates_for = sorted(
+                    {s.date for s in scores if s.ticker == sample}
+                )[:5]
+                price_dates_for = sorted(
+                    {k[1] for k in prices.keys() if k[0] == sample}
+                )[:5]
+                print(
+                    f"\n  ticker {sample!r} has both — date samples:"
+                    f"\n    ai_scores dates: {score_dates_for}"
+                    f"\n    korea_market dates: {price_dates_for}"
+                )
+            print()
 
     # ── (1) Per-horizon final_score ────────────────────────────
     print("## 1. final_score vs forward return\n")
@@ -288,10 +341,7 @@ def diagnose(days: int) -> int:
         rho, n = spearman(list(xs), list(ys))
         voter_rows.append([col, _fmt_rho(rho), f"{n:,}", _strength_tag(rho)])
     # Sort strongest signal first (by |ρ|, ignoring NaN).
-    voter_rows.sort(
-        key=lambda r: -1 if r[1] == "  n/a" else abs(float(r[1])),
-        reverse=True,
-    )
+    voter_rows.sort(key=_rho_sort_key, reverse=True)
     _print_md_table(["sub_score column", "Spearman ρ", "n pairs", "verdict"], voter_rows)
 
     # ── (3) Per-sector breakdown, t+1 final_score ─────────────
@@ -304,10 +354,7 @@ def diagnose(days: int) -> int:
         xs, ys = zip(*pts)
         rho, n = spearman(list(xs), list(ys))
         sector_rows.append([sec, _fmt_rho(rho), f"{n:,}", _strength_tag(rho)])
-    sector_rows.sort(
-        key=lambda r: -1 if r[1] == "  n/a" else abs(float(r[1])),
-        reverse=True,
-    )
+    sector_rows.sort(key=_rho_sort_key, reverse=True)
     _print_md_table(["sector", "Spearman ρ", "n pairs", "verdict"], sector_rows)
 
     # ── (4) Per-ticker top/bottom 5, t+1 final_score ──────────
