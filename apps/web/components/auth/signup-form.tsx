@@ -29,7 +29,7 @@ const schema = z.object({
     .min(3, '3자 이상')
     .max(20, '20자 이하')
     .regex(/^[a-z0-9_]+$/, '영문 소문자, 숫자, _ 만 사용'),
-  password: z.string().min(4, '4자 이상'),
+  password: z.string().min(6, '6자 이상'),
 });
 type Values = z.infer<typeof schema>;
 
@@ -107,7 +107,7 @@ export function SignupForm() {
           id="password"
           type="password"
           autoComplete="new-password"
-          placeholder="4자리 이상"
+          placeholder="6자리 이상"
           {...register('password')}
         />
         {errors.password && (
