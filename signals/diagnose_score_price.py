@@ -395,10 +395,111 @@ def diagnose(days: int) -> int:
     return 0
 
 
+def diagnose_and_persist(days: int) -> int:
+    """Like diagnose() but also writes every (scope, horizon) row into the
+    model_diagnostics table for the weekly cron + admin dashboard."""
+    today = date.today()
+    score_end = today - timedelta(days=max(HORIZONS))
+    score_start = score_end - timedelta(days=days)
+    price_end = today
+
+    print(f"# Score↔Price diagnostic — last {days} days (persisting to DB)")
+    print(f"score window: {score_start} → {score_end}\n")
+
+    scores = _fetch_scores(score_start, score_end)
+    if not scores:
+        print("No ai_scores rows in window — nothing to persist.")
+        return 1
+    prices = _fetch_prices(score_start, price_end)
+    sectors = _fetch_sectors()
+
+    pairs_by_col_h: dict[tuple[str, int], list[tuple[float, float]]] = defaultdict(list)
+    pairs_by_sector_h: dict[tuple[str, int], list[tuple[float, float]]] = defaultdict(list)
+    for s in scores:
+        close_t = prices.get((s.ticker, s.date))
+        if close_t is None or close_t <= 0:
+            continue
+        for h in HORIZONS:
+            close_th = _next_trading_close(prices, s.ticker, s.date, h)
+            if close_th is None or close_th <= 0:
+                continue
+            ret = math.log(close_th / close_t)
+            for col in ALL_SCORE_COLS:
+                v = s.scores.get(col)
+                if v is None:
+                    continue
+                pairs_by_col_h[(col, h)].append((float(v), ret))
+            fv = s.scores.get("final_score")
+            if fv is not None:
+                sec = sectors.get(s.ticker, "unknown")
+                pairs_by_sector_h[(sec, h)].append((float(fv), ret))
+
+    out_rows: list[dict] = []
+    # Overall = final_score per horizon.
+    for h in HORIZONS:
+        xs_ys = pairs_by_col_h.get(("final_score", h), [])
+        rho, n = (float("nan"), 0) if not xs_ys else spearman(*map(list, zip(*xs_ys)))
+        out_rows.append(
+            {
+                "run_date": today.isoformat(),
+                "window_days": days,
+                "scope_kind": "overall",
+                "scope_name": "final_score",
+                "horizon_days": h,
+                "spearman_rho": None if math.isnan(rho) else rho,
+                "n_pairs": n,
+            }
+        )
+    # Per voter (all sub_scores) at every horizon.
+    for col in SUB_SCORE_COLS:
+        for h in HORIZONS:
+            xs_ys = pairs_by_col_h.get((col, h), [])
+            rho, n = (float("nan"), 0) if not xs_ys else spearman(*map(list, zip(*xs_ys)))
+            out_rows.append(
+                {
+                    "run_date": today.isoformat(),
+                    "window_days": days,
+                    "scope_kind": "voter",
+                    "scope_name": col,
+                    "horizon_days": h,
+                    "spearman_rho": None if math.isnan(rho) else rho,
+                    "n_pairs": n,
+                }
+            )
+    # Per sector at every horizon.
+    for (sec, h), xs_ys in pairs_by_sector_h.items():
+        rho, n = (float("nan"), 0) if not xs_ys else spearman(*map(list, zip(*xs_ys)))
+        out_rows.append(
+            {
+                "run_date": today.isoformat(),
+                "window_days": days,
+                "scope_kind": "sector",
+                "scope_name": sec,
+                "horizon_days": h,
+                "spearman_rho": None if math.isnan(rho) else rho,
+                "n_pairs": n,
+            }
+        )
+
+    sb = get_admin_client()
+    # BATCH insert; small enough to fit a single call (≤ 8 voters × 3 horizons
+    # + 1 overall × 3 + ~10 sectors × 3 = ~63 rows).
+    sb.table("model_diagnostics").insert(out_rows).execute()
+    print(f"Persisted {len(out_rows)} diagnostic rows to model_diagnostics.")
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Score↔price predictive-power diagnostic")
     p.add_argument("--days", type=int, default=90, help="lookback window (default 90)")
+    p.add_argument(
+        "--persist",
+        action="store_true",
+        help="write results into model_diagnostics table (for weekly cron)",
+    )
     args = p.parse_args()
+    if args.persist:
+        return diagnose_and_persist(args.days)
     return diagnose(args.days)
 
 

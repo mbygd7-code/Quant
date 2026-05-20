@@ -537,10 +537,17 @@ class StockScorer:
     # ──────────────────────────────────────────────────────
     def _combine(self, sub: SubScores) -> float:
         w = self._weights
+        # SIGN-FLIPPED: related_us_stock_score is empirically an anti-signal
+        # (Spearman ρ = -0.265 over n=120 pairs in 2026-05 diagnostic). Likely
+        # explanation: US gains are already priced into the KR open via gap-up,
+        # so a "strong US related" reading often precedes mean-reversion. We
+        # subtract it instead of adding to align the contribution with realized
+        # forward returns. Re-evaluate after ≥30 days of accumulated overlap
+        # via `signals/diagnose_score_price.py` (results table model_diagnostics).
         raw = (
             w.global_market * sub.global_market
             + w.sector * sub.sector
-            + w.related_us_stock * sub.related_us_stock
+            - w.related_us_stock * sub.related_us_stock  # ← anti-signal, inverted
             + w.news_sentiment * sub.news_sentiment
             + w.fundamental * sub.fundamental
             + w.volume_flow * sub.volume_flow
