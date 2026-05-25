@@ -60,7 +60,6 @@ GitHub Actions Runner ──► collectors → refinery → cognition → signal
 
 | 시크릿 | 비고 |
 |---|---|
-| `SUPABASE_PROJECT_REF`        | 프로젝트 URL의 서브도메인 |
 | `SUPABASE_ACCESS_TOKEN`       | `sbp_...` (Account → Access Tokens) |
 | `SUPABASE_DB_PASSWORD`        | 프로젝트 생성 시 입력한 패스워드 |
 | `SUPABASE_URL`                | `https://<ref>.supabase.co` |

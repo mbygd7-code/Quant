@@ -1324,11 +1324,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
-      - run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+      # Project ref is public (exposed via NEXT_PUBLIC_SUPABASE_URL), so it's
+      # hardcoded here rather than stored as a secret.
+      - run: supabase link --project-ref yanzpasrpzppcmlrxyjp
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       - run: supabase db push
         env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 ```
 
@@ -1344,7 +1347,6 @@ jobs:
 
 ```bash
 # Supabase
-SUPABASE_PROJECT_REF              # 프로젝트 URL의 서브도메인
 SUPABASE_ACCESS_TOKEN             # https://supabase.com/dashboard/account/tokens
 SUPABASE_DB_PASSWORD
 SUPABASE_URL                      # 운영용 (daily-pipeline, backtest)

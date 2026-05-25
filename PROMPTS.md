@@ -50,7 +50,6 @@
    git checkout -b main
    ```
 3. GitHub Settings → Secrets and variables → Actions에 등록:
-   - `SUPABASE_PROJECT_REF` (프로젝트 URL의 서브도메인)
    - `SUPABASE_ACCESS_TOKEN` (위 A-8 단계에서 발급)
    - `SUPABASE_DB_PASSWORD`
 
@@ -1036,7 +1035,7 @@ apps/web/package.json:
 
 각 워크플로우 env 블록의 secrets 이름이 GitHub Secrets에 정확히 등록됐는지 매칭:
   GitHub Secrets 탭에서 다음 키 모두 존재 확인:
-    SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_PROJECT_REF, SUPABASE_ACCESS_TOKEN,
+    SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ACCESS_TOKEN,
     SUPABASE_DB_PASSWORD, ANTHROPIC_API_KEY, OPENAI_API_KEY, FINNHUB_API_KEY,
     DART_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_CHAT_ID, TELEGRAM_WEBHOOK_SECRET
 
