@@ -1,4 +1,12 @@
-import { Activity, AlertTriangle, DollarSign, Layers3 } from 'lucide-react';
+import Link from 'next/link';
+import {
+  Activity,
+  AlertTriangle,
+  BookOpen,
+  DollarSign,
+  Layers3,
+  Target,
+} from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -67,17 +75,23 @@ export default async function AgentMonitoringPage() {
   const sb = await getQueryClient();
   const since = new Date(Date.now() - 14 * 86400_000).toISOString().slice(0, 10);
 
-  const [dailyRes, gradeRes, weightsRes, talebRes] = await Promise.all([
+  const [dailyRes, gradeRes, weightsRes, talebRes, stocksRes] = await Promise.all([
     sb.from('v_agent_output_daily').select('*').gte('cycle_date', since).order('cycle_date', { ascending: false }),
     sb.from('v_signal_grade_current').select('*'),
     sb.from('v_user_weight_distribution').select('*'),
     sb.from('v_taleb_alerts_recent').select('*').limit(10),
+    sb.from('stocks').select('ticker, name'),
   ]);
 
   const daily = (dailyRes.data ?? []) as DailyRow[];
   const grades = (gradeRes.data ?? []) as GradeRow[];
   const weights = (weightsRes.data ?? []) as WeightDistRow[];
   const taleb = (talebRes.data ?? []) as TalebAlertRow[];
+  const nameByTicker = new Map(
+    ((stocksRes.data ?? []) as { ticker: string; name: string | null }[]).map(
+      (s) => [s.ticker, s.name ?? s.ticker],
+    ),
+  );
 
   // KPI rollups.
   const totals = daily.reduce(
@@ -110,14 +124,32 @@ export default async function AgentMonitoringPage() {
 
   return (
     <div className="space-y-5 fade-in">
-      <header>
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">
-          AI 에이전트 모니터링
-        </h1>
-        <p className="mt-1 text-sm text-txt-secondary">
-          최근 14일 LLM 호출 비용 + 시그널 등급 분포 + Taleb 위험 경보. 이 대시보드는
-          마이그레이션 22의 4개 뷰를 직접 읽습니다.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight">
+            AI 에이전트 모니터링
+          </h1>
+          <p className="mt-1 text-sm text-txt-secondary">
+            최근 14일 LLM 호출 비용 + 시그널 등급 분포 + Taleb 위험 경보. 이 대시보드는
+            마이그레이션 22의 4개 뷰를 직접 읽습니다.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/admin/accuracy"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-status-info/40 bg-status-info/5 px-3 py-1.5 text-sm font-medium text-status-info transition-colors hover:bg-status-info/10"
+          >
+            <Target className="h-4 w-4" />
+            신호 정확도 (Phase A)
+          </Link>
+          <Link
+            href="/admin/agent-reference"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border-divider bg-surface-elevated px-3 py-1.5 text-sm font-medium text-txt-primary transition-colors hover:bg-surface-hover hover:border-border-strong"
+          >
+            <BookOpen className="h-4 w-4" />
+            AI 에이전트 참조 데이터
+          </Link>
+        </div>
       </header>
 
       {/* KPI cards */}
@@ -304,8 +336,11 @@ export default async function AgentMonitoringPage() {
                   sev {alert.severity}
                 </Badge>
                 {alert.ticker && (
-                  <span className="font-mono text-xs text-txt-muted">
-                    {alert.ticker}
+                  <span
+                    className="text-xs text-txt-secondary"
+                    title={alert.ticker}
+                  >
+                    {nameByTicker.get(alert.ticker) ?? alert.ticker}
                   </span>
                 )}
                 <span className="text-[10px] text-txt-muted ml-auto">
