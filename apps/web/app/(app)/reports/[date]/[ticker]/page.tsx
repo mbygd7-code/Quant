@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { SignalBadge } from '@/components/signals/signal-badge';
 import { SubscoreBar } from '@/components/charts/subscore-bar';
 import { ScoreTrend } from '@/components/charts/score-trend';
+import { PriceForecastChart } from '@/components/charts/price-forecast-chart';
+import { KR_TICKER_RE } from '@/lib/ticker';
 import { getStockDetail } from '@/lib/queries/reports';
 import {
   changeColor,
@@ -246,10 +248,22 @@ export default async function StockDetailPage({
         </CardContent>
       </Card>
 
+      {/* Price forecast — primary, KRW-axis chart with 5-day cone. */}
+      {KR_TICKER_RE.test(stock.ticker) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base font-heading">주가 추이 · 예측</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PriceForecastChart ticker={stock.ticker} />
+          </CardContent>
+        </Card>
+      )}
+
       {scoreHistory.length > 1 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base font-heading">최근 30일 점수 추이</CardTitle>
+            <CardTitle className="text-base font-heading">AI 점수 추이 (진단용)</CardTitle>
           </CardHeader>
           <CardContent>
             <ScoreTrend

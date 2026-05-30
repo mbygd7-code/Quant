@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { SignalBadge } from '@/components/signals/signal-badge';
 import { SubscoreBar } from '@/components/charts/subscore-bar';
 import { ScoreTrend } from '@/components/charts/score-trend';
+import { PriceForecastChart } from '@/components/charts/price-forecast-chart';
 import { createClient } from '@/lib/supabase/server';
 import { DEV_BYPASS_AUTH, getQueryClient } from '@/lib/supabase/query-client';
 import { getStockDetail } from '@/lib/queries/reports';
@@ -408,11 +409,23 @@ export default async function KrStockDetail({ params }: Props) {
         </Card>
       )}
 
-      {/* Score trend — actual vs ML predicted with residual readout */}
+      {/* Price forecast — KRW axis, random-walk-with-drift cone. This is
+          the primary, intuitive chart: actual price + 5-day forecast range. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base font-heading">주가 추이 · 예측</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <PriceForecastChart ticker={meta.ticker} />
+        </CardContent>
+      </Card>
+
+      {/* Score trend — actual vs ML predicted with residual readout.
+          Secondary / diagnostic: shows the AI score series and model fit. */}
       {detail && detail.scoreHistory.length > 1 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base font-heading">예측 점수 추이</CardTitle>
+            <CardTitle className="text-base font-heading">AI 점수 추이 (진단용)</CardTitle>
           </CardHeader>
           <CardContent>
             <ScoreTrend
