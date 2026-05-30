@@ -52,6 +52,15 @@ interface ForecastPoint {
   upper: number;
   horizon: number;
 }
+interface OvernightMeta {
+  us_symbol: string;
+  beta: number;
+  correlation: number;
+  r_squared: number;
+  us_return: number;
+  us_date: string;
+  gap_pct: number;
+}
 interface ForecastMeta {
   ok: boolean;
   reason?: string;
@@ -61,7 +70,22 @@ interface ForecastMeta {
   lookback_used?: number;
   horizon?: number;
   method?: string;
+  overnight?: OvernightMeta | null;
 }
+
+// Human label for the US proxy symbols.
+const US_LABEL: Record<string, string> = {
+  '^SOX': '필라델피아 반도체',
+  '^IXIC': '나스닥',
+  '^GSPC': 'S&P 500',
+  '^DJI': '다우',
+  SOXX: '반도체 ETF',
+  XLK: '기술주 ETF',
+  XBI: '바이오 ETF',
+  IBB: '바이오 ETF',
+  LIT: '리튬·배터리 ETF',
+  CARZ: '자동차 ETF',
+};
 interface ForecastResponse {
   ticker: string;
   history: HistPoint[];
@@ -220,6 +244,41 @@ export function PriceForecastChart({
           )}
         </div>
       </div>
+
+      {/* Overnight US lead-signal readout — the "미국 마감 → 한국 시작" edge. */}
+      {meta?.overnight && (
+        <div className="mb-2 flex items-center gap-2 flex-wrap text-[12px]">
+          <span className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 bg-status-info/10 border border-status-info/30">
+            🌙 어젯밤{' '}
+            <b>{US_LABEL[meta.overnight.us_symbol] ?? meta.overnight.us_symbol}</b>{' '}
+            <span
+              className={cn(
+                'tabular-nums font-semibold',
+                meta.overnight.us_return >= 0 ? 'text-status-success' : 'text-status-error',
+              )}
+            >
+              {meta.overnight.us_return >= 0 ? '+' : ''}
+              {(meta.overnight.us_return * 100).toFixed(2)}%
+            </span>
+          </span>
+          <span className="text-txt-muted">→ 시가 갭 추정</span>
+          <span
+            className={cn(
+              'tabular-nums font-semibold',
+              meta.overnight.gap_pct >= 0 ? 'text-status-success' : 'text-status-error',
+            )}
+          >
+            {meta.overnight.gap_pct >= 0 ? '+' : ''}
+            {meta.overnight.gap_pct.toFixed(2)}%
+          </span>
+          <span
+            className="text-txt-muted text-[11px]"
+            title={`전일 ${meta.overnight.us_symbol} 변동에 대한 회귀 베타 ${meta.overnight.beta.toFixed(2)}, 상관 ρ=${meta.overnight.correlation.toFixed(2)} (R²=${meta.overnight.r_squared.toFixed(2)}). 이 종목 시가는 어젯밤 미국장 움직임과 통계적으로 연동됩니다.`}
+          >
+            (연동도 ρ={meta.overnight.correlation.toFixed(2)})
+          </span>
+        </div>
+      )}
 
       {/* 5-day forecast summary */}
       {rangePct && fc5 && (
@@ -404,7 +463,7 @@ export function PriceForecastChart({
             className="inline-block h-0.5 w-4"
             style={{ background: '#FF902F', borderTop: '2px dashed #FF902F' }}
           />{' '}
-          예측 (랜덤워크+드리프트)
+          예측 ({meta?.overnight ? '야간신호+랜덤워크' : '랜덤워크+드리프트'})
         </span>
         <span className="inline-flex items-center gap-1">
           <span className="inline-block h-2.5 w-4 rounded-sm" style={{ background: 'rgba(255,144,47,0.18)' }} /> 95% 구간

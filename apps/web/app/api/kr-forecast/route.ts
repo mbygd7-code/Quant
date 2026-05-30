@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { KR_TICKER_RE } from '@/lib/ticker';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -40,6 +41,22 @@ const DRIFT_SHRINK = 0.5; // shrink mean daily return toward 0
 const Z_95 = 1.959964; // two-sided 95%
 const DEFAULT_LOOKBACK = 40; // trading days used to estimate μ, σ
 const MIN_RETURNS = 10; // need at least this many returns to forecast
+
+// Overnight US→KR open gap (kr_overnight_betas). Only apply when the
+// lead-lag link is strong enough to be signal, and cap the nudge so a
+// single wild US night can't dominate the forecast.
+const OVERNIGHT_MIN_R2 = 0.08; // gate: below this the link is noise
+const OVERNIGHT_GAP_CAP_VOL = 2.5; // cap |gap| at this × daily σ
+
+interface OvernightSignal {
+  us_symbol: string;
+  beta: number;
+  correlation: number;
+  r_squared: number;
+  us_return: number; // most recent overnight US move (log-equivalent fraction)
+  us_date: string;
+  gap: number; // applied level shift in log space (post-gate, post-cap)
+}
 
 interface NaverDailyCandle {
   localDate: string; // "YYYYMMDD"
@@ -115,6 +132,73 @@ function addTradingDays(from: Date, n: number): Date {
 
 const round100 = (v: number) => Math.round(v / 100) * 100;
 
+/**
+ * Look up the ticker's strongest overnight US proxy and the most recent
+ * US session move that drives its next open. Returns null on any miss
+ * (no beta row, table absent, weak link, no fresh US data) so the
+ * forecast degrades gracefully to pure random-walk.
+ *
+ * `sigma` (daily log-return stdev) is used to cap the gap.
+ */
+async function fetchOvernightSignal(
+  ticker: string,
+  lastKrDate: string,
+  sigma: number,
+): Promise<OvernightSignal | null> {
+  let sb: ReturnType<typeof createAdminClient>;
+  try {
+    sb = createAdminClient();
+  } catch {
+    return null; // service role not configured — skip silently
+  }
+
+  // Best proxy for this ticker (highest R² row).
+  const { data: betaRows, error: betaErr } = await sb
+    .from('kr_overnight_betas')
+    .select('us_symbol, beta, correlation, r_squared')
+    .eq('kr_ticker', ticker)
+    .order('r_squared', { ascending: false })
+    .limit(1);
+  if (betaErr || !betaRows || betaRows.length === 0) return null;
+  const b = betaRows[0] as {
+    us_symbol: string;
+    beta: number;
+    correlation: number;
+    r_squared: number;
+  };
+  if (b.r_squared == null || b.r_squared < OVERNIGHT_MIN_R2) return null;
+
+  // Most recent US session on/before the last KR close — that's the
+  // overnight move that will gap the next KR open (matches the lag-1
+  // alignment used to fit the beta).
+  const { data: usRows, error: usErr } = await sb
+    .from('global_market')
+    .select('date, change_rate')
+    .eq('symbol', b.us_symbol)
+    .lte('date', lastKrDate)
+    .not('change_rate', 'is', null)
+    .order('date', { ascending: false })
+    .limit(1);
+  if (usErr || !usRows || usRows.length === 0) return null;
+  const us = usRows[0] as { date: string; change_rate: number };
+  if (us.change_rate == null) return null;
+
+  // Raw gap in log space, then capped at ±cap·σ.
+  const rawGap = b.beta * us.change_rate;
+  const cap = OVERNIGHT_GAP_CAP_VOL * sigma;
+  const gap = Math.max(-cap, Math.min(cap, rawGap));
+
+  return {
+    us_symbol: b.us_symbol,
+    beta: b.beta,
+    correlation: b.correlation,
+    r_squared: b.r_squared,
+    us_return: us.change_rate,
+    us_date: us.date,
+    gap,
+  };
+}
+
 export async function GET(req: NextRequest) {
   const ticker = (req.nextUrl.searchParams.get('ticker') ?? '').trim().toUpperCase();
   if (!KR_TICKER_RE.test(ticker)) {
@@ -160,14 +244,24 @@ export async function GET(req: NextRequest) {
     const sigma = stdev(rets);
     const muEff = muRaw * DRIFT_SHRINK;
     const lastClose = closes[closes.length - 1];
-    const lastDate = new Date(history[history.length - 1].date);
+    const lastDateStr = history[history.length - 1].date;
+    const lastDate = new Date(lastDateStr);
+
+    // Overnight US→KR open gap (level shift applied to every horizon).
+    // Degrades to null if betas/US data unavailable.
+    const overnight = await fetchOvernightSignal(ticker, lastDateStr, sigma);
+    const gap = overnight?.gap ?? 0;
 
     const forecast: ForecastPoint[] = [];
     for (let h = 1; h <= horizon; h++) {
-      const center = lastClose * Math.exp(muEff * h);
+      // The overnight gap is a one-time open jump, so it shifts the whole
+      // forecast level by `gap` (not re-applied each day); drift then
+      // accrues with h and the band widens with √h around the shifted center.
+      const logCenter = gap + muEff * h;
       const halfWidth = Z_95 * sigma * Math.sqrt(h);
-      const lower = lastClose * Math.exp(muEff * h - halfWidth);
-      const upper = lastClose * Math.exp(muEff * h + halfWidth);
+      const center = lastClose * Math.exp(logCenter);
+      const lower = lastClose * Math.exp(logCenter - halfWidth);
+      const upper = lastClose * Math.exp(logCenter + halfWidth);
       const d = addTradingDays(lastDate, h);
       forecast.push({
         date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
@@ -193,7 +287,18 @@ export async function GET(req: NextRequest) {
           vol_daily: sigma,
           lookback_used: rets.length,
           horizon,
-          method: 'random_walk_drift_v1',
+          method: overnight ? 'random_walk_drift_overnight_v1' : 'random_walk_drift_v1',
+          overnight: overnight
+            ? {
+                us_symbol: overnight.us_symbol,
+                beta: overnight.beta,
+                correlation: overnight.correlation,
+                r_squared: overnight.r_squared,
+                us_return: overnight.us_return,
+                us_date: overnight.us_date,
+                gap_pct: (Math.exp(overnight.gap) - 1) * 100,
+              }
+            : null,
         },
       },
       { headers: { 'Cache-Control': 'no-store' } },
