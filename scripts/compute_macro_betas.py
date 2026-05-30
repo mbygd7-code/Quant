@@ -16,7 +16,7 @@ import math
 from datetime import date as Date
 from datetime import timedelta
 
-from db.supabase_client import get_admin_client
+from db.supabase_client import fetch_all, get_admin_client
 
 MACRO_FACTORS = ["USDKRW", "^TNX", "^VIX", "DXY", "WTI"]
 
@@ -51,12 +51,13 @@ def main(window: int = 60) -> None:
     today = Date.today()
     since = (today - timedelta(days=window * 2)).isoformat()
 
-    kr_rows = (
+    # Paginated — see compute_sector_betas for why (1000-row cap).
+    kr_rows = fetch_all(
         sb.table("korea_market").select("date, ticker, change_rate")
           .gte("date", since).lte("date", today.isoformat())
           .not_.is_("change_rate", "null")
-          .execute().data
-    ) or []
+          .order("date")
+    )
     kr_by_ticker: dict[str, dict[str, float]] = {}
     for r in kr_rows:
         kr_by_ticker.setdefault(r["ticker"], {})[r["date"]] = float(r["change_rate"])

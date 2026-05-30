@@ -58,3 +58,31 @@ def verify_connection() -> None:
         sb.table("stocks").select("id").limit(1).execute()
     except Exception as exc:
         raise SystemExit(f"Supabase connection failed: {exc}") from exc
+
+
+def fetch_all(query, page_size: int = 1000) -> list[dict]:
+    """Paginate a PostgREST SELECT past Supabase's 1000-row default cap.
+
+    PostgREST returns at most 1000 rows per request regardless of how many
+    match. Callers that need the full result set (e.g. multi-year price
+    history across 50 tickers) must page with .range(). This helper loops
+    .range(offset, offset+page_size-1) until a short page signals the end.
+
+    Pass a *builder* with all filters/ordering applied but WITHOUT .execute():
+        rows = fetch_all(
+            sb.table("korea_market").select("date,ticker,change_rate")
+              .gte("date", since).order("date")
+        )
+
+    NOTE: an explicit .order() is strongly recommended — without a stable
+    sort, range windows can overlap or skip rows between requests.
+    """
+    out: list[dict] = []
+    offset = 0
+    while True:
+        page = query.range(offset, offset + page_size - 1).execute().data or []
+        out.extend(page)
+        if len(page) < page_size:
+            break
+        offset += page_size
+    return out
