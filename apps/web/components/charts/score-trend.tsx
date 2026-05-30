@@ -480,16 +480,27 @@ export function ScoreTrend({
     return total > 0 ? (matches / total) * 100 : null;
   })();
 
-  // Composite reliability — weighted blend of three signals, each in [0,100].
-  //  • sample size: how much overlap we have (0 → 0%, 14+ → 100%)
+  // Composite reliability — weighted blend, each in [0,100], with a
+  // hard sample-size penalty. The old formula maxed out sampleSignal
+  // at 14 overlap days, which gave a reliability of 60+ even with
+  // ~2 weeks of data — misleadingly high. New floor: 60 days = 100%,
+  // and we MULTIPLY the blended score by min(1, n/30) so the headline
+  // can't claim "high reliability" until ai_scores has at least a
+  // month of overlap with the forecast horizon.
+  //  • sample size: how much overlap we have (0 → 0%, 60+ → 100%)
   //  • MAPE inverse: 0% MAPE → 100, 30%+ MAPE → 0
   //  • directional accuracy: as-is in 0..100
   const reliability = (() => {
     if (overlap.length === 0 || mape == null) return null;
-    const sampleSignal = Math.min(100, (overlap.length / 14) * 100);
+    const sampleSignal = Math.min(100, (overlap.length / 60) * 100);
     const mapeSignal = Math.max(0, 100 - (mape / 30) * 100);
     const dirSignal = directionalAcc ?? 50;
-    return 0.3 * sampleSignal + 0.35 * mapeSignal + 0.35 * dirSignal;
+    const blended = 0.3 * sampleSignal + 0.35 * mapeSignal + 0.35 * dirSignal;
+    // Multiplicative penalty: until overlap ≥ 30, ceiling rises linearly
+    // from 0 to 100% of the blended value. Prevents the "MAE looks great
+    // because the series is flat" failure mode from inflating the score.
+    const sampleCap = Math.min(1, overlap.length / 30);
+    return blended * sampleCap;
   })();
 
   const reliabilityTier =
@@ -913,13 +924,27 @@ export function ScoreTrend({
        </div>
      )}
 
-     {/* Low-reliability banner — informational, doesn't hide the chart */}
-     {reliabilityTier === 'low' && (
+     {/* Low-reliability banner — informational, doesn't hide the chart.
+         Sample-size case promoted to its own message because the old
+         "신뢰도 낮음" wording made users think the model was broken when
+         the real issue was just insufficient overlap. */}
+     {overlap.length < 30 ? (
+       <div className="mb-2 rounded-md border border-status-info/40 bg-status-info/[0.08] px-3 py-2 text-[11px] text-status-info flex items-start gap-2">
+         <span aria-hidden>ℹ️</span>
+         <span className="leading-relaxed">
+           <b>표본 {overlap.length}일치 — 통계적 신뢰도 한정적.</b>{' '}
+           예측 신뢰구간은 표본 ≥ 30일부터 표시합니다. 매일 ai_scores가
+           누적되어 ~30일이 지나면 자동으로 활성화됩니다.
+           {directionalAcc !== null && directionalAcc < 50 &&
+             ' 또한 방향성 예측이 coin flip 이하 — 모델이 평탄에 가까운 상태.'}
+         </span>
+       </div>
+     ) : reliabilityTier === 'low' && (
        <div className="mb-2 rounded-md border border-status-warning/30 bg-status-warning/[0.06] px-3 py-2 text-[11px] text-status-warning flex items-start gap-2">
          <span aria-hidden>ⓘ</span>
          <span className="leading-relaxed">
-           예측 신뢰도 낮음 — 학습 데이터 부족 또는 모델이 평균 회귀에 가까운 상태입니다.
-           {overlap.length < 7 && ' 데이터 누적 후 다시 평가하세요.'}
+           예측 신뢰도 낮음 — 모델이 평균 회귀에 가까운 상태이거나 voter
+           신호가 약합니다. model_diagnostics 추세를 확인해주세요.
            {directionalAcc !== null && directionalAcc < 50 && ' 방향성 예측이 coin flip 이하입니다.'}
          </span>
        </div>
@@ -1085,8 +1110,12 @@ export function ScoreTrend({
           />
 
           {/* Confidence band — Area painted between band_low and band_high.
-              Recharts pattern: use two stacked Areas or a base+delta pair. */}
-          {showForecast && upper.length > 0 && (
+              Recharts pattern: use two stacked Areas or a base+delta pair.
+              Additionally gated by overlap.length >= 30: with smaller
+              samples the band is artificially narrow (the model has
+              collapsed to the local mean) and the visual implies
+              far more confidence than the data supports. */}
+          {showForecast && upper.length > 0 && overlap.length >= 30 && (
             <>
               <Area
                 type="monotone"
