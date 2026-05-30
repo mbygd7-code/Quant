@@ -130,11 +130,16 @@ async def step_intelligence(target: Date) -> dict:
             from scripts.backfill_macro_factors import main as macro_main
             from scripts.backfill_sector_etfs import main as etfs_main
             from scripts.compute_macro_betas import main as macrobeta_main
+            from scripts.compute_overnight_betas import main as overnight_main
             from scripts.compute_sector_betas import main as sector_main
             etfs_main(days=90)
-            sector_main(window=60)
+            # window=120 now that the pagination fix lets regressions see the
+            # full sample (was effectively ~17 before the 1000-row cap fix).
+            sector_main(window=120)
             macro_main(days=90)
-            macrobeta_main(window=60)
+            macrobeta_main(window=120)
+            # Overnight US→KR open lead-lag betas (the open-gap signal).
+            overnight_main(window=120)
             metrics["beta_refresh"] = "ok"
         except Exception as exc:
             log.warning("Beta refresh failed (non-fatal): %s", exc)

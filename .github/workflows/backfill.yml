@@ -105,7 +105,13 @@ jobs:
         env:
           SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: python -m scripts.compute_sector_betas
+        run: python -m scripts.compute_sector_betas --window 120
+
+      - name: 10) compute kr_overnight_betas (US t-1 → KR open lead-lag)
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python -m scripts.compute_overnight_betas --window 120
 
       - name: Verify counts
         env:
@@ -122,6 +128,7 @@ jobs:
               ('kr_fundamentals', 'PE/PBR/ROE'),
               ('kr_macro_betas', 'macro betas'),
               ('kr_sector_betas', 'sector betas'),
+              ('kr_overnight_betas', 'overnight US betas'),
           ]:
               n = sb.table(table).select('*', count='exact').limit(1).execute()
               print(f'  {label:<25} {table:<20} rows: {n.count}')
