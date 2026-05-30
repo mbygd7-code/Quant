@@ -21,6 +21,11 @@ on:
         required: false
         default: ""
 
+env:
+  # Opt into Node.js 24 ahead of GitHub forcing it 2026-06-16.
+  # See https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   run-backtest:
     name: signals/backtest
