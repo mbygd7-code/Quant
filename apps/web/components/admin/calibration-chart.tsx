@@ -71,11 +71,14 @@ export function CalibrationChart({ data }: { data: CalibrationPoint[] }) {
                 borderRadius: 8,
                 fontSize: 12,
               }}
-              formatter={(value: number | string, name: string) => {
-                if (name === 'avg_confidence' || name === 'actual_hit_rate_5d') {
-                  return [`${(Number(value) * 100).toFixed(1)}%`, name];
+              formatter={(value, name) => {
+                // Recharts types `value` as ValueType | undefined and `name`
+                // as NameType; normalize to what we render.
+                const n = String(name);
+                if (n === 'avg_confidence' || n === 'actual_hit_rate_5d') {
+                  return [`${(Number(value) * 100).toFixed(1)}%`, n];
                 }
-                return [value, name];
+                return [value as number | string, n];
               }}
             />
             <ReferenceLine

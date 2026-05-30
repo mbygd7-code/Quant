@@ -1,6 +1,13 @@
+import { Suspense } from 'react';
 import Link from 'next/link';
 
 import { ResetPasswordForm } from '@/components/auth/reset-password-form';
+
+// ResetPasswordForm reads `?code=` via useSearchParams, which forces a
+// CSR bailout. Marking the route dynamic stops the build from trying to
+// prerender it, and the Suspense boundary below satisfies Next's
+// missing-suspense requirement.
+export const dynamic = 'force-dynamic';
 
 /**
  * Landing page for the password-reset email link.
@@ -24,7 +31,9 @@ export default function ResetPasswordPage() {
         </p>
       </div>
 
-      <ResetPasswordForm />
+      <Suspense fallback={<div className="h-40 animate-pulse rounded bg-bg-secondary/30" />}>
+        <ResetPasswordForm />
+      </Suspense>
 
       <p className="text-center text-xs text-txt-muted">
         <Link href="/login" className="hover:text-txt-primary">
