@@ -75,7 +75,6 @@ export function FavoritePicker({
   const [query, setQuery] = useState('');
   const [externalHits, setExternalHits] = useState<ExternalHit[]>([]);
   const [externalLoading, setExternalLoading] = useState(false);
-  const [promoting, setPromoting] = useState<string | null>(null);
 
   // Multi-select state. Two parallel sets so we can route each ticker to
   // the right handler on bulk-add (internal universe rows just call
@@ -172,29 +171,6 @@ export function FavoritePicker({
     };
   }, [query, filtered.length, universe]);
 
-  // Single-tap external promote (kept for direct-add use case below — not
-  // used in multi-select mode, but small enough to keep).
-  const promoteExternal = async (hit: ExternalHit) => {
-    setPromoting(hit.ticker);
-    try {
-      const res = await adminAddOrCreateStockAction({
-        ticker: hit.ticker,
-        name: hit.name,
-        market: (hit.market === 'KOSDAQ' ? 'KOSDAQ' : 'KOSPI') as 'KOSPI' | 'KOSDAQ',
-        sector: null,
-      });
-      if (res.error) {
-        toast.error(`주식리스트 추가 실패: ${res.error}`);
-        return;
-      }
-      onAdd(hit.ticker);
-      onUniverseChanged?.();
-      toast.success(`${hit.name} 주식리스트 + 관심주식 추가됨`);
-    } finally {
-      setPromoting(null);
-    }
-  };
-
   /**
    * Add every currently-selected ticker in one go. Internal universe rows
    * just call `onAdd`; external hits go through the DB promote first. We
@@ -217,7 +193,7 @@ export function FavoritePicker({
       // External — needs a DB row first.
       const externalToAdd = externalHits.filter((h) => selectedExternal.has(h.ticker));
       let externalAdded = 0;
-      let externalFailed: string[] = [];
+      const externalFailed: string[] = [];
       for (const hit of externalToAdd) {
         try {
           const res = await adminAddOrCreateStockAction({

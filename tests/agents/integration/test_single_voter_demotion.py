@@ -53,7 +53,7 @@ def _quotes() -> list[KrQuoteRow]:
     """30 days of synthetic flat quotes — priced_in evaluator needs
     non-empty input but the trend itself isn't what we're testing."""
     rows = []
-    for i in range(30):
+    for _ in range(30):
         rows.append(
             KrQuoteRow(
                 date=Date(2026, 5, 9),
@@ -81,7 +81,7 @@ def _patch_llm(monkeypatch: pytest.MonkeyPatch, *, priced_in: float = 0.82) -> N
     screenshot scenario where dampening fires."""
     from agents.characters import soros as soros_mod
 
-    def fake_priced_in(self: Any, ticker: str, bundle: Any) -> tuple[Decimal, float, str]:  # noqa: ANN001
+    def fake_priced_in(self: Any, ticker: str, bundle: Any) -> tuple[Decimal, float, str]:
         return Decimal(str(priced_in)), 0.0, "claude-haiku-4-5"
 
     def fake_narrative(

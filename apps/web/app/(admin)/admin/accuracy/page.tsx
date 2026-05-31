@@ -126,7 +126,6 @@ export default async function AccuracyPage() {
       : null;
 
   // Feedback rollup
-  const fbWithSignal = feedback.filter((f) => f.signal_grade != null);
   const fbAvgAccuracy =
     feedback.length > 0
       ? feedback.reduce((s, f) => s + (f.accuracy_score ?? 0), 0) /

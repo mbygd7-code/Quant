@@ -162,14 +162,14 @@ def run_cycle(
             graham_out = graham.analyze(ticker, cycle_at)
         except InsufficientDataError as exc:
             skip_reasons.append(f"graham={exc.reason}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             unexpected_errors.append(f"graham:{exc}")
 
         try:
             dow_out = dow.analyze(ticker, cycle_at)
         except InsufficientDataError as exc:
             skip_reasons.append(f"dow={exc.reason}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             unexpected_errors.append(f"dow:{exc}")
 
         # Persist whatever we got — partial data is still useful for M1

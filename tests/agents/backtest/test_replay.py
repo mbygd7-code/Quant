@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from agents.backtest import replay_m4 as replay_mod
-from agents.db.models import AgentName, AgentOutputNew
+from agents.db.models import AgentOutputNew
 
 
 def _stub_output_new(

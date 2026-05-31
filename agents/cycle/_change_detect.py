@@ -111,7 +111,7 @@ def macro_shocks(
 
 def should_reanalyze(
     *,
-    ticker: str,  # noqa: ARG001 — kept for log readability at call sites
+    ticker: str,
     quotes: list[KrQuoteRow],
     macro_quotes_by_symbol: dict[str, list[GlobalMarketRow]] | None = None,
 ) -> ChangeReport:

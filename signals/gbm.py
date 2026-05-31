@@ -230,7 +230,7 @@ class GBMPredictor:
                     rows_x.append(feat.as_array())
                     rows_y.append(int(label))
                     rows_g.append((cursor - epoch).days)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     continue
             cursor = cursor + timedelta(days=1)
 

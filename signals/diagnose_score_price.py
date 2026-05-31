@@ -33,9 +33,9 @@ import argparse
 import math
 import sys
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Iterable
 
 from db.supabase_client import get_admin_client
 
@@ -234,7 +234,7 @@ def diagnose(days: int) -> int:
         return 1
     print(f"Loading korea_market (through {price_end}) …", file=sys.stderr)
     prices = _fetch_prices(score_start, price_end)
-    print(f"Loading stocks.sector …", file=sys.stderr)
+    print("Loading stocks.sector …", file=sys.stderr)
     sectors = _fetch_sectors()
 
     print(f"scored rows: {len(scores):,}   price rows: {len(prices):,}\n")
@@ -289,7 +289,7 @@ def diagnose(days: int) -> int:
                 print(f"  korea_market: ticker={k[0]!r:<12} date={k[1]}")
             # Cross-check by ticker only (ignore date)
             score_tickers = {s.ticker for s in scores}
-            price_tickers = {k[0] for k in prices.keys()}
+            price_tickers = {k[0] for k in prices}
             common = score_tickers & price_tickers
             print(
                 f"\n  unique tickers — ai_scores: {len(score_tickers)},  "
@@ -307,7 +307,7 @@ def diagnose(days: int) -> int:
                     {s.date for s in scores if s.ticker == sample}
                 )[:5]
                 price_dates_for = sorted(
-                    {k[1] for k in prices.keys() if k[0] == sample}
+                    {k[1] for k in prices if k[0] == sample}
                 )[:5]
                 print(
                     f"\n  ticker {sample!r} has both — date samples:"
@@ -360,7 +360,7 @@ def diagnose(days: int) -> int:
     # ── (4) Per-ticker top/bottom 5, t+1 final_score ──────────
     print("## 4. final_score by ticker — top/bottom 5 (t+1 horizon)\n")
     ticker_results: list[tuple[str, float, int]] = []
-    for tk, h in pairs_by_ticker_h.keys():
+    for tk, h in pairs_by_ticker_h:
         if h != 1:
             continue
         pts = pairs_by_ticker_h[(tk, h)]

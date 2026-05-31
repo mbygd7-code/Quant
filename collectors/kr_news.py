@@ -32,7 +32,6 @@ import asyncio
 import logging
 import time
 from datetime import UTC, datetime
-from datetime import date as Date
 from typing import Any
 
 import httpx
@@ -79,7 +78,7 @@ async def fetch_ticker_news(
         if isinstance(body, dict):
             return body.get("items", []) or []
         return body or []
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning("[kr_news] %s fetch failed: %s", ticker, exc)
         return []
 
@@ -164,7 +163,7 @@ async def collect_for_tickers(
     return rows
 
 
-def upsert_news_rows(supabase, rows: list[dict[str, Any]]) -> int:  # noqa: ANN001
+def upsert_news_rows(supabase, rows: list[dict[str, Any]]) -> int:
     """Insert/update news_items rows. ``url`` is the conflict key.
 
     Returns the number of rows attempted (Supabase upserts don't
@@ -193,7 +192,7 @@ def upsert_news_rows(supabase, rows: list[dict[str, Any]]) -> int:  # noqa: ANN0
 
 
 def collect_and_persist(
-    supabase,  # noqa: ANN001
+    supabase,
     tickers: list[str],
     *,
     page_size: int = PAGE_SIZE,

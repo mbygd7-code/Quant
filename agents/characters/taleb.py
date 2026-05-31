@@ -26,6 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
+from itertools import pairwise
 from typing import ClassVar
 
 from pydantic import BaseModel, Field
@@ -130,7 +131,7 @@ def _daily_returns(quotes: list[KrQuoteRow]) -> list[Decimal]:
         if q.close is not None and q.close > 0:
             closes.append(Decimal(q.close))
     rets: list[Decimal] = []
-    for newer, older in zip(closes, closes[1:]):
+    for newer, older in pairwise(closes):
         if older == 0:
             continue
         rets.append((newer - older) / older)

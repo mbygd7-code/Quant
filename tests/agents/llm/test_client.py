@@ -245,9 +245,9 @@ _client_module._is_transient = _is_transient_with_fake
 # ─── _strip_json_fences ─────────────────────────────────────────────
 
 
-import pytest as _pytest
+import pytest as _pytest  # noqa: E402
 
-from agents.llm.client import _strip_json_fences as _strip
+from agents.llm.client import _strip_json_fences as _strip  # noqa: E402
 
 
 @_pytest.mark.parametrize(

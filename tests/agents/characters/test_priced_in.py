@@ -20,7 +20,6 @@ from agents.characters.soros import (
     apply_priced_in,
 )
 
-
 # ─── Below the threshold → pass through unchanged ───────────────────
 
 
@@ -87,7 +86,7 @@ def test_dampening_preserves_sign() -> None:
 
 
 def test_threshold_constant() -> None:
-    assert PRICED_IN_DAMPEN_THRESHOLD == Decimal("0.70")
+    assert Decimal("0.70") == PRICED_IN_DAMPEN_THRESHOLD
 
 
 def test_factor_is_a_dampener() -> None:
@@ -95,7 +94,7 @@ def test_factor_is_a_dampener() -> None:
     through, anything ≤0 would invert the sign."""
     assert Decimal("0") < PRICED_IN_DAMPEN_FACTOR <= Decimal("1")
     # Specifically 0.5 per character-soros.md §3 Q2.
-    assert PRICED_IN_DAMPEN_FACTOR == Decimal("0.5")
+    assert Decimal("0.5") == PRICED_IN_DAMPEN_FACTOR
 
 
 # ─── Edge: q=2 + priced_in=0.82 → adjusted=1.00 (matches user report) ─

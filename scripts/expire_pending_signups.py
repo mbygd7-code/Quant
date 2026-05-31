@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from datetime import date as Date
 
 import pandas_market_calendars as mcal
@@ -33,7 +33,7 @@ def _today_kst() -> Date:
     # GitHub Actions runs in UTC; KST = UTC+9. Using UTC date is close
     # enough since this job runs at 00:00 UTC = 09:00 KST and we only
     # care about whole-business-day counts.
-    return datetime.now(timezone.utc).date()
+    return datetime.now(UTC).date()
 
 
 def elapsed_business_days(start: Date, end: Date) -> int:

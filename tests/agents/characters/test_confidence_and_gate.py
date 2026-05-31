@@ -17,7 +17,6 @@ from agents.grading import (
     apply_confidence_gate,
 )
 
-
 # ─── confidence_from_voters ─────────────────────────────────────────
 
 

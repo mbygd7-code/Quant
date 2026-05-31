@@ -50,7 +50,6 @@ from agents.db.models import (
     SignalChangeEvent,
 )
 
-
 # ─── CSV schema ──────────────────────────────────────────────────────
 
 
@@ -110,7 +109,7 @@ def _patch_data_helpers(as_of: Date) -> dict[str, Any]:
             def _patched_daily(
                 ticker: str,
                 days: int = 252,
-                as_of: Date | None = None,  # noqa: ARG001 — override
+                as_of: Date | None = None,
                 client: Any = None,
                 _orig: Any = data_mod.daily_quotes,
                 _cutoff: Date = as_of,
@@ -121,7 +120,7 @@ def _patch_data_helpers(as_of: Date) -> dict[str, Any]:
             def _patched_global(
                 symbol: str,
                 days: int = 60,
-                as_of: Date | None = None,  # noqa: ARG001
+                as_of: Date | None = None,
                 client: Any = None,
                 _orig: Any = data_mod.global_quotes,
                 _cutoff: Date = as_of,
@@ -216,7 +215,7 @@ def _replay_one(
             cost += float(out.cost_estimate or 0)
         except InsufficientDataError as exc:
             dropped.append(f"{name}={exc.reason}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             dropped.append(f"{name}=error:{exc}")
 
     if not voters:
@@ -309,7 +308,7 @@ def run_replay(
                             keynes=key,
                             taleb=tal,
                         )
-                    except Exception as exc:  # noqa: BLE001
+                    except Exception as exc:
                         # Soros itself failed (unlikely with dry-run repo).
                         sys.stderr.write(
                             f"[replay] {ticker} @ {d}: synthesis error: {exc}\n"

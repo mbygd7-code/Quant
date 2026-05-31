@@ -143,9 +143,9 @@ def test_severity_table(
         earnings_imminent=earnings_imminent,
     )
     assert sev == expected_severity
-    assert bumped is (earnings_imminent and expected_severity < 5
-                      or earnings_imminent and expected_severity > 1
-                      and Decimal(max_dd) < Decimal("0.40"))
+    assert bumped is ((earnings_imminent and expected_severity < 5)
+                      or (earnings_imminent and expected_severity > 1
+                      and Decimal(max_dd) < Decimal("0.40")))
 
 
 def test_severity_earnings_bumps_only_when_below_5() -> None:

@@ -26,13 +26,12 @@ import csv
 import statistics
 import sys
 from collections import defaultdict
-from datetime import datetime
 from datetime import date as Date
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from agents.characters._data import daily_quotes
-
 
 HIT_THRESHOLD_HOLD = 0.03   # |ret| < 3% counts as a HOLD hit
 SEVERE_TALEB_HORIZON_DAYS = 30

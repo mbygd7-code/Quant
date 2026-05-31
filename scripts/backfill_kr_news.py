@@ -19,7 +19,7 @@ from collectors.kr_news import collect_and_persist
 from db.supabase_client import get_admin_client
 
 
-def _watchlist_tickers(sb) -> list[str]:  # noqa: ANN001
+def _watchlist_tickers(sb) -> list[str]:
     rows = (
         sb.table("stocks")
         .select("ticker")

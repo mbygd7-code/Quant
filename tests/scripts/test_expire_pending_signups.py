@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from datetime import date
 
-import pytest
-
 from scripts.expire_pending_signups import (
     APPROVAL_SLA_BUSINESS_DAYS,
     elapsed_business_days,

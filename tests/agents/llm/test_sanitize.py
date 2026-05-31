@@ -58,7 +58,7 @@ def test_empty_text_passes() -> None:
 # ─── sanitize_narrative_safe ─────────────────────────────────────────
 
 
-from agents.llm.sanitize import sanitize_narrative_safe
+from agents.llm.sanitize import sanitize_narrative_safe  # noqa: E402
 
 
 def test_safe_passes_clean_narrative_unchanged() -> None:

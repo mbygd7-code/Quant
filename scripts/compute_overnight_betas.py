@@ -106,7 +106,6 @@ def main(window: int = 120, dry_run: bool = False) -> None:
     ) -> tuple[list[float], list[float]]:
         """Align KR_t with the most recent US session strictly before t
         (within 4 calendar days). Returns (us_prev, kr) value lists."""
-        us_dates_sorted = sorted(us_series.keys())
         xs: list[float] = []
         ys: list[float] = []
         for d_str, kr_val in kr_series.items():
@@ -131,7 +130,7 @@ def main(window: int = 120, dry_run: bool = False) -> None:
         if len(kr_series) < 20:
             continue
         candidates = list(
-            dict.fromkeys((SECTOR_PROXIES.get(sector, []) + BROAD_FALLBACKS))
+            dict.fromkeys(SECTOR_PROXIES.get(sector, []) + BROAD_FALLBACKS)
         )
         best: dict | None = None
         for sym in candidates:

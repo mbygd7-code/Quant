@@ -24,7 +24,6 @@ import {
   Waves,
 } from 'lucide-react';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { HelpSearch } from '@/components/help/help-search';
 
 // Help page for absolute beginners. Goal: a single page that explains

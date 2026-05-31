@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from cognition.scorer import WeightConfig, StockScorer
 from cognition.__schemas__.scoring import SubScores
+from cognition.scorer import StockScorer, WeightConfig
 
 
 class TestWeightConfigDefaults:

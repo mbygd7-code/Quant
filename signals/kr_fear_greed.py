@@ -36,10 +36,8 @@ import math
 import statistics
 from dataclasses import dataclass, field
 from datetime import date as Date
-from datetime import timedelta
 
 from agents.characters._data import (
-    GlobalMarketRow,
     daily_quotes,
     global_quotes,
 )
@@ -266,7 +264,7 @@ def compute_kr_fg(as_of: Date) -> KrFearGreedResult:
     components: dict[str, float | None] = {}
     try:
         components["kospi_momentum"] = _kospi_momentum(as_of)
-    except Exception as exc:  # noqa: BLE001 — any infra fail = None
+    except Exception as exc:
         log.warning("kr_fg kospi_momentum failed: %s", exc)
         components["kospi_momentum"] = None
     try:

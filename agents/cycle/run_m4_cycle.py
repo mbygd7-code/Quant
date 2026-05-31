@@ -30,13 +30,13 @@ from agents.cycle._change_detect import (
     MACRO_SHOCK_SYMBOLS,
     should_reanalyze,
 )
+from agents.cycle._favorites import favorites_union
 from agents.cycle.run_m2_cycle import (
     CycleReport,
     TickerOutcome,
     _stamp,
     _watchlist_tickers,
 )
-from agents.cycle._favorites import favorites_union
 from agents.db.models import (
     AgentName,
     AgentOutput,
@@ -98,13 +98,10 @@ def run_cycle(
     if tickers:
         target_tickers = tickers
     elif favorites_only:
+        # Empty favorites table → fall back to the watchlist so the cron
+        # isn't silent.
         favs = favorites_union(repo)
-        if favs:
-            target_tickers = favs
-        else:
-            # Empty favorites table — fall back so the cron isn't silent.
-            # Logged as a warning in the report.
-            target_tickers = _watchlist_tickers(repo, tiers=tiers)
+        target_tickers = favs or _watchlist_tickers(repo, tiers=tiers)
     else:
         target_tickers = _watchlist_tickers(repo, tiers=tiers)
 
@@ -115,7 +112,7 @@ def run_cycle(
         for sym in MACRO_SHOCK_SYMBOLS:
             try:
                 macro_snapshot[sym] = global_quotes(sym, days=5)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 macro_snapshot[sym] = []
 
     report = CycleReport(cycle_at=cycle_at)
@@ -132,7 +129,7 @@ def run_cycle(
                     quotes=quote_window,
                     macro_quotes_by_symbol=macro_snapshot,
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # Quote fetch failed — be safe and analyse.
                 report_ = None
             if report_ is not None and not report_.re_run:
@@ -158,7 +155,7 @@ def run_cycle(
                 per_voter_costs += float(out.cost_estimate or 0)
             except InsufficientDataError as exc:
                 skip_reasons.append(f"{name}={exc.reason}")
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 skip_reasons.append(f"{name}=error:{exc}")
 
         if not per_voter_outputs:
@@ -208,7 +205,7 @@ def run_cycle(
                     ),
                 )
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             report.add(
                 TickerOutcome(
                     ticker=ticker,
