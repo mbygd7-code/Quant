@@ -117,7 +117,7 @@ class StockScorer:
 
             result = compute_kr_fg(on_date)
             value = max(0.0, min(1.0, result.score / 100.0))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning("kr_fear_greed compute failed (%s) — using NEUTRAL", exc)
             value = NEUTRAL
         cached[on_date] = value
@@ -537,17 +537,20 @@ class StockScorer:
     # ──────────────────────────────────────────────────────
     def _combine(self, sub: SubScores) -> float:
         w = self._weights
-        # SIGN-FLIPPED: related_us_stock_score is empirically an anti-signal
-        # (Spearman ρ = -0.265 over n=120 pairs in 2026-05 diagnostic). Likely
-        # explanation: US gains are already priced into the KR open via gap-up,
-        # so a "strong US related" reading often precedes mean-reversion. We
-        # subtract it instead of adding to align the contribution with realized
-        # forward returns. Re-evaluate after ≥30 days of accumulated overlap
-        # via `signals/diagnose_score_price.py` (results table model_diagnostics).
+        # NOTE on related_us_stock: a 16-day diagnostic suggested it was a
+        # same-day ANTI-signal (Spearman ρ≈-0.27) — US gains pricing into the
+        # KR open via gap-up, then mean-reverting. We briefly subtracted it,
+        # but plain subtraction un-centers the weighted average (a fully
+        # neutral 0.5 input dropped from 0.45 → 0.26), which silently biased
+        # every signal bearish. 16 days is too thin to justify that, so we've
+        # reverted to the normalized positive term. The weekly diagnostic
+        # (model_diagnostics) is accumulating evidence; once ≥30-60 days
+        # confirm the anti-signal we'll invert it the *correct* way that
+        # preserves centering: `+ w.related_us_stock * (1 - sub.related_us_stock)`.
         raw = (
             w.global_market * sub.global_market
             + w.sector * sub.sector
-            - w.related_us_stock * sub.related_us_stock  # ← anti-signal, inverted
+            + w.related_us_stock * sub.related_us_stock
             + w.news_sentiment * sub.news_sentiment
             + w.fundamental * sub.fundamental
             + w.volume_flow * sub.volume_flow
