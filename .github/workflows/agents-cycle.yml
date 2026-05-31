@@ -127,8 +127,11 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           ANTHROPIC_API_KEY:          ${{ secrets.ANTHROPIC_API_KEY }}
 
-      - name: Upload report on failure
-        if: failure()
+      - name: Upload cycle report (always)
+        # Always upload — per-ticker errors are isolated but make the run
+        # exit non-zero; we want the log even on partial runs so synthesis
+        # regressions are inspectable without re-running the cycle.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cycle-report

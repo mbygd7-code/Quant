@@ -689,6 +689,7 @@ class Soros:
             cache=cache,
             messages=[ClaudeMessage(role="user", content=user_text)],
             response_model=SorosNarrative,
+            max_tokens=2048,  # same truncation guard as M4 (see _narrative_m4)
         )
         if parsed is None:
             raise RuntimeError("M3 narrative returned no parsed response")
@@ -905,6 +906,12 @@ class Soros:
             cache=cache,
             messages=[ClaudeMessage(role="user", content=user_text)],
             response_model=SorosNarrative,
+            # narrative(≤300자) + short_term(≤120자) + mid_term(≤120자) in a
+            # JSON envelope is ~1.0-1.4k output tokens. The 1024 default
+            # truncated the JSON mid-string → parse failure → this method
+            # raised for ~97% of tickers (only naturally-concise outputs
+            # fit). 2048 gives comfortable headroom.
+            max_tokens=2048,
         )
         if parsed is None:
             raise RuntimeError("M4 narrative returned no parsed response")
@@ -1001,6 +1008,7 @@ class Soros:
             cache=cache,
             messages=[ClaudeMessage(role="user", content=user_text)],
             response_model=SorosNarrative,
+            max_tokens=2048,  # same truncation guard as M4 (see _narrative_m4)
         )
         if parsed is None:
             raise RuntimeError("narrative call returned no parsed response")
