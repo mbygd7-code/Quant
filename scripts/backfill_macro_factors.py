@@ -1,12 +1,16 @@
-"""Backfill macro factor history (USDKRW, ^TNX, WTI) into global_market.
+"""Backfill macro factor history (USDKRW, ^TNX, WTI, DXY) into global_market.
 
-DXY and ^VIX are already collected by the daily pipeline. Only the
-three new ones need backfill. yfinance is the single source.
+^VIX is collected by the indices backfill. yfinance is the single source.
 
 USDKRW: 1 USD priced in KRW. Higher = KRW weakness.
 ^TNX:   CBOE 10Y Treasury Yield index. The price IS the yield × 10
         (e.g., 4.5% → 45.0). We store as-is; scorer scales.
 WTI:    Crude Oil futures. yfinance symbol = "CL=F" but we store as "WTI".
+DXY:    ICE US Dollar Index. yfinance symbol = "DX-Y.NYB". Broad USD
+        strength — a foreign-capital-flow signal Keynes uses. Was
+        previously assumed "collected by the daily pipeline" but in fact
+        never collected anywhere (0 rows), so kr_macro_betas had no DXY
+        beta. Added here.
 
 Usage:
   python -m scripts.backfill_macro_factors --days 90
@@ -24,9 +28,10 @@ from db.supabase_client import get_admin_client
 
 # yfinance symbol → our canonical symbol (matches existing global_market rows)
 YF_TO_OURS: dict[str, str] = {
-    "KRW=X": "USDKRW",
-    "^TNX":  "^TNX",
-    "CL=F":  "WTI",
+    "KRW=X":     "USDKRW",
+    "^TNX":      "^TNX",
+    "CL=F":      "WTI",
+    "DX-Y.NYB":  "DXY",
 }
 
 
@@ -56,9 +61,9 @@ def main(days: int = 90) -> None:
                     continue
                 prev = closes[i - 1] if i > 0 else None
                 change = (close - prev) / prev if prev else None
-                # Asset class: fx for USDKRW, rate for ^TNX, commodity for WTI
+                # Asset class: fx for USDKRW/DXY, rate for ^TNX, commodity for WTI
                 asset_class = (
-                    "fx" if our_sym == "USDKRW"
+                    "fx" if our_sym in ("USDKRW", "DXY")
                     else "rate" if our_sym == "^TNX"
                     else "commodity"
                 )
