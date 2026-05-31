@@ -298,6 +298,26 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
     )
     print(report.summary())
+
+    # Silent-no-op guard. A 100%-skip cycle (every ticker quiet) used to
+    # exit 0 and show a green check — which is exactly how a stale-data
+    # outage hid for weeks (data didn't update → change-detect saw no
+    # movement → skipped everything → "success"). When require_change is
+    # on and EVERY attempted ticker skipped with nothing produced, treat
+    # it as a failure so the cron surfaces it instead of looking healthy.
+    if (
+        args.require_change
+        and report.tickers_attempted > 0
+        and report.success == 0
+        and report.skipped == report.tickers_attempted
+    ):
+        print(
+            f"\n[ALERT] 100% skip ({report.skipped}/{report.tickers_attempted}) — "
+            "likely STALE market data (daily pipeline behind) or a change-detect "
+            "bug. No analysis ran. Investigate korea_market / global_market freshness."
+        )
+        return 3
+
     return 0 if report.errors == 0 else 2
 
 
