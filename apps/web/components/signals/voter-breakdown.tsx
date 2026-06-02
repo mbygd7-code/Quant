@@ -406,10 +406,7 @@ function VoterCard({
       </div>
 
       {voter.narrative && (
-        <p
-          className="text-[13px] text-txt-secondary line-clamp-4 leading-relaxed"
-          title={voter.narrative}
-        >
+        <p className="text-[13px] text-txt-secondary leading-relaxed whitespace-pre-line">
           {voter.narrative}
         </p>
       )}
