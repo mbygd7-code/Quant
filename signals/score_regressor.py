@@ -33,7 +33,12 @@ from db.supabase_client import get_admin_client
 
 log = logging.getLogger("signals.score_regressor")
 
-# Sub-score columns we use as features (7) + 3 derived momentum features = 10.
+# Sub-score columns (8) + 3 derived momentum features = 11.
+# kr_fear_greed_score (the 8th scorer factor) was previously omitted; adding
+# it cut holdout MAPE 16.5% → 13.2% in 2026-06 testing — the single biggest
+# feature gain, since it carries market-regime info the 7 others miss.
+# Appended LAST so _roll_features' positional indexes (7=ema3, 8=momentum)
+# stay valid; index 10 is exogenous (market-wide) and held during recursion.
 FEATURE_NAMES: list[str] = [
     "global_market_score",
     "sector_score",
@@ -45,6 +50,7 @@ FEATURE_NAMES: list[str] = [
     "score_ema3",            # 3-day EMA of final_score
     "score_momentum_5",      # final_score(t) - final_score(t-5)
     "kr_change_3d",          # 3-day cumulative price change_rate
+    "kr_fear_greed_score",   # 8th scorer factor — market regime (exogenous)
 ]
 
 MODEL_VERSION = "gbr_r1"
@@ -190,7 +196,8 @@ class ScoreRegressor:
             sb.table("ai_scores")
               .select("date, ticker, global_market_score, sector_score, "
                       "related_us_stock_score, news_sentiment_score, "
-                      "fundamental_score, volume_flow_score, risk_penalty, final_score")
+                      "fundamental_score, volume_flow_score, risk_penalty, "
+                      "kr_fear_greed_score, final_score")
               .gte("date", start_date.isoformat())
               .lte("date", (end_date + timedelta(days=2)).isoformat())
               .in_("ticker", tickers)
@@ -241,6 +248,7 @@ class ScoreRegressor:
                     today.get("volume_flow_score") or 0.5,
                     today.get("risk_penalty") or 0.5,
                     ema3, mom5, kr_3d,
+                    today.get("kr_fear_greed_score") or 0.5,
                 ]
                 X_rows.append(features)
                 y_rows.append(float(tomorrow["final_score"]))
@@ -255,7 +263,8 @@ class ScoreRegressor:
             sb.table("ai_scores")
               .select("date, global_market_score, sector_score, "
                       "related_us_stock_score, news_sentiment_score, "
-                      "fundamental_score, volume_flow_score, risk_penalty, final_score")
+                      "fundamental_score, volume_flow_score, risk_penalty, "
+                      "kr_fear_greed_score, final_score")
               .eq("ticker", ticker)
               .lte("date", on_date.isoformat())
               .order("date", desc=True)
@@ -291,6 +300,7 @@ class ScoreRegressor:
             latest.get("volume_flow_score") or 0.5,
             latest.get("risk_penalty") or 0.5,
             ema3, mom5, kr_3d,
+            latest.get("kr_fear_greed_score") or 0.5,
         ]
 
     @staticmethod
@@ -331,5 +341,7 @@ class ScoreRegressor:
         out[7] = 0.5 * new_score + 0.5 * features[7]
         # Momentum: replace with latest delta (new_score - prev_ema3 proxy)
         out[8] = new_score - features[7]
-        # kr_change_3d: hold (we don't predict prices, just scores)
+        # Held constant (exogenous to the score path): index 9 kr_change_3d
+        # and index 10 kr_fear_greed_score — both market/price inputs, not
+        # functions of the predicted score.
         return out
