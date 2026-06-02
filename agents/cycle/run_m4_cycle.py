@@ -30,7 +30,7 @@ from agents.cycle._change_detect import (
     MACRO_SHOCK_SYMBOLS,
     should_reanalyze,
 )
-from agents.cycle._favorites import favorites_union
+from agents.cycle._favorites import favorites_union, top_scored_tickers
 from agents.cycle.run_m2_cycle import (
     CycleReport,
     TickerOutcome,
@@ -70,6 +70,7 @@ def run_cycle(
     tickers: list[str] | None = None,
     tiers: list[str] | None = None,
     favorites_only: bool = False,
+    top_n: int = 0,
     require_change: bool = False,
     user_id: UUID | None = None,
     dry_run: bool = False,
@@ -91,17 +92,27 @@ def run_cycle(
 
     # Universe selection order of precedence:
     #   1. explicit --tickers wins (debug / one-off runs)
-    #   2. --favorites-only: union of every user's LNB favorites
-    #      → falls back to watchlist if no favorites are registered yet
+    #   2. --favorites-only: two-tier universe = every user's LNB favorites
+    #      ∪ the top-`top_n` names by quant score (ai_scores). Favorites get
+    #      deep expert analysis; the top quant candidates get it too, so
+    #      (a) discovery works (surface stocks the user doesn't follow) and
+    #      (b) the "주목 종목" recommendations are expert-backed. Falls back
+    #      to the watchlist only when BOTH are empty.
     #   3. --tier filter on the admin watchlist
     #   4. full admin watchlist (legacy default)
     if tickers:
         target_tickers = tickers
     elif favorites_only:
-        # Empty favorites table → fall back to the watchlist so the cron
-        # isn't silent.
         favs = favorites_union(repo)
-        target_tickers = favs or _watchlist_tickers(repo, tiers=tiers)
+        top = top_scored_tickers(repo, top_n) if top_n > 0 else []
+        # Union, preserving order: favorites first, then fresh top-N names.
+        merged: list[str] = []
+        seen: set[str] = set()
+        for t in [*favs, *top]:
+            if t not in seen:
+                seen.add(t)
+                merged.append(t)
+        target_tickers = merged or _watchlist_tickers(repo, tiers=tiers)
     else:
         target_tickers = _watchlist_tickers(repo, tiers=tiers)
 
@@ -269,6 +280,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "full watchlist if no user has favorited anything yet."
         ),
     )
+    p.add_argument(
+        "--top-n",
+        type=int,
+        default=0,
+        help=(
+            "With --favorites-only, also analyze the top-N tickers by quant "
+            "ai_scores (two-tier universe = favorites ∪ top-N). 0 disables. "
+            "Enables discovery + expert-backed 주목 종목 recommendations."
+        ),
+    )
     return p.parse_args(argv)
 
 
@@ -290,6 +311,7 @@ def main(argv: list[str] | None = None) -> int:
         tickers=tickers,
         tiers=tiers,
         favorites_only=args.favorites_only,
+        top_n=args.top_n,
         require_change=args.require_change,
         user_id=user_id,
         dry_run=args.dry_run,

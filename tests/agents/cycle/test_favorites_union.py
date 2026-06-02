@@ -8,7 +8,13 @@ from agents.cycle._favorites import favorites_union
 
 def _make_repo(rows: list[dict] | None, *, raise_on_query: bool = False):
     """Construct a minimal repo stub matching the supabase-py chain
-    used inside `favorites_union` — `repo.client.table().select().execute().data`.
+    used inside `favorites_union` — `repo.sb.table().select().execute().data`.
+
+    NOTE: the real AgentRepository exposes the client as `.sb`, not
+    `.client`. The original mock used `.client`, which silently passed
+    while the production code (also using `.client`) always hit the
+    AttributeError fallback and returned [] — i.e. favorites_only never
+    worked. Fixed both to `.sb`.
 
     Pass ``rows=None`` to assert the empty-table branch; pass a list to
     inject specific ticker rows; pass ``raise_on_query=True`` to verify
@@ -16,12 +22,12 @@ def _make_repo(rows: list[dict] | None, *, raise_on_query: bool = False):
     """
     repo = MagicMock()
     if raise_on_query:
-        repo.client.table.side_effect = RuntimeError("relation does not exist")
+        repo.sb.table.side_effect = RuntimeError("relation does not exist")
         return repo
 
     result = MagicMock()
     result.data = rows or []
-    repo.client.table.return_value.select.return_value.execute.return_value = result
+    repo.sb.table.return_value.select.return_value.execute.return_value = result
     return repo
 
 

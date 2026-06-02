@@ -22,9 +22,9 @@ def favorites_union(repo: AgentRepository) -> list[str]:
     relying on this function to fall back.
     """
     try:
-        # repo.client is the supabase-py admin client (service-role).
+        # repo.sb is the supabase-py admin client (service-role).
         rows = (
-            repo.client.table("user_favorites")
+            repo.sb.table("user_favorites")
             .select("ticker")
             .execute()
             .data
@@ -34,6 +34,56 @@ def favorites_union(repo: AgentRepository) -> list[str]:
         # Migration 24 not applied yet OR table dropped — be silent so
         # the cycle worker falls through to the full watchlist instead
         # of crashing in production.
+        return []
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for row in rows:
+        t = (row.get("ticker") or "").upper()
+        if not t or t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+    return out
+
+
+def top_scored_tickers(repo: AgentRepository, n: int = 10) -> list[str]:
+    """Return the top-``n`` tickers by the latest quant `ai_scores.final_score`.
+
+    This is the cheap 8-factor scorer's ranking (computed over the FULL
+    universe daily, no LLM). The two-tier design uses it as the candidate
+    pool for the expert debate: favorites get deep analysis, and these
+    high-signal names get analyzed too so (a) discovery works — the system
+    can surface stocks the user doesn't already follow — and (b) the
+    "주목 종목" recommendations are backed by the expert panel, not just
+    the quant score.
+
+    Returns [] on any miss (no scores yet, table absent) so the caller
+    falls back gracefully.
+    """
+    try:
+        latest = (
+            repo.sb.table("ai_scores")
+            .select("date")
+            .order("date", desc=True)
+            .limit(1)
+            .execute()
+            .data
+        )
+        if not latest:
+            return []
+        latest_date = latest[0]["date"]
+        rows = (
+            repo.sb.table("ai_scores")
+            .select("ticker, final_score")
+            .eq("date", latest_date)
+            .order("final_score", desc=True)
+            .limit(n)
+            .execute()
+            .data
+            or []
+        )
+    except Exception:
         return []
 
     seen: set[str] = set()

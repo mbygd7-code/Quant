@@ -119,6 +119,10 @@ jobs:
           fi
           if [ "${{ steps.tier-from-schedule.outputs.favorites_only }}" = "true" ]; then
             ARGS="$ARGS --favorites-only"
+            # Two-tier: also analyze the top-10 quant-scored names so the
+            # expert panel covers discovery candidates + the 주목 종목 list,
+            # not just what users already favorited.
+            ARGS="$ARGS --top-n 10"
           fi
           if [ "${{ steps.tier-from-schedule.outputs.require_change }}" = "true" ]; then
             ARGS="$ARGS --require-change"
