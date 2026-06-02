@@ -648,18 +648,16 @@ class Soros:
         adjusted: Decimal,
         grade: SignalGrade,
     ) -> tuple[str, float, str]:
-        # One cache block per voter — Anthropic dedupes them per cycle.
-        cache: list[CacheBlock] = []
-        for agent_name, output in bundle.voters.items():
-            cache.append(
-                CacheBlock(
-                    text=(
-                        f"{agent_name.capitalize()} 의견 ({output.score:+}점):\n"
-                        f"{output.narrative}"
-                    ),
-                    label=f"{agent_name}-narrative",
-                )
-            )
+        # Single combined cache block — see _narrative_m4 for why (Anthropic
+        # caps cache_control blocks at 4; M3's 4 voters sat exactly at the
+        # edge and any extra block would 400).
+        voter_sections = [
+            f"{agent_name.capitalize()} 의견 ({output.score:+}점):\n{output.narrative}"
+            for agent_name, output in bundle.voters.items()
+        ]
+        cache: list[CacheBlock] = [
+            CacheBlock(text="\n\n".join(voter_sections), label="m3-voters")
+        ]
         voter_lines = "\n".join(
             f"- {a}: {bundle.voters[a].score}점"
             for a in bundle.voters
@@ -847,23 +845,27 @@ class Soros:
         taleb_severity: int | None,
         constraint_applied: bool,
     ) -> tuple[str, float, str]:
-        cache: list[CacheBlock] = []
+        # Single combined cache block. One block PER voter (6 of them in M4)
+        # exceeds Anthropic's hard limit of 4 cache_control blocks → 400
+        # "A maximum of 4 blocks with cache_control may be provided. Found 6."
+        # which silently killed synthesis for every ticker whose full voter
+        # set was present. Concatenating into one block keeps the prompt-cache
+        # benefit while staying at 1 cache_control block.
+        voter_sections: list[str] = []
         for agent_name, output in bundle.voters.items():
             severity_suffix = (
                 f" severity={output.severity}"
                 if output.severity is not None
                 else ""
             )
-            cache.append(
-                CacheBlock(
-                    text=(
-                        f"{agent_name.capitalize()} 의견 "
-                        f"({output.score:+}점{severity_suffix}):\n"
-                        f"{output.narrative}"
-                    ),
-                    label=f"{agent_name}-narrative",
-                )
+            voter_sections.append(
+                f"{agent_name.capitalize()} 의견 "
+                f"({output.score:+}점{severity_suffix}):\n"
+                f"{output.narrative}"
             )
+        cache: list[CacheBlock] = [
+            CacheBlock(text="\n\n".join(voter_sections), label="m4-voters")
+        ]
         voter_lines = "\n".join(
             f"- {a}: {bundle.voters[a].score}점"
             + (
