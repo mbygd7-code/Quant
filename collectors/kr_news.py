@@ -29,6 +29,7 @@ Rationale for NAVER specifically over RSS-aggregator approaches:
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import time
 from datetime import UTC, datetime
@@ -38,7 +39,10 @@ import httpx
 
 log = logging.getLogger("collectors.kr_news")
 
-NAVER_ENDPOINT = "https://api.stock.naver.com/news/related"
+# NAVER's per-ticker news API. The old /news/related?code= path now 404s;
+# the live endpoint is path-based and returns a list of date-grouped
+# objects, each with an `items` array. Ticker goes in the PATH.
+NAVER_ENDPOINT = "https://m.stock.naver.com/api/news/stock"
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
@@ -62,8 +66,8 @@ async def fetch_ticker_news(
     """
     try:
         resp = await client.get(
-            NAVER_ENDPOINT,
-            params={"code": ticker, "pageSize": page_size},
+            f"{NAVER_ENDPOINT}/{ticker}",
+            params={"pageSize": page_size, "page": 1},
             headers={
                 "User-Agent": USER_AGENT,
                 "Accept": "application/json",
@@ -73,11 +77,20 @@ async def fetch_ticker_news(
         )
         resp.raise_for_status()
         body = resp.json()
-        # The endpoint returns either {"items": [...]} or a bare list
-        # depending on the path version. Normalise both.
+        # New shape: a list of date-grouped objects [{total, items:[...]}].
+        # Flatten every group's `items`. (Older shapes — bare list or
+        # {"items":[...]} — kept as fallbacks for resilience.)
+        if isinstance(body, list):
+            items: list[dict[str, Any]] = []
+            for group in body:
+                if isinstance(group, dict) and isinstance(group.get("items"), list):
+                    items.extend(group["items"])
+                elif isinstance(group, dict) and group.get("title"):
+                    items.append(group)  # bare item list
+            return items
         if isinstance(body, dict):
             return body.get("items", []) or []
-        return body or []
+        return []
     except Exception as exc:
         log.warning("[kr_news] %s fetch failed: %s", ticker, exc)
         return []
@@ -92,32 +105,43 @@ def parse_naver_news_item(
     Returns None if the item is missing required fields — the cycle
     treats that as a silent skip, not an error.
     """
-    title = (raw.get("title") or "").strip()
-    link = raw.get("linkUrl") or raw.get("officeUrl") or ""
+    # Titles/bodies come HTML-entity-encoded (&quot; &amp; …) — unescape.
+    title = html.unescape((raw.get("titleFull") or raw.get("title") or "").strip())
+    # New API gives the article link as `mobileNewsUrl`; fall back to
+    # constructing it from officeId/articleId, then to legacy fields.
+    link = raw.get("mobileNewsUrl") or ""
+    if not link and raw.get("officeId") and raw.get("articleId"):
+        link = f"https://n.news.naver.com/mnews/article/{raw['officeId']}/{raw['articleId']}"
+    if not link:
+        link = raw.get("linkUrl") or raw.get("officeUrl") or ""
     if not title or not link:
         return None
 
-    # NAVER's `datetime` is "YYYYMMDDHHMMSS"; published_at is the more
-    # liberal "datetime"-named field. Try both.
-    raw_dt = raw.get("datetime") or raw.get("publishedAt") or ""
+    # NAVER's `datetime` here is 12 digits "YYYYMMDDHHMM" (no seconds);
+    # older paths used 14. Handle both.
+    raw_dt = str(raw.get("datetime") or raw.get("publishedAt") or "")
     published_at: datetime | None = None
-    if isinstance(raw_dt, str) and len(raw_dt) >= 14 and raw_dt.isdigit():
-        try:
-            published_at = datetime.strptime(raw_dt[:14], "%Y%m%d%H%M%S").replace(
-                tzinfo=UTC,
-            )
-        except ValueError:
-            published_at = None
+    if raw_dt.isdigit():
+        for fmt, ln in (("%Y%m%d%H%M%S", 14), ("%Y%m%d%H%M", 12)):
+            if len(raw_dt) >= ln:
+                try:
+                    published_at = datetime.strptime(raw_dt[:ln], fmt).replace(tzinfo=UTC)
+                    break
+                except ValueError:
+                    continue
 
     date_iso = (published_at or datetime.now(UTC)).date().isoformat()
     source = (raw.get("officeName") or raw.get("source") or "NAVER").strip()[:50]
+    body = html.unescape(
+        (raw.get("body") or raw.get("subTitle") or raw.get("summary") or "").strip()
+    )
 
     return {
         "date": date_iso,
         "published_at": published_at.isoformat() if published_at else None,
         "source": source,
         "title": title[:500],  # defensive trim; news_items.title is TEXT
-        "body": (raw.get("subTitle") or raw.get("summary") or "").strip()[:2000],
+        "body": body[:2000],
         "url": link[:500],
         "related_symbols": [ticker],
         # sentiment_score/label left NULL — populated by cognition/sentiment.py
