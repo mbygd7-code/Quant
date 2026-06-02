@@ -685,7 +685,7 @@ const SIGNAL_TIERS = [
     range: '0.20 ~ 0.35',
     color: '#E9B247',
     icon: AlertTriangle,
-    body: '부정 요인이 더 많음. 보유 중이라면 익절·손절 시나리오 점검. 신규 진입은 비추천.',
+    body: '부정 요인이 더 많음. 리스크 확인이 필요하며 신규 진입은 관망 권장.',
   },
   {
     label: '위험',

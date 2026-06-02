@@ -46,7 +46,7 @@ const MODES: {
 }[] = [
   { id: 'popular', label: '인기', hint: '거래대금 상위', icon: Flame },
   { id: 'gainers', label: '급등', hint: '상승률 상위', icon: TrendingUp },
-  { id: 'ai_pick', label: 'AI 추천', hint: 'AI 점수 상위', icon: Sparkles },
+  { id: 'ai_pick', label: 'AI 주목', hint: 'AI 점수 상위', icon: Sparkles },
   { id: 'foreign_buy', label: '외국인', hint: '순매수 상위', icon: Globe2 },
 ];
 
@@ -148,7 +148,7 @@ export function AdminAddStockDialog({ children }: { children: React.ReactNode })
         <DialogHeader>
           <DialogTitle className="text-lg">관심 종목 발굴</DialogTitle>
           <DialogDescription className="text-xs text-txt-muted">
-            카카오·토스 증권처럼 인기·급등·AI 추천을 한 번에. 카드를 누르면 바로 마스터 워치리스트에 추가됩니다.
+            카카오·토스 증권처럼 인기·급등·AI 주목을 한 번에. 카드를 누르면 바로 마스터 워치리스트에 추가됩니다.
           </DialogDescription>
         </DialogHeader>
 

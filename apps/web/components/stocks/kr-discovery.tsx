@@ -71,7 +71,7 @@ const SECTIONS: SectionDef[] = [
   },
   {
     id: 'ai_pick',
-    title: 'AI 추천 종목',
+    title: 'AI 주목 종목',
     subtitle: '8요소 종합 점수 상위',
     icon: Sparkles,
     accent: 'text-txt-primary',
@@ -528,7 +528,7 @@ export function KrDiscovery({ initialWatchlistCount }: Props) {
             <span className="ml-auto text-[11px] text-txt-muted">
               {isSearching
                 ? `검색결과 ${searchResults.length}개`
-                : '추천 4개 카테고리 · 카드 클릭으로 즉시 추가'}
+                : '탐색 4개 카테고리 · 카드 클릭으로 즉시 추가'}
             </span>
           </div>
         </CardContent>
