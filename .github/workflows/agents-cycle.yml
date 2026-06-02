@@ -62,7 +62,13 @@ jobs:
   cycle:
     name: Run M4 cycle
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 60 (not 30) so a macro-shock day — when change-detect wakes ALL 50
+    # tickers (50 × ~8 LLM calls ≈ 40min+) — completes instead of getting
+    # killed mid-run. That's exactly the day signals matter most. Normal
+    # incremental cron (~10-15 changed tickers) finishes in 10-20min and
+    # is unaffected; the higher ceiling only costs GH minutes on a genuine
+    # hang, which the per-ticker isolation + always-uploaded log catch.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
