@@ -73,6 +73,10 @@ export function FavoritePicker({
   onUniverseChanged,
 }: Props) {
   const [query, setQuery] = useState('');
+  // "AI 주목" quick view: top-N positive-signal names from the (already
+  // signal-sorted) universe. Descriptive, not a buy recommendation —
+  // these are the stocks whose AI signal currently draws attention.
+  const [notableOnly, setNotableOnly] = useState(false);
   const [externalHits, setExternalHits] = useState<ExternalHit[]>([]);
   const [externalLoading, setExternalLoading] = useState(false);
 
@@ -126,19 +130,30 @@ export function FavoritePicker({
     });
   }, [existing, selectedInternal.size]);
 
+  const NOTABLE_SIGNALS = ['강한 관심', '관심'];
   const filtered = useMemo(() => {
     if (!universe) return [];
     const q = query.trim().toLowerCase();
-    const base = q
-      ? universe.filter(
+    if (q) {
+      return universe
+        .filter(
           (it) =>
             it.name.toLowerCase().includes(q) ||
             it.ticker.toLowerCase().includes(q) ||
             (it.sector ?? '').toLowerCase().includes(q),
         )
-      : universe;
-    return base.slice(0, 100);
-  }, [universe, query]);
+        .slice(0, 100);
+    }
+    // "AI 주목" view: universe is already sorted best-signal-first by the
+    // API, so the top positive-signal names are simply the head of the list.
+    if (notableOnly) {
+      return universe
+        .filter((it) => it.signal && NOTABLE_SIGNALS.includes(it.signal))
+        .slice(0, 10);
+    }
+    return universe.slice(0, 100);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [universe, query, notableOnly]);
 
   useEffect(() => {
     const q = query.trim();
@@ -250,6 +265,22 @@ export function FavoritePicker({
               className="pl-8 h-9 text-sm"
             />
           </div>
+          {/* AI 주목 quick filter — only meaningful when not searching. */}
+          {query.trim().length === 0 && (
+            <button
+              type="button"
+              onClick={() => setNotableOnly((v) => !v)}
+              className={
+                'mt-2 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors ' +
+                (notableOnly
+                  ? 'border-brand-purple/50 bg-brand-purple/10 text-txt-primary'
+                  : 'border-border-subtle text-txt-secondary hover:text-txt-primary')
+              }
+              title="신호가 강한(강한 관심·관심) 상위 종목만 보기 — 투자 권유가 아닙니다"
+            >
+              ✨ AI 주목 종목 {notableOnly ? '· 해제' : 'Top 10'}
+            </button>
+          )}
         </div>
         <div className="max-h-[60vh] min-h-[420px] overflow-y-auto border-t border-border-subtle">
           {universe === null ? (
@@ -261,7 +292,9 @@ export function FavoritePicker({
             <div className="py-8 text-center text-xs text-txt-muted">
               {query.trim().length >= 2
                 ? '검색 결과가 없습니다.'
-                : '검색어를 입력하세요.'}
+                : notableOnly
+                  ? '현재 강한 신호(강한 관심·관심) 종목이 없습니다.'
+                  : '검색어를 입력하세요.'}
             </div>
           ) : (
             <ul>
