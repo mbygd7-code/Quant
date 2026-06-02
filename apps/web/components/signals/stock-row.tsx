@@ -26,8 +26,7 @@ export function StockRow({
       <SignalBadge signal={signal} className="shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="font-medium text-txt-primary truncate">{name}</span>
-          <span className="text-[11px] font-mono text-txt-muted shrink-0">{ticker}</span>
+          <span className="font-medium text-txt-primary truncate">{name || ticker}</span>
         </div>
         <div className="text-[11px] text-txt-muted truncate">{sector ?? '—'}</div>
       </div>

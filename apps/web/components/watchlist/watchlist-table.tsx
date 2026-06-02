@@ -119,8 +119,7 @@ export function WatchlistTable({ rows, date, role }: Props) {
               <TableRow key={r.ticker}>
                 <TableCell>
                   <div className="flex items-baseline gap-2">
-                    <span className="font-medium">{r.name}</span>
-                    <span className="text-[11px] font-mono text-txt-muted">{r.ticker}</span>
+                    <span className="font-medium">{r.name || r.ticker}</span>
                   </div>
                 </TableCell>
                 <TableCell className="text-xs text-txt-secondary">{r.sector ?? '—'}</TableCell>

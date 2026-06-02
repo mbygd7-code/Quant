@@ -131,9 +131,10 @@ function DiscoveryRow({ rank, stock, live, added, pending, onAdd }: DiscoveryRow
         >
           <div className="flex items-baseline gap-2">
             <span className="font-medium truncate group-hover/link:text-txt-primary transition-colors">
-              {stock.name}
+              {/* Prefer the Korean name; fall back to the 6-digit code only
+                  when a name is missing so the row is never unidentifiable. */}
+              {stock.name || stock.ticker}
             </span>
-            <span className="text-[10px] font-mono text-txt-muted shrink-0">{stock.ticker}</span>
             <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-normal shrink-0">
               {stock.market}
             </Badge>
