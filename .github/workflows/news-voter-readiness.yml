@@ -1,0 +1,63 @@
+name: News Voter Readiness Check
+
+# One-shot-ish checkpoint ~4 weeks after the KR-news fix (2026-06-03):
+# on 2026-07-01 it auto-decides whether a dedicated news/catalyst voter
+# (방식 A) is justified by data, and Telegrams the GO/NO-GO verdict.
+# Runs in the cloud — no home PC needed. Also manually triggerable.
+#
+# It does NOT implement the voter (that needs review per CLAUDE.md §4).
+# It produces the go/no-go + reasons so a human (or a follow-up Claude
+# session) can act with evidence instead of guessing.
+
+on:
+  schedule:
+    - cron: "0 0 1 7 *"   # 2026-07-01 09:00 KST (00:00 UTC Jul 1)
+  workflow_dispatch: {}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: pip install -e .
+
+      - name: Run readiness check
+        id: check
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -o pipefail
+          python -m scripts.news_voter_readiness 2>&1 | tee readiness.log
+          {
+            echo "verdict<<EOF"
+            grep -E "^VERDICT:|^DETAIL:" readiness.log
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Telegram report
+        if: always()
+        env:
+          BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          VERDICT:       ${{ steps.check.outputs.verdict }}
+          RUN_URL:       ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$BOT_TOKEN" ] || [ -z "$ADMIN_CHAT_ID" ]; then
+            echo "telegram secrets absent — skipping notify"; exit 0
+          fi
+          MSG=$(printf '📰 뉴스 voter 도입 점검 (4주 후 자동)\n%s\n\n상세: %s' "$VERDICT" "$RUN_URL")
+          curl -sS -X POST \
+            "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${ADMIN_CHAT_ID}" \
+            --data-urlencode "text=${MSG}" || echo "telegram notify failed (non-fatal)"
