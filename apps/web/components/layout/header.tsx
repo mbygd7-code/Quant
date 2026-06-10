@@ -21,6 +21,7 @@ import {
   Sun,
   User,
   Users,
+  Wallet,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -56,6 +57,7 @@ interface NavItem {
 // surfaces; everything else (signals, reports, admin tools) lives in the
 // Settings dropdown below.
 const PRIMARY_NAV: NavItem[] = [
+  { href: '/paper',     label: '모의투자',         icon: Wallet,    roles: ['admin'] },
   { href: '/stocks/kr', label: '국내주식',         icon: LineChart, roles: ['admin'] },
   { href: '/realtime',  label: '실시간 미국주식',  icon: Radio,     roles: ['user', 'beta', 'admin'] },
 ];

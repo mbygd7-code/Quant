@@ -137,6 +137,21 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           ANTHROPIC_API_KEY:          ${{ secrets.ANTHROPIC_API_KEY }}
 
+      # Soros 모의투자: trade the fresh consensus into the global paper
+      # portfolio (1억 가상자금, paper_config). Realistic fees/tax/slippage.
+      # continue-on-error: a trading hiccup must not mark the analysis
+      # cycle red; gaps surface in the /paper UI and weekly report.
+      - name: Paper-trade the new signals
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -o pipefail
+          python -m executor.paper_trader_bot 2>&1 | tee paper-bot.log
+        env:
+          SUPABASE_URL:               ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EXECUTION_MODE:             paper
+        continue-on-error: true
+
       - name: Upload cycle report (always)
         # Always upload — per-ticker errors are isolated but make the run
         # exit non-zero; we want the log even on partial runs so synthesis

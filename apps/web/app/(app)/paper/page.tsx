@@ -1,0 +1,356 @@
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { PaperEquityChart } from '@/components/paper/equity-chart';
+import { PaperSettings } from '@/components/paper/settings';
+
+export const dynamic = 'force-dynamic';
+
+/**
+ * Soros 모의투자 — the live usability audit.
+ *
+ * A global virtual portfolio (default 1억원) that the Soros consensus
+ * trades automatically after every analysis cycle. This page is the
+ * cockpit: equity curve, open positions with live P&L, full trade
+ * ledger, and the weekly-Telegram cadence — all to answer one question:
+ * "이 서비스의 신호로 실제 투자가 가능한가?"
+ */
+
+interface ConfigRow {
+  initial_capital: number;
+  cash: number;
+  max_positions: number;
+  started_at: string;
+}
+interface PositionRow {
+  ticker: string;
+  qty: number;
+  avg_price: number;
+  opened_at: string;
+}
+interface TradeRow {
+  id: number;
+  trade_date: string;
+  ticker: string;
+  side: 'buy' | 'sell';
+  qty: number;
+  price: number;
+  amount: number;
+  fee: number;
+  tax: number;
+  signal_grade: string | null;
+  reason: string | null;
+  realized_pnl: number | null;
+}
+interface SnapshotRow {
+  snap_date: string;
+  total_value: number;
+  cash: number;
+  invested: number;
+  unrealized_pnl: number;
+  realized_pnl_cum: number;
+  ret_pct: number;
+  n_positions: number;
+}
+
+const krw = (v: number) => `${Math.round(v).toLocaleString('ko-KR')}원`;
+const signed = (v: number) => `${v >= 0 ? '+' : ''}${Math.round(v).toLocaleString('ko-KR')}원`;
+
+const GRADE_LABEL: Record<string, string> = {
+  STRONG_BUY: '강한 관심',
+  BUY: '관심',
+  HOLD: '관망',
+  CAUTION: '주의',
+  RISK: '위험',
+};
+
+export default async function PaperPage() {
+  const sb = createAdminClient();
+
+  const [{ data: cfgRows }, { data: posRows }, { data: tradeRows }, { data: snapRows }] =
+    await Promise.all([
+      sb.from('paper_config').select('*').eq('id', 1),
+      sb.from('paper_bot_positions').select('*'),
+      sb.from('paper_bot_trades').select('*').order('trade_date', { ascending: false }).order('id', { ascending: false }).limit(60),
+      sb.from('paper_bot_snapshots').select('*').order('snap_date').limit(400),
+    ]);
+
+  const cfg = (cfgRows?.[0] as ConfigRow | undefined) ?? {
+    initial_capital: 100_000_000,
+    cash: 100_000_000,
+    max_positions: 10,
+    started_at: new Date().toISOString(),
+  };
+  const positions = (posRows ?? []) as PositionRow[];
+  const trades = (tradeRows ?? []) as TradeRow[];
+  const snapshots = (snapRows ?? []) as SnapshotRow[];
+
+  // Names + latest closes for live valuation.
+  const tickers = Array.from(
+    new Set([...positions.map((p) => p.ticker), ...trades.map((t) => t.ticker)]),
+  );
+  const names = new Map<string, string>();
+  const closes = new Map<string, number>();
+  if (tickers.length > 0) {
+    const [{ data: stockRows }, { data: quoteRows }] = await Promise.all([
+      sb.from('stocks').select('ticker, name').in('ticker', tickers),
+      sb
+        .from('korea_market')
+        .select('ticker, date, close')
+        .in('ticker', tickers)
+        .not('close', 'is', null)
+        .order('date', { ascending: false })
+        .limit(tickers.length * 6),
+    ]);
+    for (const r of stockRows ?? []) names.set(r.ticker, r.name ?? r.ticker);
+    for (const r of quoteRows ?? []) {
+      if (!closes.has(r.ticker)) closes.set(r.ticker, Number(r.close));
+    }
+  }
+
+  // Valuation
+  let invested = 0;
+  let unrealized = 0;
+  const enriched = positions
+    .map((p) => {
+      const close = closes.get(p.ticker) ?? p.avg_price;
+      const value = p.qty * close;
+      const pnl = p.qty * (close - p.avg_price);
+      invested += value;
+      unrealized += pnl;
+      return {
+        ...p,
+        name: names.get(p.ticker) ?? p.ticker,
+        close,
+        value,
+        pnl,
+        pnlPct: ((close - p.avg_price) / p.avg_price) * 100,
+      };
+    })
+    .sort((a, b) => b.value - a.value);
+
+  const realizedCum = trades
+    .filter((t) => t.side === 'sell')
+    .reduce((acc, t) => acc + (t.realized_pnl ?? 0), 0);
+  const total = cfg.cash + invested;
+  const totalPnl = total - cfg.initial_capital;
+  const totalPct = (totalPnl / cfg.initial_capital) * 100;
+
+  const last = snapshots[snapshots.length - 1];
+  const weekAgoIso = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10);
+  const weekBase = snapshots.find((s) => s.snap_date >= weekAgoIso);
+  const weekDelta = last && weekBase ? last.total_value - weekBase.total_value : null;
+
+  return (
+    <div className="space-y-5 fade-in">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight">Soros 모의투자</h1>
+          <p className="mt-1 text-sm text-txt-secondary">
+            AI 전문가 합의가 가상 자금 {krw(cfg.initial_capital)}을 자동 운용 — 신호의 실전 활용
+            가능성을 실측으로 검증합니다. 매 분석 사이클 직후 매매, 매주 토요일 09:00 텔레그램 보고.
+          </p>
+        </div>
+        <PaperSettings currentCapital={cfg.initial_capital} startedAt={cfg.started_at} />
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-[11px] text-txt-muted">총자산</div>
+            <div className="mt-0.5 text-lg font-semibold tabular-nums">{krw(total)}</div>
+            <div
+              className={`text-[12px] tabular-nums font-medium ${totalPnl >= 0 ? 'text-status-success' : 'text-status-error'}`}
+            >
+              {signed(totalPnl)} ({totalPct >= 0 ? '+' : ''}
+              {totalPct.toFixed(2)}%)
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-[11px] text-txt-muted">주간 손익</div>
+            <div
+              className={`mt-0.5 text-lg font-semibold tabular-nums ${weekDelta != null && weekDelta < 0 ? 'text-status-error' : 'text-status-success'}`}
+            >
+              {weekDelta != null ? signed(weekDelta) : '—'}
+            </div>
+            <div className="text-[12px] text-txt-muted">최근 7일 (스냅샷 기준)</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-[11px] text-txt-muted">투자 / 현금</div>
+            <div className="mt-0.5 text-lg font-semibold tabular-nums">{krw(invested)}</div>
+            <div className="text-[12px] text-txt-muted tabular-nums">현금 {krw(cfg.cash)}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-[11px] text-txt-muted">손익 구성</div>
+            <div
+              className={`mt-0.5 text-lg font-semibold tabular-nums ${unrealized >= 0 ? 'text-status-success' : 'text-status-error'}`}
+            >
+              평가 {signed(unrealized)}
+            </div>
+            <div
+              className={`text-[12px] tabular-nums ${realizedCum >= 0 ? 'text-status-success' : 'text-status-error'}`}
+            >
+              실현 {signed(realizedCum)}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Equity curve */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-heading">자산 추이</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <PaperEquityChart
+            snapshots={snapshots.map((s) => ({
+              date: s.snap_date,
+              total: s.total_value,
+              ret: s.ret_pct,
+            }))}
+            initialCapital={cfg.initial_capital}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Positions */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-heading">
+            보유 종목 <span className="text-txt-muted font-normal text-sm">({enriched.length} / {cfg.max_positions})</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {enriched.length === 0 ? (
+            <p className="text-sm text-txt-muted py-4">
+              아직 보유 종목이 없습니다. 다음 분석 사이클에서 강한 신호가 나오면 자동 매수됩니다.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-[11px] text-txt-muted border-b border-border-subtle">
+                    <th className="text-left py-2 pr-3 font-medium">종목</th>
+                    <th className="text-right py-2 px-3 font-medium">수량</th>
+                    <th className="text-right py-2 px-3 font-medium">평단가</th>
+                    <th className="text-right py-2 px-3 font-medium">현재가</th>
+                    <th className="text-right py-2 px-3 font-medium">평가금액</th>
+                    <th className="text-right py-2 pl-3 font-medium">평가손익</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {enriched.map((p) => (
+                    <tr key={p.ticker} className="border-b border-border-subtle/40 last:border-0">
+                      <td className="py-2 pr-3">
+                        <span className="font-medium">{p.name}</span>
+                        <span className="ml-1.5 text-[10px] text-txt-muted">{p.opened_at.slice(5)} 진입</span>
+                      </td>
+                      <td className="text-right py-2 px-3 tabular-nums">{p.qty.toLocaleString()}주</td>
+                      <td className="text-right py-2 px-3 tabular-nums">{p.avg_price.toLocaleString()}</td>
+                      <td className="text-right py-2 px-3 tabular-nums">{p.close.toLocaleString()}</td>
+                      <td className="text-right py-2 px-3 tabular-nums">{krw(p.value)}</td>
+                      <td
+                        className={`text-right py-2 pl-3 tabular-nums font-medium ${p.pnl >= 0 ? 'text-status-success' : 'text-status-error'}`}
+                      >
+                        {signed(p.pnl)}
+                        <span className="ml-1 text-[11px]">
+                          ({p.pnlPct >= 0 ? '+' : ''}
+                          {p.pnlPct.toFixed(1)}%)
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="mt-2 text-[10px] text-txt-muted">
+            현재가는 최근 수집된 종가 기준 (장중 실시간 아님).
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Trade ledger */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-heading">거래 내역</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {trades.length === 0 ? (
+            <p className="text-sm text-txt-muted py-4">아직 거래가 없습니다.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-[11px] text-txt-muted border-b border-border-subtle">
+                    <th className="text-left py-2 pr-3 font-medium">일자</th>
+                    <th className="text-left py-2 px-3 font-medium">구분</th>
+                    <th className="text-left py-2 px-3 font-medium">종목</th>
+                    <th className="text-right py-2 px-3 font-medium">수량 × 단가</th>
+                    <th className="text-right py-2 px-3 font-medium">금액</th>
+                    <th className="text-right py-2 px-3 font-medium">비용</th>
+                    <th className="text-right py-2 px-3 font-medium">실현손익</th>
+                    <th className="text-left py-2 pl-3 font-medium">사유</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trades.map((t) => (
+                    <tr key={t.id} className="border-b border-border-subtle/40 last:border-0">
+                      <td className="py-2 pr-3 tabular-nums text-txt-secondary">{t.trade_date.slice(5)}</td>
+                      <td className="py-2 px-3">
+                        <span
+                          className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold ${
+                            t.side === 'buy'
+                              ? 'bg-status-success/10 text-status-success'
+                              : 'bg-status-error/10 text-status-error'
+                          }`}
+                        >
+                          {t.side === 'buy' ? '매수' : '매도'}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 font-medium">{names.get(t.ticker) ?? t.ticker}</td>
+                      <td className="text-right py-2 px-3 tabular-nums">
+                        {t.qty.toLocaleString()} × {t.price.toLocaleString()}
+                      </td>
+                      <td className="text-right py-2 px-3 tabular-nums">{krw(t.amount)}</td>
+                      <td className="text-right py-2 px-3 tabular-nums text-txt-muted">
+                        {krw(t.fee + t.tax)}
+                      </td>
+                      <td
+                        className={`text-right py-2 px-3 tabular-nums font-medium ${
+                          t.realized_pnl == null
+                            ? 'text-txt-muted'
+                            : t.realized_pnl >= 0
+                              ? 'text-status-success'
+                              : 'text-status-error'
+                        }`}
+                      >
+                        {t.realized_pnl == null ? '—' : signed(t.realized_pnl)}
+                      </td>
+                      <td className="py-2 pl-3 text-[12px] text-txt-secondary">
+                        {t.signal_grade ? `${GRADE_LABEL[t.signal_grade] ?? t.signal_grade} · ` : ''}
+                        {t.reason ?? ''}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <p className="text-[11px] text-txt-muted">
+        체결 가정: 신호일 종가 ±0.05% 슬리피지 · 수수료 0.015% (양방향) · 매도 시 증권거래세 0.15%.
+        본 시뮬레이션은 가상 자금 기반이며 본 정보는 투자 판단 보조 자료이며 매매 권유가 아닙니다.
+      </p>
+    </div>
+  );
+}
