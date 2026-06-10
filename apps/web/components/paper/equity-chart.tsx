@@ -63,9 +63,13 @@ export function PaperEquityChart({
               domain={[lo - pad, hi + pad]}
               tick={{ fill: 'var(--text-secondary)', fontSize: 10 }}
               width={64}
-              tickFormatter={(v: number) =>
-                v >= 100_000_000 ? `${(v / 100_000_000).toFixed(2)}억` : `${Math.round(v / 10_000)}만`
-              }
+              tickFormatter={(v: number) => {
+                // 억 단위로 통일, 소수 최대 3자리에서 trailing 0 제거 —
+                // 0.5% 간격 틱(9,950만/1억/1억 50만)이 전부 "1.00억"으로
+                // 뭉개지던 중복 라벨 문제 방지.
+                const s = (v / 100_000_000).toFixed(3).replace(/\.?0+$/, '');
+                return `${s}억`;
+              }}
             />
             <Tooltip
               content={({ active, payload, label }) => {
