@@ -72,10 +72,15 @@ M2_VOTERS: tuple[AgentName, ...] = ("graham", "dow")
 #: M5 adds Simons, completing the six.
 M3_VOTERS: tuple[AgentName, ...] = ("graham", "dow", "shiller", "keynes")
 
-#: M4 voter set — adds Taleb. Taleb's risk_score participates in Q1
-#: and Taleb's severity drives the Q3 auto-constraint after Q2.
+#: M4 voter set — adds Taleb and Turing. Taleb's risk_score participates
+#: in Q1 and Taleb's severity drives the Q3 auto-constraint after Q2.
+#:
+#: Turing (RSI/MACD/Bollinger) was computed, persisted and shown in the
+#: UI from day one but was MISSING from this tuple, so its vote carried
+#: zero weight in every final signal (found in the 2026-06-10 audit).
+#: It votes through the "simons" weight slot — see _user_weights.
 M4_VOTERS: tuple[AgentName, ...] = (
-    "graham", "dow", "shiller", "keynes", "taleb",
+    "graham", "dow", "turing", "shiller", "keynes", "taleb",
 )
 
 #: Priced-in threshold above which we halve the weighted_score (per
@@ -400,10 +405,19 @@ class Soros:
         else:
             row: UserWeightSettings | None = self.repo.get_user_weights(user_id)
             bundle = row.weights if row else DEFAULT_WEIGHTS
-        return {
+        weights = {
             agent: Decimal(str(getattr(bundle, agent)))
-            for agent in ("simons", "graham", "dow", "shiller", "keynes", "taleb")
+            for agent in ("graham", "dow", "shiller", "keynes", "taleb")
         }
+        # The "simons" slot is the quant/technical seat in the 6-agent
+        # weight bundle (UI sliders, user_weight_settings JSON). Simons
+        # was never implemented — Turing (RSI/MACD/Bollinger) fills that
+        # role in M4, so the slot's weight flows to Turing's vote. Keeps
+        # existing user rows (e.g. simons=0.25) meaningful without a
+        # DB/JSON migration. If a real Simons lands in M5+, split the
+        # slot then.
+        weights["turing"] = Decimal(str(bundle.simons))
+        return weights
 
     def _previous_signal(self, ticker: str) -> FinalSignal | None:
         return self.repo.latest_final_signal(ticker)

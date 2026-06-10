@@ -31,11 +31,13 @@ interface AgentMeta {
 
 const AGENTS: AgentMeta[] = [
   {
+    // The 'simons' weight slot is filled by Turing (기술지표 voter) —
+    // Simons was never implemented; this slider weights Turing's vote.
     slug: 'simons',
-    name: 'Simons',
-    domain: '정량 분석',
-    description: 'sklearn GBM 기반 종목 예측 (PC 워커)',
-    rationale: '데이터 기반 정량 시그널. 시장 효율을 신뢰할수록 비중 ↑',
+    name: 'Turing',
+    domain: '기술 지표',
+    description: 'RSI · MACD · 볼린저밴드 패턴 진단',
+    rationale: '단기 과매수/과매도·모멘텀 신호를 중시하면 비중 ↑',
   },
   {
     slug: 'graham',
