@@ -51,6 +51,16 @@ SELL_GRADES = ("CAUTION", "RISK")
 SIGNAL_FRESH_DAYS = 3       # only act on signals at most this old
 MIN_CASH_FRACTION = 0.95    # need ≥ slot×this in free cash to order
 ORDER_STALE_DAYS = 7        # cancel pending orders older than this
+#: Stop-loss: a position trading ≤ avg_price×(1+this) gets a full exit
+#: order. Backtest rationale: the strategy's worst tail (-27% months on
+#: concentrated books) hurts compounding far more than any single
+#: month's upside — cutting it is the cheapest risk control we have.
+STOP_LOSS_PCT = -0.10
+#: Regime gate: new BUYS pause when KOSPI is below its level ~3 months
+#: ago. Couldn't be validated on our 15-month window (it was risk-on
+#: throughout) — this is downside INSURANCE, not a return lever. Sells
+#: and stop-losses always stay active.
+REGIME_LOOKBACK_DAYS = 92
 
 
 # ─── Small reads ───────────────────────────────────────────────────
@@ -119,6 +129,35 @@ def _latest_signals(sb, max_age_days: int = SIGNAL_FRESH_DAYS) -> dict[str, dict
         if r["ticker"] not in out:
             out[r["ticker"]] = r
     return out
+
+
+def _kospi_closes(sb) -> list[tuple[str, float]]:
+    rows = fetch_all(
+        sb.table("global_market")
+        .select("date, close")
+        .eq("symbol", "^KS11")
+        .not_.is_("close", "null")
+        .order("date")
+    )
+    return [(r["date"], float(r["close"])) for r in rows]
+
+
+def regime_risk_on(sb, today: Date | None = None) -> bool:
+    """True when KOSPI ≥ its close ~REGIME_LOOKBACK_DAYS ago.
+
+    Missing data defaults to risk-ON (the gate is insurance; a data gap
+    must not silently freeze the strategy).
+    """
+    today = today or Date.today()
+    closes = _kospi_closes(sb)
+    if len(closes) < 10:
+        return True
+    latest = closes[-1][1]
+    cutoff = (today - timedelta(days=REGIME_LOOKBACK_DAYS)).isoformat()
+    past = [c for d, c in closes if d <= cutoff]
+    if not past:
+        return True
+    return latest >= past[-1]
 
 
 def _pending_orders(sb) -> list[dict]:
@@ -309,22 +348,31 @@ def place_orders(sb, today: Date | None = None) -> dict[str, int]:
     placed_sell = 0
     placed_buy = 0
 
-    # SELL orders: held names whose latest grade turned negative.
+    # SELL orders: (a) stop-loss breaches, (b) negative-grade downgrades.
     for ticker, pos in positions.items():
         if ticker in pending_sell:
             continue
+        close = closes.get(ticker)
+        avg = int(pos["avg_price"])
         sig = signals.get(ticker)
-        if not sig or sig["signal_grade"] not in SELL_GRADES:
+        stop_hit = close is not None and (close - avg) / avg <= STOP_LOSS_PCT
+        grade_exit = sig is not None and sig["signal_grade"] in SELL_GRADES
+        if not stop_hit and not grade_exit:
             continue
+        if stop_hit:
+            pnl_pct = (close - avg) / avg * 100
+            reason = f"손절 {pnl_pct:.1f}% (기준 {STOP_LOSS_PCT * 100:.0f}%) — 시가 체결 대기"
+        else:
+            reason = f"신호 하향({sig['signal_grade']}) 전량 청산 — 시가 체결 대기"
         sb.table("paper_bot_orders").insert(
             {
                 "order_date": today.isoformat(),
                 "ticker": ticker,
                 "side": "sell",
                 "qty": int(pos["qty"]),
-                "signal_grade": sig["signal_grade"],
-                "weighted_score": sig.get("weighted_score"),
-                "reason": f"신호 하향({sig['signal_grade']}) 전량 청산 — 시가 체결 대기",
+                "signal_grade": (sig or {}).get("signal_grade"),
+                "weighted_score": (sig or {}).get("weighted_score"),
+                "reason": reason,
             }
         ).execute()
         pending_sell.add(ticker)
@@ -340,11 +388,18 @@ def place_orders(sb, today: Date | None = None) -> dict[str, int]:
     slot = equity // max_pos if max_pos > 0 else 0
     slots_used = len(positions) + len(pending_buy)
 
+    # Regime gate — pause NEW buys in a confirmed downtrend. Existing
+    # positions and sell/stop orders are unaffected.
+    risk_on = regime_risk_on(sb, today)
+    if not risk_on:
+        log.warning("[paper_bot] regime OFF (KOSPI < 3M trend) — no new buys")
+
     candidates = sorted(
         (
             s
             for t, s in signals.items()
-            if s["signal_grade"] in BUY_GRADES
+            if risk_on
+            and s["signal_grade"] in BUY_GRADES
             and t not in positions
             and t not in pending_buy
             and t not in pending_sell
@@ -503,6 +558,28 @@ def weekly_report(sb, send: bool = True) -> str:
         lines.append(
             f"주간 손익 {week_delta:+,}원 · 현금 {int(latest['cash']):,}원 · 보유 {latest['n_positions']}종목"
         )
+        # ── Benchmark + target gauge ────────────────────────────
+        kospi = _kospi_closes(sb)
+        start_date = str(cfg.get("started_at") or "")[:10]
+        k_start = next((c for d, c in kospi if d >= start_date), None)
+        k_latest = kospi[-1][1] if kospi else None
+        if k_start and k_latest:
+            k_ret = (k_latest - k_start) / k_start * 100
+            alpha = ret - k_ret
+            lines.append(
+                f"vs KOSPI(동기간) {k_ret:+.2f}% → 알파 {alpha:+.2f}%p"
+            )
+        # Month-to-date vs the 5%/월 stretch target.
+        month_start = latest["snap_date"][:7] + "-01"
+        m_base = next((sn for sn in snaps if sn["snap_date"] >= month_start), None)
+        if m_base:
+            mtd = (total - int(m_base["total_value"])) / int(m_base["total_value"]) * 100
+            gauge = min(20, max(0, round(mtd / 5 * 20)))
+            lines.append(
+                f"이달 수익률 {mtd:+.2f}% / 목표 5% [{'■' * gauge}{'□' * (20 - gauge)}]"
+            )
+        regime = "ON (정상 매수)" if regime_risk_on(sb) else "OFF (약세 레짐 — 신규매수 중단)"
+        lines.append(f"레짐 게이트: {regime}")
     else:
         lines.append("아직 스냅샷이 없습니다.")
     lines.append("")
@@ -557,6 +634,71 @@ def weekly_report(sb, send: bool = True) -> str:
     return msg
 
 
+# ─── Monthly alpha review (loop closer for the 월 5% plan) ─────────
+
+
+def monthly_review(sb, send: bool = True) -> str:
+    """Last calendar month: portfolio vs KOSPI. Negative alpha → ⚠️ alert.
+
+    This is lever ⑤ of the 월 5% plan: a strategy that can't beat the
+    index gets flagged automatically instead of coasting on inertia.
+    """
+    import httpx
+
+    today = Date.today()
+    first_this = today.replace(day=1)
+    last_prev = first_this - timedelta(days=1)
+    first_prev = last_prev.replace(day=1)
+
+    snaps = fetch_all(sb.table("paper_bot_snapshots").select("*").order("snap_date"))
+    base = next(
+        (s for s in reversed(snaps) if s["snap_date"] < first_prev.isoformat()), None
+    ) or next((s for s in snaps if s["snap_date"] >= first_prev.isoformat()), None)
+    end = next(
+        (s for s in reversed(snaps) if s["snap_date"] <= last_prev.isoformat()), None
+    )
+    month_label = first_prev.isoformat()[:7]
+    lines = [f"📅 Soros 모의투자 월간 평가 — {month_label}", ""]
+    if not base or not end or base["snap_date"] >= end["snap_date"]:
+        lines.append("해당 월의 스냅샷이 부족해 평가를 건너뜁니다.")
+    else:
+        p_ret = (
+            (int(end["total_value"]) - int(base["total_value"]))
+            / int(base["total_value"]) * 100
+        )
+        kospi = _kospi_closes(sb)
+        k_base = next((c for d, c in reversed(kospi) if d <= base["snap_date"]), None)
+        k_end = next((c for d, c in reversed(kospi) if d <= end["snap_date"]), None)
+        lines.append(f"포트폴리오 {p_ret:+.2f}% (목표 T2 +3% / T3 +5%)")
+        if k_base and k_end:
+            k_ret = (k_end - k_base) / k_base * 100
+            alpha = p_ret - k_ret
+            lines.append(f"KOSPI {k_ret:+.2f}% → 알파 {alpha:+.2f}%p (목표 T1 +1%p)")
+            lines.append("")
+            if alpha < 0:
+                lines.append(
+                    "⚠️ 알파 음수 — 신호의 종목선별이 지수를 못 이겼습니다. "
+                    "전략 재검토 필요: voter 가중치·손절 기준·신호 등급 분포를 점검하세요."
+                )
+            elif alpha >= 1.0:
+                lines.append("✅ T1 달성 (+1%p 알파) — 종목선별이 작동 중입니다.")
+            else:
+                lines.append("◽ 알파 양수이나 T1(+1%p) 미달 — 추세 관찰.")
+    lines.append("")
+    lines.append("※ 가상 자금 시뮬레이션 결과이며 매매 권유가 아닙니다.")
+    msg = '\n'.join(lines)
+    if send:
+        token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        chat = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
+        if token and chat:
+            httpx.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                data={"chat_id": chat, "text": msg},
+                timeout=15,
+            )
+    return msg
+
+
 # ─── CLI ───────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -566,6 +708,7 @@ if __name__ == "__main__":
     p.add_argument("--reset", action="store_true")
     p.add_argument("--capital", type=int, default=None)
     p.add_argument("--weekly-report", action="store_true")
+    p.add_argument("--monthly-review", action="store_true")
     p.add_argument("--no-send", action="store_true")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -574,5 +717,7 @@ if __name__ == "__main__":
         reset(sb, args.capital)
     elif args.weekly_report:
         print(weekly_report(sb, send=not args.no_send))
+    elif args.monthly_review:
+        print(monthly_review(sb, send=not args.no_send))
     else:
         print(run_cycle(sb))

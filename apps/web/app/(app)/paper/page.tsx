@@ -89,6 +89,13 @@ export default async function PaperPage() {
     sb.from('paper_bot_snapshots').select('*').order('snap_date').limit(400),
     sb.from('paper_bot_orders').select('*').eq('status', 'pending').order('id'),
   ]);
+  const { data: kospiRows } = await sb
+    .from('global_market')
+    .select('date, close')
+    .eq('symbol', '^KS11')
+    .not('close', 'is', null)
+    .order('date');
+  const kospi = (kospiRows ?? []) as { date: string; close: number }[];
 
   const cfg = (cfgRows?.[0] as ConfigRow | undefined) ?? {
     initial_capital: 100_000_000,
@@ -165,6 +172,26 @@ export default async function PaperPage() {
   const weekBase = snapshots.find((s) => s.snap_date >= weekAgoIso);
   const weekDelta = last && weekBase ? last.total_value - weekBase.total_value : null;
 
+  // ── Benchmark (KOSPI since portfolio start) + 월 목표 게이지 ──
+  const startIso = cfg.started_at.slice(0, 10);
+  const kStart = kospi.find((k) => k.date >= startIso)?.close ?? null;
+  const kLatest = kospi.length > 0 ? kospi[kospi.length - 1].close : null;
+  const kospiRet = kStart && kLatest ? ((kLatest - kStart) / kStart) * 100 : null;
+  const alpha = kospiRet != null ? totalPct - kospiRet : null;
+  // Regime: KOSPI vs its level ~3 months ago (mirrors the bot's gate).
+  const cutoff = new Date(Date.now() - 92 * 86400_000).toISOString().slice(0, 10);
+  const kPastArr = kospi.filter((k) => k.date <= cutoff);
+  const kPast = kPastArr.length > 0 ? kPastArr[kPastArr.length - 1].close : null;
+  const riskOn = kPast == null || kLatest == null ? true : kLatest >= kPast;
+  // Month-to-date return vs the 5% stretch target.
+  const monthStart = (last?.snap_date ?? new Date().toISOString().slice(0, 10)).slice(0, 7) + '-01';
+  const mBase = snapshots.find((s) => s.snap_date >= monthStart);
+  const mtdPct =
+    last && mBase && mBase.total_value > 0
+      ? ((last.total_value - mBase.total_value) / mBase.total_value) * 100
+      : null;
+  const gaugePct = mtdPct != null ? Math.min(100, Math.max(0, (mtdPct / 5) * 100)) : 0;
+
   return (
     <div className="space-y-5 fade-in">
       {/* Header */}
@@ -230,6 +257,51 @@ export default async function PaperPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* 목표 게이지 + 벤치마크 — the strategy's honest scoreboard */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-5 flex-wrap text-[13px]">
+              <span title="이번 달 수익률의 월 5% 스트레치 목표(T3) 대비 진행률. 매월 1일 리셋.">
+                <span className="text-txt-muted mr-1.5">이달 수익률</span>
+                <b className={`tabular-nums ${mtdPct != null && mtdPct < 0 ? 'text-status-error' : 'text-status-success'}`}>
+                  {mtdPct != null ? `${mtdPct >= 0 ? '+' : ''}${mtdPct.toFixed(2)}%` : '—'}
+                </b>
+                <span className="text-txt-muted text-[11px] ml-1">/ 목표 5%</span>
+              </span>
+              <span title="포트폴리오 시작일부터 코스피 대비 초과수익. 종목선별력(T1 목표 +1%p/월)의 직접 증거.">
+                <span className="text-txt-muted mr-1.5">vs KOSPI</span>
+                <b className={`tabular-nums ${alpha != null && alpha < 0 ? 'text-status-error' : 'text-status-success'}`}>
+                  {alpha != null ? `알파 ${alpha >= 0 ? '+' : ''}${alpha.toFixed(2)}%p` : '—'}
+                </b>
+                {kospiRet != null && (
+                  <span className="text-txt-muted text-[11px] ml-1">
+                    (KOSPI {kospiRet >= 0 ? '+' : ''}
+                    {kospiRet.toFixed(2)}%)
+                  </span>
+                )}
+              </span>
+              <span title="코스피가 3개월 전 수준 아래로 깨지면 신규 매수를 멈추는 안전장치. 보유·매도는 계속 작동.">
+                <span className="text-txt-muted mr-1.5">레짐</span>
+                <b className={riskOn ? 'text-status-success' : 'text-status-warning'}>
+                  {riskOn ? 'ON · 정상 매수' : 'OFF · 신규매수 중단'}
+                </b>
+              </span>
+            </div>
+          </div>
+          <div className="mt-2.5 h-2 w-full rounded-full bg-bg-secondary/60 overflow-hidden" title="월 5% 목표 게이지">
+            <div
+              className={`h-full rounded-full transition-all ${mtdPct != null && mtdPct < 0 ? 'bg-status-error/60' : 'bg-status-success'}`}
+              style={{ width: `${gaugePct}%` }}
+            />
+          </div>
+          <p className="mt-1.5 text-[10px] text-txt-muted">
+            목표 체계: T1 코스피+1%p/월 알파 (종목선별 입증) → T2 월 +3% → T3 월 +5%. 매월 1일
+            월간 평가가 텔레그램으로 발송되며, 알파가 음수면 전략 재검토 경보가 울립니다.
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Equity curve */}
       <Card>
