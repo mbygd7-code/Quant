@@ -120,6 +120,20 @@ jobs:
           EXECUTION_MODE:            report_only
           TIMEZONE:                  Asia/Seoul
 
+      # Price-forecast ledger: evaluate due rows (5 trading days old)
+      # against realized closes, then record today's 5d forecast per
+      # ticker with the expert consensus that tilted it. This is the
+      # self-improving accuracy loop behind the 주가 추이·예측 section.
+      - name: Record + evaluate price forecasts
+        id: price_forecast
+        run: |
+          set -o pipefail
+          python -m signals.price_forecast 2>&1 | tee price-forecast.log
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        continue-on-error: true
+
       - name: Show notify section (always)
         if: always()
         run: |
