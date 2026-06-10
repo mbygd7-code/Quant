@@ -1,4 +1,8 @@
--- 00000000000029_rls_admin_recursion_fix.sql
+-- 00000000000032_rls_admin_recursion_fix.sql
+-- (renumbered from 29 — the duplicate version 29 broke `supabase db push`
+--  with "duplicate key value violates unique constraint schema_migrations_pkey"
+--  from 2026-05-30, silently blocking migrations 30+. Content is idempotent
+--  (DROP POLICY IF EXISTS + CREATE), so re-applying is safe.)
 -- Replace recursive `EXISTS (SELECT 1 FROM profiles ... role = 'admin')`
 -- admin checks in migration 05 with the existing public.is_admin()
 -- SECURITY DEFINER helper (migration 22). The recursive pattern caused

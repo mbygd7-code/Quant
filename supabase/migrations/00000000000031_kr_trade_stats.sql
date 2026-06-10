@@ -31,6 +31,7 @@ COMMENT ON TABLE kr_trade_stats IS
 
 -- Service-role-only table (backend pipeline writes, web reads via API).
 ALTER TABLE kr_trade_stats ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS kr_trade_stats_read ON kr_trade_stats;
 CREATE POLICY kr_trade_stats_read ON kr_trade_stats
     FOR SELECT TO authenticated USING (true);
 

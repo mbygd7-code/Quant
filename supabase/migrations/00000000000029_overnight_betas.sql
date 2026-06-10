@@ -34,6 +34,7 @@ CREATE INDEX IF NOT EXISTS kr_overnight_betas_ticker_idx
     ON kr_overnight_betas (kr_ticker);
 
 ALTER TABLE kr_overnight_betas ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS auth_read_kr_overnight_betas ON kr_overnight_betas;
 CREATE POLICY auth_read_kr_overnight_betas ON kr_overnight_betas FOR SELECT
     TO authenticated USING (TRUE);
 
