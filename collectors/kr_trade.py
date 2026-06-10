@@ -99,27 +99,25 @@ def fetch_hs_monthly(
         if err or (result_code not in (None, "00")):
             log.warning("[kr_trade] %s API error: %s (code=%s)", hs_code, err, result_code)
             return []
-        rows: list[dict[str, Any]] = []
+        # The API returns one <item> PER (month × country × 10-digit
+        # sub-HS) — ~220 rows/month for hsSgn=8542. Aggregate to one
+        # row per month. ('총계' rows have no '.' in `year` — skipped.)
+        agg: dict[str, dict[str, int]] = {}
         for item in root.iter("item"):
             period_raw = (item.findtext("year") or "").strip()  # 'YYYY.MM' or '총계'
             if "." not in period_raw:
-                continue  # skip the 총계 aggregate row
-            period = period_raw.replace(".", "-")[:7]
-            export_usd = _parse_int(item.findtext("expDlr"))
-            import_usd = _parse_int(item.findtext("impDlr"))
-            balance = _parse_int(item.findtext("balPayments"))
-            if export_usd is None:
                 continue
-            rows.append(
-                {
-                    "hs_code": hs_code,
-                    "period": period,
-                    "export_usd": export_usd,
-                    "import_usd": import_usd,
-                    "trade_balance": balance,
-                }
+            period = period_raw.replace(".", "-")[:7]
+            bucket = agg.setdefault(
+                period, {"export_usd": 0, "import_usd": 0, "trade_balance": 0}
             )
-        return rows
+            bucket["export_usd"] += _parse_int(item.findtext("expDlr")) or 0
+            bucket["import_usd"] += _parse_int(item.findtext("impDlr")) or 0
+            bucket["trade_balance"] += _parse_int(item.findtext("balPayments")) or 0
+        return [
+            {"hs_code": hs_code, "period": period, **vals}
+            for period, vals in sorted(agg.items())
+        ]
     except Exception as exc:
         log.warning("[kr_trade] %s fetch failed: %s", hs_code, exc)
         return []
@@ -175,14 +173,38 @@ def collect_and_persist(
     y, m = int(start_yymm[:4]), int(start_yymm[4:6])
     widened_start = f"{y - 1}{m:02d}"
 
+    # The gateway rejects wide ranges (resultCode 99) — chunk into
+    # ≤12-month windows per request.
+    def _month_windows(start: str, end: str) -> list[tuple[str, str]]:
+        sy, sm = int(start[:4]), int(start[4:6])
+        ey, em = int(end[:4]), int(end[4:6])
+        windows = []
+        cy, cm = sy, sm
+        while (cy, cm) <= (ey, em):
+            wy, wm = cy, cm + 11
+            while wm > 12:
+                wm -= 12
+                wy += 1
+            if (wy, wm) > (ey, em):
+                wy, wm = ey, em
+            windows.append((f"{cy}{cm:02d}", f"{wy}{wm:02d}"))
+            cy, cm = wy, wm + 1
+            if cm > 12:
+                cm = 1
+                cy += 1
+        return windows
+
     all_rows: list[dict[str, Any]] = []
     with httpx.Client() as client:
-        for i, hs in enumerate(ALL_HS):
-            if i > 0:
-                time.sleep(pace_seconds)
-            all_rows.extend(
-                fetch_hs_monthly(client, api_key, hs, widened_start, end_yymm)
-            )
+        first = True
+        for hs in ALL_HS:
+            for w_start, w_end in _month_windows(widened_start, end_yymm):
+                if not first:
+                    time.sleep(pace_seconds)
+                first = False
+                all_rows.extend(
+                    fetch_hs_monthly(client, api_key, hs, w_start, w_end)
+                )
     compute_yoy(all_rows)
     n = upsert_trade_rows(supabase, all_rows)
     return {"hs_codes": len(ALL_HS), "rows": n, "skipped_no_key": 0}
