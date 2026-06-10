@@ -30,6 +30,7 @@ export async function resetPaperPortfolioAction(input: { capital: number }) {
   try {
     const sb = createAdminClient();
     // Order matters: wipe ledgers first, then reset the config row.
+    await sb.from('paper_bot_orders').delete().neq('id', 0);
     await sb.from('paper_bot_trades').delete().neq('id', 0);
     await sb.from('paper_bot_positions').delete().neq('qty', 0);
     await sb.from('paper_bot_snapshots').delete().neq('total_value', -1);

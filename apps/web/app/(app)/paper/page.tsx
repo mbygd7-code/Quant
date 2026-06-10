@@ -41,6 +41,16 @@ interface TradeRow {
   reason: string | null;
   realized_pnl: number | null;
 }
+interface OrderRow {
+  id: number;
+  order_date: string;
+  ticker: string;
+  side: 'buy' | 'sell';
+  budget: number | null;
+  qty: number | null;
+  signal_grade: string | null;
+  reason: string | null;
+}
 interface SnapshotRow {
   snap_date: string;
   total_value: number;
@@ -66,13 +76,19 @@ const GRADE_LABEL: Record<string, string> = {
 export default async function PaperPage() {
   const sb = createAdminClient();
 
-  const [{ data: cfgRows }, { data: posRows }, { data: tradeRows }, { data: snapRows }] =
-    await Promise.all([
-      sb.from('paper_config').select('*').eq('id', 1),
-      sb.from('paper_bot_positions').select('*'),
-      sb.from('paper_bot_trades').select('*').order('trade_date', { ascending: false }).order('id', { ascending: false }).limit(60),
-      sb.from('paper_bot_snapshots').select('*').order('snap_date').limit(400),
-    ]);
+  const [
+    { data: cfgRows },
+    { data: posRows },
+    { data: tradeRows },
+    { data: snapRows },
+    { data: orderRows },
+  ] = await Promise.all([
+    sb.from('paper_config').select('*').eq('id', 1),
+    sb.from('paper_bot_positions').select('*'),
+    sb.from('paper_bot_trades').select('*').order('trade_date', { ascending: false }).order('id', { ascending: false }).limit(60),
+    sb.from('paper_bot_snapshots').select('*').order('snap_date').limit(400),
+    sb.from('paper_bot_orders').select('*').eq('status', 'pending').order('id'),
+  ]);
 
   const cfg = (cfgRows?.[0] as ConfigRow | undefined) ?? {
     initial_capital: 100_000_000,
@@ -83,10 +99,15 @@ export default async function PaperPage() {
   const positions = (posRows ?? []) as PositionRow[];
   const trades = (tradeRows ?? []) as TradeRow[];
   const snapshots = (snapRows ?? []) as SnapshotRow[];
+  const pendingOrders = (orderRows ?? []) as OrderRow[];
 
   // Names + latest closes for live valuation.
   const tickers = Array.from(
-    new Set([...positions.map((p) => p.ticker), ...trades.map((t) => t.ticker)]),
+    new Set([
+      ...positions.map((p) => p.ticker),
+      ...trades.map((t) => t.ticker),
+      ...pendingOrders.map((o) => o.ticker),
+    ]),
   );
   const names = new Map<string, string>();
   const closes = new Map<string, number>();
@@ -128,10 +149,14 @@ export default async function PaperPage() {
     })
     .sort((a, b) => b.value - a.value);
 
+  const reserved = pendingOrders
+    .filter((o) => o.side === 'buy')
+    .reduce((acc, o) => acc + (o.budget ?? 0), 0);
+
   const realizedCum = trades
     .filter((t) => t.side === 'sell')
     .reduce((acc, t) => acc + (t.realized_pnl ?? 0), 0);
-  const total = cfg.cash + invested;
+  const total = cfg.cash + reserved + invested;
   const totalPnl = total - cfg.initial_capital;
   const totalPct = (totalPnl / cfg.initial_capital) * 100;
 
@@ -183,7 +208,10 @@ export default async function PaperPage() {
           <CardContent className="p-4">
             <div className="text-[11px] text-txt-muted">투자 / 현금</div>
             <div className="mt-0.5 text-lg font-semibold tabular-nums">{krw(invested)}</div>
-            <div className="text-[12px] text-txt-muted tabular-nums">현금 {krw(cfg.cash)}</div>
+            <div className="text-[12px] text-txt-muted tabular-nums">
+              현금 {krw(cfg.cash + reserved)}
+              {reserved > 0 ? ` (주문 예약 ${krw(reserved)})` : ''}
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -219,6 +247,62 @@ export default async function PaperPage() {
           />
         </CardContent>
       </Card>
+
+      {/* Pending orders — next-open fills */}
+      {pendingOrders.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-heading">
+              체결 대기 주문{' '}
+              <span className="text-txt-muted font-normal text-sm">
+                ({pendingOrders.length}건 · 신호일 시가 체결)
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-[11px] text-txt-muted border-b border-border-subtle">
+                    <th className="text-left py-2 pr-3 font-medium">주문일</th>
+                    <th className="text-left py-2 px-3 font-medium">구분</th>
+                    <th className="text-left py-2 px-3 font-medium">종목</th>
+                    <th className="text-right py-2 px-3 font-medium">예산/수량</th>
+                    <th className="text-left py-2 pl-3 font-medium">사유</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingOrders.map((o) => (
+                    <tr key={o.id} className="border-b border-border-subtle/40 last:border-0">
+                      <td className="py-2 pr-3 tabular-nums text-txt-secondary">{o.order_date.slice(5)}</td>
+                      <td className="py-2 px-3">
+                        <span
+                          className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold ${
+                            o.side === 'buy'
+                              ? 'bg-status-success/10 text-status-success'
+                              : 'bg-status-error/10 text-status-error'
+                          }`}
+                        >
+                          {o.side === 'buy' ? '매수' : '매도'} 대기
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 font-medium">{names.get(o.ticker) ?? o.ticker}</td>
+                      <td className="text-right py-2 px-3 tabular-nums">
+                        {o.side === 'buy' ? krw(o.budget ?? 0) : `${(o.qty ?? 0).toLocaleString()}주`}
+                      </td>
+                      <td className="py-2 pl-3 text-[12px] text-txt-secondary">{o.reason ?? ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-[10px] text-txt-muted">
+              06:00 신호 → 당일 09:00 시가 체결. 시가 데이터는 다음 영업일 새벽 수집되므로 체결
+              확정은 다음 사이클에 표시됩니다.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Positions */}
       <Card>
@@ -348,8 +432,9 @@ export default async function PaperPage() {
       </Card>
 
       <p className="text-[11px] text-txt-muted">
-        체결 가정: 신호일 종가 ±0.05% 슬리피지 · 수수료 0.015% (양방향) · 매도 시 증권거래세 0.15%.
-        본 시뮬레이션은 가상 자금 기반이며 본 정보는 투자 판단 보조 자료이며 매매 권유가 아닙니다.
+        체결 가정: 신호일 시가(09:00) ±0.05% 슬리피지 · 수수료 0.015% (양방향) · 매도 시 증권거래세
+        0.15% — 실제 추종 가능한 가격만 사용합니다. 본 시뮬레이션은 가상 자금 기반이며 본 정보는 투자
+        판단 보조 자료이며 매매 권유가 아닙니다.
       </p>
     </div>
   );
