@@ -53,6 +53,20 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         continue-on-error: true
 
+      # 수출입 동향 (9th factor). Monthly data, but the call is 4 HS
+      # codes × 1 request — cheap enough to refresh daily so the 15th-
+      # of-month finalization lands the same morning. Skips cleanly
+      # (exit 0 + log) when DATA_GO_KR_API_KEY isn't configured yet.
+      - name: Collect KR trade stats (관세청 수출입실적)
+        run: |
+          set -o pipefail
+          python -m collectors.kr_trade 2>&1 | tee kr-trade.log
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DATA_GO_KR_API_KEY:        ${{ secrets.DATA_GO_KR_API_KEY }}
+        continue-on-error: true
+
       - name: Run pipeline
         run: |
           set -o pipefail

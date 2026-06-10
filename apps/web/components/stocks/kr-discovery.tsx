@@ -72,7 +72,7 @@ const SECTIONS: SectionDef[] = [
   {
     id: 'ai_pick',
     title: 'AI 주목 종목',
-    subtitle: '8요소 종합 점수 상위',
+    subtitle: '9요소 종합 점수 상위',
     icon: Sparkles,
     accent: 'text-txt-primary',
     accentBg: 'bg-brand-purple/10',

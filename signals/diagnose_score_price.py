@@ -49,6 +49,7 @@ SUB_SCORE_COLS: tuple[str, ...] = (
     "volume_flow_score",
     "risk_penalty",
     "kr_fear_greed_score",  # added in migration 25; may be NULL pre-deploy
+    "kr_trade_score",       # added in migration 31; may be NULL pre-deploy
 )
 ALL_SCORE_COLS: tuple[str, ...] = ("final_score",) + SUB_SCORE_COLS
 HORIZONS: tuple[int, ...] = (1, 5, 10)

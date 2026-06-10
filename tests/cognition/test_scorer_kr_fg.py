@@ -8,7 +8,8 @@ from cognition.scorer import StockScorer, WeightConfig
 
 
 class TestWeightConfigDefaults:
-    def test_eight_weights_sum_to_one(self):
+    def test_all_weights_sum_to_one(self):
+        # 9 factors since migration 31 (kr_trade, 수출입 동향).
         w = WeightConfig()
         total = (
             w.global_market
@@ -19,12 +20,14 @@ class TestWeightConfigDefaults:
             + w.volume_flow
             + w.risk_penalty
             + w.kr_fear_greed
+            + w.kr_trade
         )
         assert total == pytest.approx(1.0, abs=0.001)
 
-    def test_kr_fear_greed_default_is_five_percent(self):
+    def test_kr_fear_greed_default_is_four_percent(self):
+        # 0.05 → 0.04 when kr_trade (also 0.04) joined; sum stays 1.0.
         w = WeightConfig()
-        assert w.kr_fear_greed == pytest.approx(0.05)
+        assert w.kr_fear_greed == pytest.approx(0.04)
 
 
 class TestCombineWithKrFG:

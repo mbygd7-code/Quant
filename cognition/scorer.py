@@ -50,17 +50,21 @@ def sigmoid(x: float) -> float:
 
 @dataclass
 class WeightConfig:
-    # Eight subscore weights — original 7 + kr_fear_greed (8th factor).
-    # Defaults sum to 1.0; the migration that introduced the 8th column
-    # renormalizes existing rows so old configs keep summing to 1.0.
-    global_market: float = 0.19
-    sector: float = 0.19
-    related_us_stock: float = 0.19
+    # Nine subscore weights — original 7 + kr_fear_greed (8th) +
+    # kr_trade (9th, 수출입 동향). Defaults sum to 1.0; each factor's
+    # introducing migration renormalizes existing rows.
+    # kr_trade is deliberately small (0.04): 2026-06 validation showed
+    # export YoY is coincident confirmation (ρ≈+0.4 same-month), not
+    # predictive (ρ≈+0.30 n.s. at t+1).
+    global_market: float = 0.18
+    sector: float = 0.18
+    related_us_stock: float = 0.18
     news_sentiment: float = 0.14
     fundamental: float = 0.10
     volume_flow: float = 0.09
     risk_penalty: float = 0.05
-    kr_fear_greed: float = 0.05
+    kr_fear_greed: float = 0.04
+    kr_trade: float = 0.04
     threshold_strong: float = 0.80
     threshold_interest: float = 0.65
     threshold_neutral: float = 0.50
@@ -99,7 +103,31 @@ class StockScorer:
             volume_flow=self._volume_flow(ticker, on_date),
             risk_penalty=self._risk(ticker, on_date),
             kr_fear_greed=self._kr_fear_greed(on_date),
+            kr_trade=self._kr_trade(ticker, on_date),
         )
+
+    def _kr_trade(self, ticker: str, on_date: Date) -> float:
+        """9th factor — sector export-trend percentile (수출입 동향).
+
+        Sector-level (not per-ticker), so cached per (sector, date).
+        Sectors without export exposure (인터넷/AI) and missing data
+        both yield NEUTRAL.
+        """
+        sector = self._lookup_sector(ticker)
+        cached = getattr(self, "_kr_trade_cache", {})
+        key = (sector, on_date)
+        if key in cached:
+            return cached[key]
+        try:
+            from signals.kr_trade import compute_kr_trade
+
+            value = compute_kr_trade(sector, on_date).score
+        except Exception as exc:
+            log.warning("kr_trade compute failed (%s) — using NEUTRAL", exc)
+            value = NEUTRAL
+        cached[key] = value
+        self._kr_trade_cache = cached
+        return value
 
     def _kr_fear_greed(self, on_date: Date) -> float:
         """8th factor — KR-specific Fear & Greed composite (0..1).
@@ -555,6 +583,7 @@ class StockScorer:
             + w.fundamental * sub.fundamental
             + w.volume_flow * sub.volume_flow
             + w.kr_fear_greed * sub.kr_fear_greed
+            + w.kr_trade * sub.kr_trade
             - w.risk_penalty * sub.risk_penalty
         )
         return min(max(raw, 0.0), 1.0)
@@ -640,6 +669,8 @@ class StockScorer:
             # Fall back to dataclass default (0.05) so old configs keep
             # working until they're rewritten by the admin UI.
             kr_fear_greed=float(r.get("kr_fear_greed_weight", 0.05)),
+            # 9th weight — missing on rows from before migration 31.
+            kr_trade=float(r.get("kr_trade_weight", 0.04)),
             threshold_strong=float(r["signal_threshold_strong"]),
             threshold_interest=float(r["signal_threshold_interest"]),
             threshold_neutral=float(r["signal_threshold_neutral"]),
@@ -661,6 +692,7 @@ def upsert_score(score: AIScore) -> None:
         "volume_flow_score":      score.sub_scores.volume_flow,
         "risk_penalty":           score.sub_scores.risk_penalty,
         "kr_fear_greed_score":    score.sub_scores.kr_fear_greed,
+        "kr_trade_score":         score.sub_scores.kr_trade,
         "final_score":            score.final_score,
         "signal":                 score.signal,
         "rationale_json":         score.rationale.model_dump(),

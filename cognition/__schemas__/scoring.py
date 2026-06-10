@@ -15,11 +15,15 @@ SignalLabel = Literal["강한 관심", "관심", "관망", "주의", "위험"]
 
 
 class SubScores(BaseModel):
-    """The 8 components of the SKILL.md section 3 weighted formula.
+    """The 9 components of the SKILL.md section 3 weighted formula.
 
     The 8th — `kr_fear_greed` — was added on top of the original 7
     after the KR-specific Fear & Greed index (signals.kr_fear_greed)
     proved more defensible than scraping CNN's US-centric number.
+    The 9th — `kr_trade` — is the sector export-trend percentile
+    (관세청 수출입동향, signals.kr_trade); 2026-06 validation showed
+    it is a coincident confirmation signal (not predictive), hence
+    its small default weight (0.04).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -32,6 +36,7 @@ class SubScores(BaseModel):
     volume_flow: float = Field(ge=0.0, le=1.0)
     risk_penalty: float = Field(ge=0.0, le=1.0)
     kr_fear_greed: float = Field(default=0.5, ge=0.0, le=1.0)
+    kr_trade: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
 class Rationale(BaseModel):

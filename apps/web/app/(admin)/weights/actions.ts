@@ -16,6 +16,7 @@ const weightSchema = z.object({
   volume_flow_weight: z.number().min(0).max(1),
   risk_penalty_weight: z.number().min(0).max(1),
   kr_fear_greed_weight: z.number().min(0).max(1),
+  kr_trade_weight: z.number().min(0).max(1),
   signal_threshold_strong: z.number().min(0).max(1),
   signal_threshold_interest: z.number().min(0).max(1),
   signal_threshold_neutral: z.number().min(0).max(1),
@@ -32,7 +33,8 @@ function validateBusinessRules(d: WeightInput): string | null {
     d.fundamental_weight +
     d.volume_flow_weight +
     d.risk_penalty_weight +
-    d.kr_fear_greed_weight;
+    d.kr_fear_greed_weight +
+    d.kr_trade_weight;
   if (Math.abs(sum - 1.0) > 0.001) {
     return `가중치 합계가 1.00이 아닙니다 (현재 ${sum.toFixed(3)})`;
   }

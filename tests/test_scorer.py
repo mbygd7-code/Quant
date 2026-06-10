@@ -53,9 +53,9 @@ class TestCombination:
         sub = SubScores(
             global_market=1.0, sector=1.0, related_us_stock=1.0,
             news_sentiment=1.0, fundamental=1.0, volume_flow=1.0,
-            risk_penalty=0.0, kr_fear_greed=1.0,
+            risk_penalty=0.0, kr_fear_greed=1.0, kr_trade=1.0,
         )
-        # Eight weights sum to 1.0, but _combine SUBTRACTS the risk
+        # Nine weights sum to 1.0, but _combine SUBTRACTS the risk
         # penalty term — so the max attainable raw score is
         # 1.0 - risk_penalty_weight = 0.95.
         assert scorer._combine(sub) == pytest.approx(0.95, abs=1e-9)

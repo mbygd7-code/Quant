@@ -32,6 +32,7 @@ VOTER_COLS = (
     "volume_flow_score",
     "risk_penalty",
     "kr_fear_greed_score",
+    "kr_trade_score",
     "final_score",
 )
 
