@@ -41,10 +41,14 @@ class SizingParams:
     min_ticket: float = 0.03
     #: Drawdown (from equity peak) beyond which new deployment halves.
     throttle_drawdown: float = 0.08
-    #: Conviction multiplier per signal grade.
+    #: Conviction multiplier per signal grade. LEARNED by
+    #: executor.policy_learner from realized per-grade win rates.
     grade_mult: dict = field(
         default_factory=lambda: {"STRONG_BUY": 1.0, "BUY": 0.65}
     )
+    #: Per-sector conviction multiplier (1.0 = neutral). LEARNED from
+    #: realized per-sector win rates; absent sectors default to 1.0.
+    sector_mult: dict = field(default_factory=dict)
     #: Floor for σ so a freakishly quiet name can't grab the whole book.
     sigma_floor: float = 0.008
 
@@ -71,7 +75,10 @@ def conviction(c: Candidate, params: SizingParams) -> float:
         return 0.0
     score_term = min(1.0, max(0.0, abs(c.weighted_score) / 2.0))
     conf_term = 0.5 + 0.5 * min(1.0, max(0.0, c.confidence))
-    return g * (0.4 + 0.6 * score_term) * conf_term
+    # Learned per-sector skill tilts conviction up/down (1.0 neutral).
+    sec_mult = params.sector_mult.get(c.sector, 1.0) if c.sector else 1.0
+    raw = g * (0.4 + 0.6 * score_term) * conf_term * sec_mult
+    return min(1.0, max(0.0, raw))
 
 
 def deploy_fraction(

@@ -135,3 +135,29 @@ def test_invested_book_reduces_room():
 def test_regime_off_means_no_budgets():
     b = target_budgets([cand()], **base_kwargs(risk_on=False))
     assert b == {}
+
+
+# ─── learned multipliers flow through ──────────────────────────────
+
+
+def test_learned_sector_mult_shifts_budget():
+    # Two identical names in different sectors; learned sector_mult
+    # favors 반도체 over 바이오. Both σ tiny so caps don't mask the tilt.
+    favored = cand("A00001", sector="반도체", sigma=0.012, score=1.0, conf=0.7)
+    penalized = cand("B00002", sector="바이오/헬스", sigma=0.012, score=1.0, conf=0.7)
+    params = SizingParams(sector_mult={"반도체": 1.2, "바이오/헬스": 0.5})
+    b = target_budgets([favored, penalized], params=params, **base_kwargs())
+    assert b["A00001"] > b["B00002"]
+
+
+def test_learned_grade_mult_demotes_distrusted_grade():
+    # A learned policy that distrusts BUY (0.30) should shrink a BUY
+    # budget vs the default 0.65.
+    c = cand("A00001", sector=None, grade="BUY", sigma=0.012, score=1.5, conf=0.8)
+    default = target_budgets([c], **base_kwargs())
+    distrust = target_budgets(
+        [c],
+        params=SizingParams(grade_mult={"STRONG_BUY": 1.0, "BUY": 0.30}),
+        **base_kwargs(),
+    )
+    assert distrust.get("A00001", 0) < default["A00001"]

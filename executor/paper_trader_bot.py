@@ -379,6 +379,16 @@ def place_orders(sb, today: Date | None = None) -> dict[str, int]:
     cfg = _config(sb)
     cash = int(cfg["cash"])
 
+    # LEARNED policy (executor.policy_learner) — grade trust, stop-loss
+    # level and per-sector skill all evolve from realized trade history.
+    # Falls back to the hardcoded defaults before any version exists.
+    from executor.policy_learner import load_policy
+
+    policy = load_policy(sb)
+    stop_loss_pct = float(policy.get("stop_loss_pct", STOP_LOSS_PCT))
+    grade_mult = policy.get("grade_mult") or {"STRONG_BUY": 1.0, "BUY": 0.65}
+    sector_mult = policy.get("sector_mult") or {}
+
     positions = {
         p["ticker"]: p
         for p in (sb.table("paper_bot_positions").select("*").execute().data or [])
@@ -399,13 +409,13 @@ def place_orders(sb, today: Date | None = None) -> dict[str, int]:
         close = closes.get(ticker)
         avg = int(pos["avg_price"])
         sig = signals.get(ticker)
-        stop_hit = close is not None and (close - avg) / avg <= STOP_LOSS_PCT
+        stop_hit = close is not None and (close - avg) / avg <= stop_loss_pct
         grade_exit = sig is not None and sig["signal_grade"] in SELL_GRADES
         if not stop_hit and not grade_exit:
             continue
         if stop_hit:
             pnl_pct = (close - avg) / avg * 100
-            reason = f"손절 {pnl_pct:.1f}% (기준 {STOP_LOSS_PCT * 100:.0f}%) — 시가 체결 대기"
+            reason = f"손절 {pnl_pct:.1f}% (기준 {stop_loss_pct * 100:.0f}%) — 시가 체결 대기"
         else:
             reason = f"신호 하향({sig['signal_grade']}) 전량 청산 — 시가 체결 대기"
         sb.table("paper_bot_orders").insert(
@@ -449,7 +459,9 @@ def place_orders(sb, today: Date | None = None) -> dict[str, int]:
     slots_left = int(cfg["max_positions"]) - (len(positions) + len(pending_buy))
 
     if risk_on and eligible and slots_left > 0 and equity > 0:
-        from executor.position_sizing import Candidate, target_budgets
+        from executor.position_sizing import Candidate, SizingParams, target_budgets
+
+        sizing_params = SizingParams(grade_mult=grade_mult, sector_mult=sector_mult)
 
         all_tickers = sorted(
             {s["ticker"] for s in eligible}
@@ -499,6 +511,7 @@ def place_orders(sb, today: Date | None = None) -> dict[str, int]:
             held_sector_weights=held_sector_weights,
             risk_on=risk_on,
             drawdown=drawdown,
+            params=sizing_params,
         )
         sig_by_ticker = {s["ticker"]: s for s in eligible}
         # Largest budgets first; cap by remaining slots.

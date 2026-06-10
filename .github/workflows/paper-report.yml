@@ -25,6 +25,21 @@ jobs:
           cache-dependency-path: pyproject.toml
       - name: Install
         run: pip install -e .
+      # Evolve the trading policy FIRST so the report reflects the
+      # freshly-learned grade trust / stop-loss / sector skill. The
+      # learner replays the immutable trade ledger and appends a new
+      # bounded, gated policy version (executor/policy_learner.py).
+      - name: Evolve trading policy
+        run: |
+          set -o pipefail
+          python -m executor.policy_learner 2>&1 | tee policy-learn.log
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN:        ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID:    ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          EXECUTION_MODE:            paper
+        continue-on-error: true
       - name: Send weekly report
         run: |
           set -o pipefail

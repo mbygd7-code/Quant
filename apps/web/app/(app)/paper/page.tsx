@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { PaperEquityChart } from '@/components/paper/equity-chart';
 import { PaperSettings } from '@/components/paper/settings';
 import { TradeDetailButton } from '@/components/paper/trade-detail';
+import { PolicyCard } from '@/components/paper/policy-card';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,6 +99,14 @@ export default async function PaperPage() {
     .not('close', 'is', null)
     .order('date');
   const kospi = (kospiRows ?? []) as { date: string; close: number }[];
+
+  // Learned trading policy (executor.policy_learner) — newest first.
+  const { data: policyRows } = await sb
+    .from('paper_policy_state')
+    .select('version, params, notes, n_episodes, created_at')
+    .order('version', { ascending: false })
+    .limit(20);
+  const policyVersions = (policyRows ?? []) as Parameters<typeof PolicyCard>[0]['versions'];
 
   const cfg = (cfgRows?.[0] as ConfigRow | undefined) ?? {
     initial_capital: 100_000_000,
@@ -304,6 +313,9 @@ export default async function PaperPage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Soros 정책 진화 카드 — how the bot is getting smarter */}
+      <PolicyCard versions={policyVersions} />
 
       {/* Equity curve */}
       <Card>
