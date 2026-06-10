@@ -331,6 +331,136 @@ def record_forecasts(sb) -> dict[str, int]:
     }
 
 
+# ─── Backfill (point-in-time reconstruction) ──────────────────────
+
+
+def backfill_forecasts(sb, days: int = 30) -> dict[str, int]:
+    """Reconstruct past daily forecasts so the audit has history NOW.
+
+    Point-in-time correct: each row for base date d uses ONLY closes ≤ d,
+    the US session ≤ d, and the expert signal as of d — exactly what the
+    live job would have recorded that morning. The formula is
+    deterministic, so these rows equal what live recording would have
+    produced (k fixed at the prior for all backfill rows; the learned k
+    only applies to live rows going forward — noted in `model`).
+    """
+    tickers = sorted(
+        r["ticker"]
+        for r in (
+            sb.table("stocks").select("ticker").eq("is_watchlist", True).execute().data
+            or []
+        )
+    )
+    # Expert history per ticker (one query each, small).
+    written = 0
+    skipped = 0
+    for t in tickers:
+        hist = _closes(sb, t, days + LOOKBACK + 1)
+        if len(hist) < MIN_RETURNS + 2:
+            skipped += 1
+            continue
+        signals = fetch_all(
+            sb.table("final_signals")
+            .select("weighted_score, signal_grade, cycle_at")
+            .eq("ticker", t)
+            .order("cycle_at")
+        )
+        # overnight beta (single row, applies across the window — betas
+        # are refreshed weekly; minor staleness acceptable for backfill)
+        beta_rows = (
+            sb.table("kr_overnight_betas")
+            .select("us_symbol, beta, r_squared")
+            .eq("kr_ticker", t)
+            .order("r_squared", desc=True)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        beta = beta_rows[0] if beta_rows and (beta_rows[0].get("r_squared") or 0) >= OVERNIGHT_MIN_R2 else None
+        us_by_date: list[tuple[str, float]] = []
+        if beta:
+            us_by_date = [
+                (r["date"], float(r["change_rate"]))
+                for r in fetch_all(
+                    sb.table("global_market")
+                    .select("date, change_rate")
+                    .eq("symbol", beta["us_symbol"])
+                    .not_.is_("change_rate", "null")
+                    .order("date")
+                )
+            ]
+
+        rows_out = []
+        start_idx = max(MIN_RETURNS + 1, len(hist) - days)
+        for i in range(start_idx, len(hist)):
+            window = hist[max(0, i - LOOKBACK) : i + 1]
+            closes = [c for _, c in window]
+            rets = [
+                math.log(closes[j] / closes[j - 1])
+                for j in range(1, len(closes))
+                if closes[j - 1] > 0 and closes[j] > 0
+            ]
+            if len(rets) < MIN_RETURNS:
+                continue
+            mu_eff = _mean(rets) * DRIFT_SHRINK
+            sigma = _stdev(rets)
+            base = closes[-1]
+            base_date = window[-1][0]
+            # overnight gap as of base_date
+            gap = 0.0
+            if beta and us_by_date:
+                prior_us = [v for d, v in us_by_date if d <= base_date]
+                if prior_us:
+                    raw = float(beta["beta"]) * prior_us[-1]
+                    cap = OVERNIGHT_GAP_CAP_VOL * sigma
+                    gap = max(-cap, min(cap, raw))
+            # expert signal as of base_date (within 3 days)
+            es, eg = None, None
+            cutoff_lo = (Date.fromisoformat(base_date) - timedelta(days=3)).isoformat()
+            for srow in signals:
+                ca = (srow.get("cycle_at") or "")[:10]
+                if cutoff_lo <= ca <= base_date and srow.get("weighted_score") is not None:
+                    es, eg = float(srow["weighted_score"]), srow.get("signal_grade")
+            tilt = K_PRIOR * (es / 2.0) * sigma if es is not None else 0.0
+
+            h = HORIZON
+            log_center = gap + (mu_eff + tilt) * h
+            half = Z_95 * sigma * math.sqrt(h)
+            target = _add_trading_days(Date.fromisoformat(base_date), h)
+            rows_out.append(
+                {
+                    "ticker": t,
+                    "forecast_date": base_date,
+                    "target_date": target.isoformat(),
+                    "horizon_days": h,
+                    "base_price": int(base),
+                    "predicted": _round100(base * math.exp(log_center)),
+                    "lower_band": _round100(base * math.exp(log_center - half)),
+                    "upper_band": _round100(base * math.exp(log_center + half)),
+                    "mu_eff": round(mu_eff, 8),
+                    "sigma": round(sigma, 8),
+                    "overnight_gap": round(gap, 8),
+                    "expert_score": es,
+                    "expert_grade": eg,
+                    "expert_tilt": round(tilt, 8),
+                    "calib_k": K_PRIOR,
+                    "band_mult": 1.0,
+                    "model": MODEL + "_backfill",
+                }
+            )
+        if rows_out:
+            try:
+                sb.table("price_forecasts").upsert(
+                    rows_out, on_conflict="ticker,forecast_date", ignore_duplicates=True
+                ).execute()
+                written += len(rows_out)
+            except Exception as exc:
+                log.warning("[forecast] %s backfill failed: %s", t, exc)
+    log.info("[forecast] backfilled %d rows (skipped %d tickers)", written, skipped)
+    return {"backfilled": written, "skipped_tickers": skipped}
+
+
 # ─── Evaluate ──────────────────────────────────────────────────────
 
 
@@ -389,8 +519,18 @@ def evaluate_due(sb, today: Date | None = None) -> int:
 # ─── CLI (daily pipeline step) ─────────────────────────────────────
 
 if __name__ == "__main__":
+    import argparse
+
+    p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    p.add_argument(
+        "--backfill", type=int, default=0,
+        help="reconstruct point-in-time forecasts for the last N trading days",
+    )
+    args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     sb = get_admin_client()
+    if args.backfill > 0:
+        print(f"[price_forecast] backfill: {backfill_forecasts(sb, days=args.backfill)}")
     n_eval = evaluate_due(sb)
     summary = record_forecasts(sb)
     print(f"[price_forecast] evaluated={n_eval} {summary}")

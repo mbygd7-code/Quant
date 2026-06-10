@@ -48,6 +48,15 @@ const MIN_RETURNS = 10; // need at least this many returns to forecast
 const OVERNIGHT_MIN_R2 = 0.08; // gate: below this the link is noise
 const OVERNIGHT_GAP_CAP_VOL = 2.5; // cap |gap| at this × daily σ
 
+// Expert-tilt calibration (mirrors signals/price_forecast.py — keep in
+// sync). Until MIN_CALIB_N evaluated ledger rows exist, k stays at the
+// small prior; afterwards it's learned from corr(expert_score, realized
+// return) so expert influence GROWS with demonstrated accuracy and
+// decays to 0 when their calls don't map to prices.
+const K_PRIOR = 0.15;
+const MIN_CALIB_N = 20;
+const K_MAX = 0.5;
+
 interface OvernightSignal {
   us_symbol: string;
   beta: number;
@@ -199,6 +208,149 @@ async function fetchOvernightSignal(
   };
 }
 
+interface ExpertSignal {
+  score: number; // soros weighted_score (-2..+2)
+  grade: string | null;
+  tilt: number; // applied per-day log drift
+}
+
+interface TrackRow {
+  forecast_date: string;
+  target_date: string;
+  base_price: number;
+  predicted: number;
+  lower_band: number;
+  upper_band: number;
+  expert_grade: string | null;
+  actual: number | null;
+  actual_date: string | null;
+  direction_hit: boolean | null;
+  within_band: boolean | null;
+  abs_pct_err: number | null;
+}
+
+interface Calibration {
+  k: number;
+  band_mult: number;
+  n_evaluated: number;
+  direction_hit_rate: number | null;
+  coverage: number | null;
+  median_abs_err: number | null;
+}
+
+/** Pooled calibration + this ticker's recent track from the forecast
+ *  ledger. Mirrors signals/price_forecast.py::load_calibration. */
+async function fetchLedger(
+  sb: ReturnType<typeof createAdminClient>,
+  ticker: string,
+): Promise<{ calib: Calibration; track: TrackRow[] }> {
+  const fallback: Calibration = {
+    k: K_PRIOR,
+    band_mult: 1.0,
+    n_evaluated: 0,
+    direction_hit_rate: null,
+    coverage: null,
+    median_abs_err: null,
+  };
+  // Pooled evaluated rows (cross-ticker — per-ticker n grows too slowly).
+  const { data: evalRows } = await sb
+    .from('price_forecasts')
+    .select('expert_score, base_price, actual, direction_hit, within_band, abs_pct_err, horizon_days')
+    .not('actual', 'is', null)
+    .limit(2000);
+  const rows = (evalRows ?? []) as Array<{
+    expert_score: number | null;
+    base_price: number;
+    actual: number;
+    direction_hit: boolean | null;
+    within_band: boolean | null;
+    abs_pct_err: number | null;
+    horizon_days: number | null;
+  }>;
+  let calib = fallback;
+  if (rows.length > 0) {
+    const hits = rows.filter((r) => r.direction_hit != null);
+    const inband = rows.filter((r) => r.within_band != null);
+    const errs = rows
+      .map((r) => r.abs_pct_err)
+      .filter((v): v is number => v != null)
+      .sort((a, b) => a - b);
+    const hitRate = hits.length ? hits.filter((r) => r.direction_hit).length / hits.length : null;
+    const coverage = inband.length
+      ? inband.filter((r) => r.within_band).length / inband.length
+      : null;
+    let k = K_PRIOR;
+    let bandMult = 1.0;
+    if (rows.length >= MIN_CALIB_N) {
+      const xs: number[] = [];
+      const ys: number[] = [];
+      for (const r of rows) {
+        if (r.expert_score == null || !r.actual || !r.base_price) continue;
+        xs.push(r.expert_score);
+        ys.push(Math.log(r.actual / r.base_price) / (r.horizon_days ?? 5));
+      }
+      if (xs.length >= 3) {
+        const mx = mean(xs);
+        const my = mean(ys);
+        const sx = stdev(xs);
+        const sy = stdev(ys);
+        if (sx > 0 && sy > 0) {
+          const cov =
+            xs.reduce((acc, x, i) => acc + (x - mx) * (ys[i] - my), 0) / (xs.length - 1);
+          k = Math.max(0, Math.min(K_MAX, cov / (sx * sy)));
+        }
+      }
+      if (coverage != null) {
+        if (coverage < 0.8) bandMult = 1.25;
+        else if (coverage < 0.9) bandMult = 1.1;
+        else if (coverage > 0.99) bandMult = 0.9;
+      }
+    }
+    calib = {
+      k,
+      band_mult: bandMult,
+      n_evaluated: rows.length,
+      direction_hit_rate: hitRate,
+      coverage,
+      median_abs_err: errs.length ? errs[Math.floor(errs.length / 2)] : null,
+    };
+  }
+  // This ticker's recent forecasts (evaluated + pending) for the overlay.
+  const { data: trackRows } = await sb
+    .from('price_forecasts')
+    .select(
+      'forecast_date, target_date, base_price, predicted, lower_band, upper_band, expert_grade, actual, actual_date, direction_hit, within_band, abs_pct_err',
+    )
+    .eq('ticker', ticker)
+    .order('forecast_date', { ascending: false })
+    .limit(40);
+  return { calib, track: ((trackRows ?? []) as TrackRow[]).reverse() };
+}
+
+/** Latest Soros consensus within 3 days of the base date. */
+async function fetchExpertSignal(
+  sb: ReturnType<typeof createAdminClient>,
+  ticker: string,
+  lastKrDate: string,
+  sigma: number,
+  k: number,
+): Promise<ExpertSignal | null> {
+  const since = new Date(lastKrDate);
+  since.setDate(since.getDate() - 3);
+  const { data } = await sb
+    .from('final_signals')
+    .select('weighted_score, signal_grade, cycle_at')
+    .eq('ticker', ticker)
+    .gte('cycle_at', since.toISOString())
+    .order('cycle_at', { ascending: false })
+    .limit(1);
+  if (!data || data.length === 0) return null;
+  const row = data[0] as { weighted_score: number | null; signal_grade: string | null };
+  if (row.weighted_score == null) return null;
+  const score = Number(row.weighted_score);
+  return { score, grade: row.signal_grade, tilt: k * (score / 2) * sigma };
+}
+
 export async function GET(req: NextRequest) {
   const ticker = (req.nextUrl.searchParams.get('ticker') ?? '').trim().toUpperCase();
   if (!KR_TICKER_RE.test(ticker)) {
@@ -252,13 +404,38 @@ export async function GET(req: NextRequest) {
     const overnight = await fetchOvernightSignal(ticker, lastDateStr, sigma);
     const gap = overnight?.gap ?? 0;
 
+    // Forecast ledger: calibration (pooled) + this ticker's track record,
+    // and the expert consensus that tilts today's drift. All degrade
+    // gracefully (k=prior / empty track / no tilt) when unavailable.
+    let calib: Calibration = {
+      k: K_PRIOR,
+      band_mult: 1.0,
+      n_evaluated: 0,
+      direction_hit_rate: null,
+      coverage: null,
+      median_abs_err: null,
+    };
+    let track: TrackRow[] = [];
+    let expert: ExpertSignal | null = null;
+    try {
+      const sb = createAdminClient();
+      const ledger = await fetchLedger(sb, ticker);
+      calib = ledger.calib;
+      track = ledger.track;
+      expert = await fetchExpertSignal(sb, ticker, lastDateStr, sigma, calib.k);
+    } catch {
+      // service role not configured — pure statistical forecast
+    }
+    const tilt = expert?.tilt ?? 0;
+
     const forecast: ForecastPoint[] = [];
     for (let h = 1; h <= horizon; h++) {
       // The overnight gap is a one-time open jump, so it shifts the whole
-      // forecast level by `gap` (not re-applied each day); drift then
-      // accrues with h and the band widens with √h around the shifted center.
-      const logCenter = gap + muEff * h;
-      const halfWidth = Z_95 * sigma * Math.sqrt(h);
+      // forecast level by `gap` (not re-applied each day); drift (incl.
+      // the calibrated expert tilt) accrues with h and the band widens
+      // with √h around the shifted center.
+      const logCenter = gap + (muEff + tilt) * h;
+      const halfWidth = Z_95 * calib.band_mult * sigma * Math.sqrt(h);
       const center = lastClose * Math.exp(logCenter);
       const lower = lastClose * Math.exp(logCenter - halfWidth);
       const upper = lastClose * Math.exp(logCenter + halfWidth);
@@ -279,6 +456,7 @@ export async function GET(req: NextRequest) {
         ticker,
         history,
         forecast,
+        track,
         meta: {
           ok: true,
           last_close: lastClose,
@@ -287,7 +465,28 @@ export async function GET(req: NextRequest) {
           vol_daily: sigma,
           lookback_used: rets.length,
           horizon,
-          method: overnight ? 'random_walk_drift_overnight_v1' : 'random_walk_drift_v1',
+          expert: expert
+            ? {
+                score: expert.score,
+                grade: expert.grade,
+                tilt_daily: expert.tilt,
+                tilt_total_pct: (Math.exp(expert.tilt * horizon) - 1) * 100,
+              }
+            : null,
+          calibration: {
+            k: calib.k,
+            band_mult: calib.band_mult,
+            n_evaluated: calib.n_evaluated,
+            direction_hit_rate: calib.direction_hit_rate,
+            coverage: calib.coverage,
+            median_abs_err: calib.median_abs_err,
+            learning: calib.n_evaluated >= MIN_CALIB_N, // k now data-driven
+          },
+          method: expert
+            ? 'rw_drift_overnight_expert_v1'
+            : overnight
+              ? 'random_walk_drift_overnight_v1'
+              : 'random_walk_drift_v1',
           overnight: overnight
             ? {
                 us_symbol: overnight.us_symbol,
