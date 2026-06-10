@@ -40,6 +40,7 @@ jobs:
         run: pip install -e .
 
       - name: Collect KR news (per-ticker NAVER feed)
+        id: kr_news
         run: |
           set -o pipefail
           python -m collectors.kr_news --tickers "$(python -c '
@@ -58,6 +59,7 @@ jobs:
       # of-month finalization lands the same morning. Skips cleanly
       # (exit 0 + log) when DATA_GO_KR_API_KEY isn't configured yet.
       - name: Collect KR trade stats (관세청 수출입실적)
+        id: kr_trade
         run: |
           set -o pipefail
           python -m collectors.kr_trade 2>&1 | tee kr-trade.log
@@ -66,6 +68,33 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DATA_GO_KR_API_KEY:        ${{ secrets.DATA_GO_KR_API_KEY }}
         continue-on-error: true
+
+      # continue-on-error keeps a flaky collector from blocking the main
+      # pipeline, but it also paints the run green — that hid the KR-news
+      # outage for a week (URL-too-long) and the NAVER 404 before it.
+      # This step makes silent failures LOUD: any failed collector outcome
+      # → Telegram alert (run still proceeds).
+      - name: Alert on silently-failed collectors
+        if: always() && (steps.kr_news.outcome == 'failure' || steps.kr_trade.outcome == 'failure')
+        env:
+          BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          NEWS_OUTCOME:  ${{ steps.kr_news.outcome }}
+          TRADE_OUTCOME: ${{ steps.kr_trade.outcome }}
+          RUN_URL:       ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          FAILED=""
+          [ "$NEWS_OUTCOME" = "failure" ]  && FAILED="$FAILED KR뉴스"
+          [ "$TRADE_OUTCOME" = "failure" ] && FAILED="$FAILED 수출입동향"
+          echo "::warning::collector step(s) failed:$FAILED (run continues)"
+          tail -n 15 kr-news.log kr-trade.log 2>/dev/null || true
+          if [ -z "$BOT_TOKEN" ] || [ -z "$ADMIN_CHAT_ID" ]; then
+            echo "telegram secrets absent — alert skipped"; exit 0
+          fi
+          MSG=$(printf '⚠️ 일일 파이프라인: 수집기 실패 —%s\n파이프라인 본체는 계속 실행됨. 데이터 공백 가능.\n%s' "$FAILED" "$RUN_URL")
+          curl -sS -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${ADMIN_CHAT_ID}" \
+            --data-urlencode "text=${MSG}" || echo "telegram notify failed (non-fatal)"
 
       - name: Run pipeline
         run: |

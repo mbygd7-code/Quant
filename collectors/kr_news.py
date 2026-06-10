@@ -198,21 +198,35 @@ def upsert_news_rows(supabase, rows: list[dict[str, Any]]) -> int:
     # The supabase-py upsert silently overwrites — including any sentiment
     # scoring done on a previous pass. Skip URLs that already exist so
     # sentiment work isn't wasted.
+    #
+    # CHUNKED: `.in_()` puts every URL in the GET query string; a
+    # 50-ticker run produces ~1000 URLs (~80KB), which httpx rejects
+    # with "InvalidURL: URL component 'query' too long" — this killed
+    # the whole collect step daily (silently, behind continue-on-error)
+    # from 06-04 to 06-10. 50 URLs/chunk stays well under the limit.
     urls = [r["url"] for r in rows]
-    existing = (
-        supabase.table("news_items")
-        .select("url")
-        .in_("url", urls)
-        .execute()
-        .data
-        or []
-    )
-    existing_urls = {r["url"] for r in existing}
+    existing_urls: set[str] = set()
+    chunk_size = 50
+    for i in range(0, len(urls), chunk_size):
+        existing = (
+            supabase.table("news_items")
+            .select("url")
+            .in_("url", urls[i : i + chunk_size])
+            .execute()
+            .data
+            or []
+        )
+        existing_urls.update(r["url"] for r in existing)
     fresh = [r for r in rows if r["url"] not in existing_urls]
     if not fresh:
         return 0
-    supabase.table("news_items").insert(fresh).execute()
-    return len(fresh)
+    # Insert in chunks too — POST bodies are fine size-wise, but
+    # per-chunk inserts bound the blast radius of a single bad row.
+    inserted = 0
+    for i in range(0, len(fresh), chunk_size):
+        supabase.table("news_items").insert(fresh[i : i + chunk_size]).execute()
+        inserted += len(fresh[i : i + chunk_size])
+    return inserted
 
 
 def collect_and_persist(

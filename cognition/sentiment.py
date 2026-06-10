@@ -19,6 +19,7 @@ import hashlib
 import logging
 import os
 from datetime import date as Date
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
@@ -251,18 +252,36 @@ class SentimentEngine:
     # ──────────────────────────────────────────────────────
     # Batch — read DB → score + embed → write back
     # ──────────────────────────────────────────────────────
-    async def score_batch(self, on_date: Date) -> dict[str, int]:
-        """Process all unscored news_items for `on_date`. Returns counts."""
+    async def score_batch(self, on_date: Date, lookback_days: int = 3) -> dict[str, int]:
+        """Process unscored news_items dated within `lookback_days` of `on_date`.
+
+        WINDOW, not same-day: the pipeline runs 06:00 KST but articles
+        carry their *publication* date (usually yesterday), so a strict
+        `date == on_date` filter matched ~0 rows and sentiment was
+        effectively never scored (every news_sentiment_score fell back
+        to NEUTRAL 0.5 — discovered 2026-06-10, 4,200+ rows unscored).
+        A 3-day window matches the scorer's own news lookback and also
+        self-heals a missed pipeline day.
+
+        Newest first, so when the daily LLM cap halts the batch the
+        most signal-relevant articles are already done.
+        """
         sb = get_admin_client()
+        since = on_date - timedelta(days=lookback_days)
         rows = (
             sb.table("news_items")
               .select("id, title, body, related_symbols")
-              .eq("date", on_date.isoformat())
+              .gte("date", since.isoformat())
+              .lte("date", on_date.isoformat())
               .is_("sentiment_score", "null")
+              .order("date", desc=True)
               .execute()
               .data
         ) or []
-        log.info("score_batch: %d unscored news items for %s", len(rows), on_date)
+        log.info(
+            "score_batch: %d unscored news items in %s..%s",
+            len(rows), since, on_date,
+        )
 
         succeeded = 0
         skipped_cap = 0
