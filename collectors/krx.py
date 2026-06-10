@@ -272,7 +272,7 @@ class KrxCollector(BaseCollector):
         )
 
     # ──────────────────────────────────────────────────────
-    # Supply / demand — pykrx only; tolerate per-ticker failure
+    # Supply / demand — NAVER investor-trend API; tolerate failure
     # ──────────────────────────────────────────────────────
     def _fetch_supply_demand_safe(
         self, ticker: str, target: Date,
@@ -280,22 +280,80 @@ class KrxCollector(BaseCollector):
         try:
             return self._fetch_supply_demand(ticker, target)
         except Exception as exc:
-            log.debug("[krx] supply/demand for %s unavailable: %s", ticker, exc)
+            # warning (not debug): this exact path was silently dead for
+            # the project's entire life — pykrx's investor-flow endpoint
+            # started requiring a KRX datacenter login (KRX_ID/KRX_PW)
+            # and every call failed invisibly at debug level. korea_market
+            # ended up with ZERO foreign_net_buy rows. Keep failures
+            # visible.
+            log.warning("[krx] supply/demand for %s unavailable: %s", ticker, exc)
             return None
 
     @BaseCollector._retry()
     def _fetch_supply_demand(self, ticker: str, target: Date) -> KoreaSupplyDemand | None:
-        from pykrx import stock
+        """Foreigner/institution net buy via NAVER's investor-trend API.
 
+        Replaces pykrx `get_market_trading_value_by_date`, which now
+        requires a KRX datacenter login and has therefore never returned
+        a single row in this deployment.
+
+        NAVER reports net-buy QUANTITY (shares); the schema (and
+        Shiller's ±5조 saturation) expect KRW value, so we approximate
+        value = quantity × that day's close. This is the standard
+        approximation (intraday VWAP unavailable) and is documented at
+        the call sites that consume it.
+        """
+        rows = _naver_investor_trend(ticker)
         ymd = target.strftime("%Y%m%d")
-        df = stock.get_market_trading_value_by_date(ymd, ymd, ticker)
-        if df is None or df.empty:
-            return None
+        for r in rows:
+            if r.get("bizdate") != ymd:
+                continue
+            close = _parse_signed_int(r.get("closePrice"))
+            frgn = _parse_signed_int(r.get("foreignerPureBuyQuant"))
+            organ = _parse_signed_int(r.get("organPureBuyQuant"))
+            if close is None:
+                return None
+            return KoreaSupplyDemand(
+                date=target,
+                ticker=ticker,
+                foreign_net_buy=frgn * close if frgn is not None else None,
+                institution_net_buy=organ * close if organ is not None else None,
+            )
+        return None
 
-        row = df.iloc[0]
-        return KoreaSupplyDemand(
-            date=target,
-            ticker=ticker,
-            foreign_net_buy=int(row.get("외국인합계", 0)),
-            institution_net_buy=int(row.get("기관합계", 0)),
-        )
+
+#: NAVER mobile investor-trend endpoint — same host as the kr_news
+#: collector; no auth required. Returns the latest N trading days of
+#: per-investor net-buy quantities (외국인/기관/개인) plus close.
+NAVER_TREND_ENDPOINT = "https://m.stock.naver.com/api/stock/{ticker}/trend"
+
+
+def _naver_investor_trend(ticker: str, page_size: int = 10) -> list[dict]:
+    """Fetch the latest `page_size` daily investor-trend rows."""
+    import httpx
+
+    resp = httpx.get(
+        NAVER_TREND_ENDPOINT.format(ticker=ticker),
+        params={"pageSize": page_size, "page": 1},
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+            ),
+            "Accept": "application/json",
+        },
+        timeout=10.0,
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    return body if isinstance(body, list) else []
+
+
+def _parse_signed_int(text) -> int | None:
+    """'+1,767,022' / '-1,596,173' / '322,000' → int. None on junk."""
+    if text is None:
+        return None
+    try:
+        return int(str(text).replace(",", "").replace("+", "").strip())
+    except ValueError:
+        return None

@@ -105,13 +105,25 @@ class TestYfSymbol:
         assert KrxCollector._yf_symbol("005930", "") == "005930.KS"
 
 
+#: NAVER investor-trend rows for the supply/demand mock (replaces the
+#: retired pykrx get_market_trading_value_by_date, which now requires a
+#: KRX datacenter login). Value = quantity × close at the call site.
+def _naver_trend_rows(frgn="+50,000", organ="-20,000", close="100,000"):
+    return [{
+        "bizdate": "20260501",
+        "foreignerPureBuyQuant": frgn,
+        "organPureBuyQuant": organ,
+        "closePrice": close,
+    }]
+
+
 # ───────────────────────────────────────────────────────────
 # yfinance success path (primary backend)
 # ───────────────────────────────────────────────────────────
 class TestYfinancePath:
     @patch("collectors.krx.prev_kr_business_day", return_value=Date(2026, 5, 1))
     @patch("yfinance.download")
-    @patch("pykrx.stock.get_market_trading_value_by_date")
+    @patch("collectors.krx._naver_investor_trend")
     def test_yfinance_success_skips_pykrx(
         self, mock_supply, mock_yf, _mock_bizday, mock_storage,
     ):
@@ -120,9 +132,7 @@ class TestYfinancePath:
             "000660.KS": [180_000, 181_000, 182_000, 183_000, 184_000,
                           185_000, 186_000, 187_000, 188_000, 189_000],
         })
-        mock_supply.return_value = pd.DataFrame([
-            {"외국인합계": 5_000_000_000, "기관합계": -2_000_000_000},
-        ])
+        mock_supply.return_value = _naver_trend_rows()
 
         coll = KrxCollector(watchlist=WATCHLIST_2)
         result = coll.fetch(Date(2026, 5, 4))
@@ -151,7 +161,7 @@ class TestYfinancePath:
 
     @patch("collectors.krx.prev_kr_business_day", return_value=Date(2026, 5, 1))
     @patch("yfinance.download")
-    @patch("pykrx.stock.get_market_trading_value_by_date")
+    @patch("collectors.krx._naver_investor_trend")
     def test_yfinance_change_rate_derived_from_prev_close(
         self, mock_supply, mock_yf, _mock_bizday, mock_storage,
     ):
@@ -162,7 +172,7 @@ class TestYfinancePath:
                 100_000, 100_000, 100_000, 100_000, 102_000,
             ],
         })
-        mock_supply.return_value = pd.DataFrame()    # empty → no supply row
+        mock_supply.return_value = []    # empty → no supply row
 
         coll = KrxCollector(watchlist=[{"ticker": "005930", "market": "KOSPI"}])
         result = coll.fetch(Date(2026, 5, 4))
@@ -179,15 +189,13 @@ class TestYfinancePath:
 class TestPykrxFallback:
     @patch("collectors.krx.prev_kr_business_day", return_value=Date(2026, 5, 1))
     @patch("yfinance.download", side_effect=RuntimeError("yahoo down"))
-    @patch("pykrx.stock.get_market_trading_value_by_date")
+    @patch("collectors.krx._naver_investor_trend")
     @patch("pykrx.stock.get_market_ohlcv_by_ticker")
     def test_falls_back_to_pykrx_when_yfinance_fails(
         self, mock_pykrx_ohlcv, mock_supply, _mock_yf, _mock_bizday, mock_storage,
     ):
         mock_pykrx_ohlcv.return_value = _ohlcv_pykrx_df({"005930": _ohlcv_pykrx_row()})
-        mock_supply.return_value = pd.DataFrame([
-            {"외국인합계": 100, "기관합계": -50},
-        ])
+        mock_supply.return_value = _naver_trend_rows(frgn="+100", organ="-50", close="1")
 
         coll = KrxCollector(watchlist=[{"ticker": "005930", "market": "KOSPI"}])
         result = coll.fetch(Date(2026, 5, 4))
@@ -214,8 +222,8 @@ class TestPykrxFallback:
 class TestSupplyDemand:
     @patch("collectors.krx.prev_kr_business_day", return_value=Date(2026, 5, 1))
     @patch("yfinance.download")
-    @patch("pykrx.stock.get_market_trading_value_by_date",
-           side_effect=RuntimeError("KRX 503"))
+    @patch("collectors.krx._naver_investor_trend",
+           side_effect=RuntimeError("NAVER 503"))
     def test_supply_failure_does_not_block_quote(
         self, _mock_supply, mock_yf, _mock_bizday, mock_storage,
     ):
