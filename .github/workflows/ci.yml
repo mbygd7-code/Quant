@@ -41,12 +41,19 @@ jobs:
       # M1-T9: assert migrations 18-22 (8-agent core schema + admin views)
       # are present on the linked Supabase. Skipped on PRs from forks
       # because they don't have access to repo secrets.
+      # NOTE: the skip guard lives INSIDE the script — `secrets` is not
+      # a valid context in step `if` expressions; referencing it there
+      # invalidates the entire workflow file (0 jobs, silent CI death).
       - name: Agent schema check
-        if: ${{ secrets.SUPABASE_URL != '' || secrets.SUPABASE_URL_TEST != '' }}
         env:
           SUPABASE_URL:               ${{ secrets.SUPABASE_URL_TEST || secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_TEST || secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: python -m agents.db.migrations_check
+        run: |
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "::notice::Supabase secrets absent (fork PR) — skipping schema check"
+            exit 0
+          fi
+          python -m agents.db.migrations_check
 
       - name: Show last 100 lines on failure
         if: failure()
