@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { PaperEquityChart } from '@/components/paper/equity-chart';
 import { PaperSettings } from '@/components/paper/settings';
+import { TradeDetailButton } from '@/components/paper/trade-detail';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +50,7 @@ interface OrderRow {
   budget: number | null;
   qty: number | null;
   signal_grade: string | null;
+  weighted_score: number | null;
   reason: string | null;
 }
 interface SnapshotRow {
@@ -341,6 +343,7 @@ export default async function PaperPage() {
                     <th className="text-left py-2 px-3 font-medium">종목</th>
                     <th className="text-right py-2 px-3 font-medium">예산/수량</th>
                     <th className="text-left py-2 pl-3 font-medium">사유</th>
+                    <th className="w-8 py-2" aria-label="상세" />
                   </tr>
                 </thead>
                 <tbody>
@@ -363,6 +366,22 @@ export default async function PaperPage() {
                         {o.side === 'buy' ? krw(o.budget ?? 0) : `${(o.qty ?? 0).toLocaleString()}주`}
                       </td>
                       <td className="py-2 pl-3 text-[12px] text-txt-secondary">{o.reason ?? ''}</td>
+                      <td className="py-2 pl-1">
+                        <TradeDetailButton
+                          data={{
+                            kind: 'order',
+                            name: names.get(o.ticker) ?? o.ticker,
+                            ticker: o.ticker,
+                            side: o.side,
+                            date: o.order_date,
+                            qty: o.qty,
+                            budget: o.budget,
+                            signal_grade: o.signal_grade,
+                            weighted_score: o.weighted_score,
+                            reason: o.reason,
+                          }}
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -454,6 +473,7 @@ export default async function PaperPage() {
                     <th className="text-right py-2 px-3 font-medium">비용</th>
                     <th className="text-right py-2 px-3 font-medium">실현손익</th>
                     <th className="text-left py-2 pl-3 font-medium">사유</th>
+                    <th className="w-8 py-2" aria-label="상세" />
                   </tr>
                 </thead>
                 <tbody>
@@ -490,9 +510,28 @@ export default async function PaperPage() {
                       >
                         {t.realized_pnl == null ? '—' : signed(t.realized_pnl)}
                       </td>
-                      <td className="py-2 pl-3 text-[12px] text-txt-secondary">
+                      <td className="py-2 pl-3 text-[12px] text-txt-secondary max-w-[260px] truncate">
                         {t.signal_grade ? `${GRADE_LABEL[t.signal_grade] ?? t.signal_grade} · ` : ''}
                         {t.reason ?? ''}
+                      </td>
+                      <td className="py-2 pl-1">
+                        <TradeDetailButton
+                          data={{
+                            kind: 'trade',
+                            name: names.get(t.ticker) ?? t.ticker,
+                            ticker: t.ticker,
+                            side: t.side,
+                            date: t.trade_date,
+                            qty: t.qty,
+                            price: t.price,
+                            amount: t.amount,
+                            fee: t.fee,
+                            tax: t.tax,
+                            signal_grade: t.signal_grade,
+                            reason: t.reason,
+                            realized_pnl: t.realized_pnl,
+                          }}
+                        />
                       </td>
                     </tr>
                   ))}

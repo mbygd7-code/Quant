@@ -160,6 +160,51 @@ def regime_risk_on(sb, today: Date | None = None) -> bool:
     return latest >= past[-1]
 
 
+def _sigmas(sb, tickers: list[str], lookback: int = 40) -> dict[str, float]:
+    """ticker -> daily log-return stdev over `lookback` closes."""
+    import math as _math
+    import statistics as _stats
+
+    out: dict[str, float] = {}
+    for t in tickers:
+        rows = (
+            sb.table("korea_market")
+            .select("date, close")
+            .eq("ticker", t)
+            .not_.is_("close", "null")
+            .order("date", desc=True)
+            .limit(lookback + 1)
+            .execute()
+            .data
+            or []
+        )
+        closes = [float(r["close"]) for r in reversed(rows)]
+        rets = [
+            _math.log(closes[i] / closes[i - 1])
+            for i in range(1, len(closes))
+            if closes[i - 1] > 0
+        ]
+        if len(rets) >= 10:
+            out[t] = _stats.stdev(rets)
+    return out
+
+
+def _sectors(sb, tickers: list[str]) -> dict[str, str | None]:
+    if not tickers:
+        return {}
+    rows = (
+        sb.table("stocks").select("ticker, sector").in_("ticker", tickers).execute().data
+        or []
+    )
+    return {r["ticker"]: r.get("sector") for r in rows}
+
+
+def _equity_peak(sb) -> int | None:
+    rows = fetch_all(sb.table("paper_bot_snapshots").select("total_value"))
+    vals = [int(r["total_value"]) for r in rows]
+    return max(vals) if vals else None
+
+
 def _pending_orders(sb) -> list[dict]:
     return (
         sb.table("paper_bot_orders")
@@ -333,7 +378,6 @@ def place_orders(sb, today: Date | None = None) -> dict[str, int]:
     today = today or Date.today()
     cfg = _config(sb)
     cash = int(cfg["cash"])
-    max_pos = int(cfg["max_positions"])
 
     positions = {
         p["ticker"]: p
@@ -378,58 +422,111 @@ def place_orders(sb, today: Date | None = None) -> dict[str, int]:
         pending_sell.add(ticker)
         placed_sell += 1
 
-    # BUY orders: best fresh signals into open slots; reserve cash.
+    # BUY orders — conviction × inverse-vol sizing engine (see
+    # executor/position_sizing.py for methodology + sources). Budget per
+    # name now reflects HOW MUCH the desk believes it and HOW WILD the
+    # name trades, not a flat equity/10 slot.
     invested = sum(
         int(p["qty"]) * closes.get(t, int(p["avg_price"]))
         for t, p in positions.items()
     )
     reserved = sum(int(o["budget"] or 0) for o in pending if o["side"] == "buy")
     equity = cash + reserved + invested
-    slot = equity // max_pos if max_pos > 0 else 0
-    slots_used = len(positions) + len(pending_buy)
 
-    # Regime gate — pause NEW buys in a confirmed downtrend. Existing
-    # positions and sell/stop orders are unaffected.
     risk_on = regime_risk_on(sb, today)
     if not risk_on:
         log.warning("[paper_bot] regime OFF (KOSPI < 3M trend) — no new buys")
 
-    candidates = sorted(
-        (
-            s
-            for t, s in signals.items()
-            if risk_on
-            and s["signal_grade"] in BUY_GRADES
-            and t not in positions
-            and t not in pending_buy
-            and t not in pending_sell
-            and t in closes
-        ),
-        key=lambda s: (
-            0 if s["signal_grade"] == "STRONG_BUY" else 1,
-            -(s.get("weighted_score") or 0),
-        ),
-    )
-    for sig in candidates:
-        if slots_used >= max_pos:
-            break
-        if cash < slot * MIN_CASH_FRACTION:
-            break
-        budget = int(min(slot, cash))
-        cash -= budget  # reserve until fill/cancel
-        sb.table("paper_bot_orders").insert(
-            {
-                "order_date": today.isoformat(),
-                "ticker": sig["ticker"],
-                "side": "buy",
-                "budget": budget,
-                "signal_grade": sig["signal_grade"],
-                "weighted_score": sig.get("weighted_score"),
-                "reason": f"{sig['signal_grade']} 신호 진입 (점수 {sig.get('weighted_score')}) — 시가 체결 대기",
-            }
-        ).execute()
-        slots_used += 1
-        placed_buy += 1
+    eligible = [
+        s
+        for t, s in signals.items()
+        if s["signal_grade"] in BUY_GRADES
+        and t not in positions
+        and t not in pending_buy
+        and t not in pending_sell
+        and t in closes
+    ]
+    slots_left = int(cfg["max_positions"]) - (len(positions) + len(pending_buy))
+
+    if risk_on and eligible and slots_left > 0 and equity > 0:
+        from executor.position_sizing import Candidate, target_budgets
+
+        all_tickers = sorted(
+            {s["ticker"] for s in eligible}
+            | set(positions)
+            | {o["ticker"] for o in pending if o["side"] == "buy"}
+        )
+        sigmas = _sigmas(sb, all_tickers)
+        sectors = _sectors(sb, all_tickers)
+
+        held_weights: dict[str, float] = {}
+        held_sector_weights: dict[str, float] = {}
+        for t, p in positions.items():
+            w = int(p["qty"]) * closes.get(t, int(p["avg_price"])) / equity
+            held_weights[t] = w
+            sec = sectors.get(t)
+            if sec:
+                held_sector_weights[sec] = held_sector_weights.get(sec, 0.0) + w
+        # Pending buy reservations also consume book + sector room.
+        for o in pending:
+            if o["side"] != "buy":
+                continue
+            w = int(o["budget"] or 0) / equity
+            held_weights[o["ticker"]] = held_weights.get(o["ticker"], 0.0) + w
+            sec = sectors.get(o["ticker"])
+            if sec:
+                held_sector_weights[sec] = held_sector_weights.get(sec, 0.0) + w
+
+        peak = _equity_peak(sb)
+        drawdown = max(0.0, (peak - equity) / peak) if peak and peak > 0 else 0.0
+
+        cands = [
+            Candidate(
+                ticker=s["ticker"],
+                sector=sectors.get(s["ticker"]),
+                grade=s["signal_grade"],
+                weighted_score=float(s.get("weighted_score") or 0.0),
+                confidence=float(s.get("confidence") or 0.5),
+                sigma_daily=sigmas.get(s["ticker"], 0.03),
+            )
+            for s in eligible
+        ]
+        budgets = target_budgets(
+            cands,
+            equity=equity,
+            free_cash=cash,
+            held_weights=held_weights,
+            held_sector_weights=held_sector_weights,
+            risk_on=risk_on,
+            drawdown=drawdown,
+        )
+        sig_by_ticker = {s["ticker"]: s for s in eligible}
+        # Largest budgets first; cap by remaining slots.
+        for ticker, budget in sorted(budgets.items(), key=lambda x: -x[1])[:slots_left]:
+            budget = min(budget, cash)
+            if budget <= 0:
+                continue
+            sig = sig_by_ticker[ticker]
+            cash -= budget  # reserve until fill/cancel
+            w_pct = budget / equity * 100
+            conf_pct = round(float(sig.get("confidence") or 0) * 100)
+            sigma_pct = sigmas.get(ticker, 0.03) * 100
+            sb.table("paper_bot_orders").insert(
+                {
+                    "order_date": today.isoformat(),
+                    "ticker": ticker,
+                    "side": "buy",
+                    "budget": budget,
+                    "signal_grade": sig["signal_grade"],
+                    "weighted_score": sig.get("weighted_score"),
+                    "reason": (
+                        f"{sig['signal_grade']} 진입 — 확신도×역변동성 사이징 "
+                        f"{w_pct:.1f}% (점수 {sig.get('weighted_score')}, "
+                        f"합의 {conf_pct}%, σ {sigma_pct:.1f}%)"
+                    ),
+                }
+            ).execute()
+            placed_buy += 1
 
     _set_cash(sb, cash)
     return {"buy_orders": placed_buy, "sell_orders": placed_sell}
