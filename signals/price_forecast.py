@@ -37,6 +37,13 @@ from db.supabase_client import fetch_all, get_admin_client
 
 log = logging.getLogger("signals.price_forecast")
 
+
+def _today_kst() -> Date:
+    """KST date; a UTC runner would evaluate a day early."""
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(tz=ZoneInfo("Asia/Seoul")).date()
+
 HORIZON = 5
 LOOKBACK = 40
 MIN_RETURNS = 10
@@ -471,7 +478,7 @@ def evaluate_due(sb, today: Date | None = None) -> int:
     target_date (holidays push it forward); if none exists yet the row
     stays pending for the next run.
     """
-    today = today or Date.today()
+    today = today or _today_kst()
     due = fetch_all(
         sb.table("price_forecasts")
         .select("ticker, forecast_date, target_date, base_price, predicted, lower_band, upper_band")

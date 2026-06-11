@@ -502,15 +502,26 @@ def _inline_keyboard(rows: list[list[dict]]):
 
 
 def _gather_preview(sb, on_date):
+    # LATEST session ≤ on_date, not date == on_date: the morning preview
+    # runs pre-market KST, when the freshest US session is stamped with
+    # YESTERDAY's (US-calendar) date. The strict equality match returned
+    # zero rows every single morning → "시장 데이터 없음" forever.
+    from datetime import timedelta as _td
+
+    since = (on_date - _td(days=5)).isoformat()
     market_rows = (
         sb.table("global_market")
-          .select("symbol, close, change_rate")
-          .eq("date", on_date.isoformat())
+          .select("date, symbol, close, change_rate")
+          .gte("date", since)
+          .lte("date", on_date.isoformat())
           .in_("symbol", ["^IXIC", "^GSPC", "^SOX", "^VIX", "USDKRW"])
+          .order("date", desc=True)
           .execute()
           .data
     ) or []
-    market = {r["symbol"]: r for r in market_rows}
+    market: dict[str, dict] = {}
+    for r in market_rows:
+        market.setdefault(r["symbol"], r)  # newest first → keep latest
 
     score_rows = (
         sb.table("ai_scores")

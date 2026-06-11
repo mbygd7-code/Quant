@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from datetime import date as Date
+from datetime import timedelta
 from io import StringIO
 
 from db.storage_client import upload_daily_report
@@ -59,6 +60,9 @@ def _write_market_temperature(out: StringIO, market: dict[str, dict]) -> None:
     if not market:
         out.write("_시장 데이터 없음_\n\n")
         return
+    sess = next((r.get("date") for r in market.values() if r.get("date")), None)
+    if sess:
+        out.write(f"_어젯밤 미국장 ({sess}) 종가 기준_\n\n")
     headers = ["지표", "종가", "변동률"]
     out.write("| " + " | ".join(headers) + " |\n")
     out.write("|" + "|".join(["---"] * len(headers)) + "|\n")
@@ -135,12 +139,21 @@ def _fetch_scores(sb, on_date: Date) -> list[dict]:
 
 
 def _fetch_market_temp(sb, on_date: Date) -> dict[str, dict]:
+    # LATEST session ≤ on_date — pre-market KST the freshest US data is
+    # dated yesterday (US calendar), so strict date equality was always
+    # empty ("시장 데이터 없음" on every morning report).
+    since = (on_date - timedelta(days=5)).isoformat()
     rows = (
         sb.table("global_market")
-          .select("symbol, close, change_rate")
-          .eq("date", on_date.isoformat())
+          .select("date, symbol, close, change_rate")
+          .gte("date", since)
+          .lte("date", on_date.isoformat())
           .in_("symbol", ["^IXIC", "^GSPC", "^SOX", "^VIX", "USDKRW"])
+          .order("date", desc=True)
           .execute()
           .data
     ) or []
-    return {r["symbol"]: r for r in rows}
+    market: dict[str, dict] = {}
+    for r in rows:
+        market.setdefault(r["symbol"], r)  # newest first → keep latest
+    return market

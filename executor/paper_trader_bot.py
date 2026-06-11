@@ -43,6 +43,19 @@ from executor.safety import check_execution_mode
 
 log = logging.getLogger("executor.paper_trader_bot")
 
+
+def _today_kst() -> Date:
+    """KST trading date — NEVER Date.today() on a UTC runner.
+
+    GitHub Actions runs at 07-08 KST, which is still YESTERDAY in UTC.
+    A UTC 'today' stamps orders with yesterday's date, which would fill
+    them at yesterday's open — a look-ahead price nobody could trade —
+    and makes snapshots overwrite the previous day's row.
+    """
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(tz=ZoneInfo("Asia/Seoul")).date()
+
 COMMISSION_RATE = 0.00015   # 0.015% per side
 SELL_TAX_RATE = 0.0015      # 0.15% securities transaction tax (2025~)
 SLIPPAGE = 0.0005           # 0.05% adverse on both sides
@@ -148,7 +161,7 @@ def regime_risk_on(sb, today: Date | None = None) -> bool:
     Missing data defaults to risk-ON (the gate is insurance; a data gap
     must not silently freeze the strategy).
     """
-    today = today or Date.today()
+    today = today or _today_kst()
     closes = _kospi_closes(sb)
     if len(closes) < 10:
         return True
@@ -231,7 +244,7 @@ def _names(sb, tickers: list[str]) -> dict[str, str]:
 
 
 def fill_pending(sb, today: Date | None = None) -> dict[str, int]:
-    today = today or Date.today()
+    today = today or _today_kst()
     cfg = _config(sb)
     cash = int(cfg["cash"])
     filled = 0
@@ -375,7 +388,7 @@ def fill_pending(sb, today: Date | None = None) -> dict[str, int]:
 
 
 def place_orders(sb, today: Date | None = None) -> dict[str, int]:
-    today = today or Date.today()
+    today = today or _today_kst()
     cfg = _config(sb)
     cash = int(cfg["cash"])
 
@@ -549,7 +562,7 @@ def place_orders(sb, today: Date | None = None) -> dict[str, int]:
 
 
 def write_snapshot(sb, today: Date | None = None) -> dict:
-    today = today or Date.today()
+    today = today or _today_kst()
     cfg = _config(sb)
     cash = int(cfg["cash"])
     initial = int(cfg["initial_capital"])
@@ -597,7 +610,7 @@ def write_snapshot(sb, today: Date | None = None) -> dict:
 def run_cycle(sb, today: Date | None = None) -> dict:
     """One daily run: fill yesterday's orders, place today's, snapshot."""
     check_execution_mode()
-    today = today or Date.today()
+    today = today or _today_kst()
     fills = fill_pending(sb, today)
     orders = place_orders(sb, today)
     snap = write_snapshot(sb, today)
@@ -637,7 +650,7 @@ def weekly_report(sb, send: bool = True) -> str:
 
     cfg = _config(sb)
     initial = int(cfg["initial_capital"])
-    week_ago = (Date.today() - timedelta(days=7)).isoformat()
+    week_ago = (_today_kst() - timedelta(days=7)).isoformat()
 
     snaps = fetch_all(sb.table("paper_bot_snapshots").select("*").order("snap_date"))
     latest = snaps[-1] if snaps else None
@@ -755,7 +768,7 @@ def monthly_review(sb, send: bool = True) -> str:
     """
     import httpx
 
-    today = Date.today()
+    today = _today_kst()
     first_this = today.replace(day=1)
     last_prev = first_this - timedelta(days=1)
     first_prev = last_prev.replace(day=1)

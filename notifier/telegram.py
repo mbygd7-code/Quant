@@ -60,13 +60,27 @@ def render_preview(
     if not market:
         lines.append(escape("- 시장 데이터 없음"))
     else:
+        # Label with the actual US session date — the morning preview
+        # reports LAST NIGHT's close, not a same-(KST)-date session.
+        us_label = {
+            "^IXIC": "나스닥", "^SOX": "필라 반도체",
+            "^VIX": "VIX", "USDKRW": "원/달러",
+        }
+        sess = next(
+            (market[s].get("date") for s in ("^IXIC", "^SOX", "^VIX", "USDKRW")
+             if market.get(s) and market[s].get("date")),
+            None,
+        )
+        if sess:
+            lines.append(escape(f"(어젯밤 미국장 · {sess[5:]} 종가)"))
         for symbol in ("^IXIC", "^SOX", "^VIX", "USDKRW"):
             row = market.get(symbol)
             if not row:
                 continue
             chg = row.get("change_rate")
             chg_str = f"{chg * 100:+.2f}%" if chg is not None else "-"
-            lines.append(f"\\- {escape(symbol)} {escape(chg_str)}")
+            label = us_label.get(symbol, symbol)
+            lines.append(f"\\- {escape(label)} {escape(chg_str)}")
     lines.append("")
     lines.append("🏭 *섹터 온도*")
     for sector, counts in sorted(sector_counts.items()):
