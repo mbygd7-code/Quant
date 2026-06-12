@@ -61,6 +61,10 @@ class Candidate:
     weighted_score: float  # -2..+2 (Soros Q2-adjusted)
     confidence: float      # 0..1 voter agreement
     sigma_daily: float     # daily log-return stdev
+    #: 0..1 — 공매도 잔고 압력 (balance_ratio/5%, capped). KR evidence
+    #: (Lee & Wang; KAIST NAT): heavy shorting predicts short-run
+    #: underperformance → dampens BUY conviction, never inverts it.
+    short_pressure: float = 0.0
 
 
 def conviction(c: Candidate, params: SizingParams) -> float:
@@ -77,7 +81,11 @@ def conviction(c: Candidate, params: SizingParams) -> float:
     conf_term = 0.5 + 0.5 * min(1.0, max(0.0, c.confidence))
     # Learned per-sector skill tilts conviction up/down (1.0 neutral).
     sec_mult = params.sector_mult.get(c.sector, 1.0) if c.sector else 1.0
-    raw = g * (0.4 + 0.6 * score_term) * conf_term * sec_mult
+    # Short-pressure dampener: extreme short balance (≥5% of shares
+    # outstanding → pressure 1.0) cuts conviction by up to 40%. Bounded
+    # so shorts can shrink a position but never veto the desk.
+    short_damp = 1.0 - 0.4 * min(1.0, max(0.0, c.short_pressure))
+    raw = g * (0.4 + 0.6 * score_term) * conf_term * sec_mult * short_damp
     return min(1.0, max(0.0, raw))
 
 

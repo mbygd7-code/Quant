@@ -69,6 +69,21 @@ jobs:
           DATA_GO_KR_API_KEY:        ${{ secrets.DATA_GO_KR_API_KEY }}
         continue-on-error: true
 
+      # 공매도 거래량(T+1)/잔고(T+2) — KRX 로그인 필요 (KRX_ID/KRX_PW).
+      # Sizing의 short-pressure 감쇠 입력. 로그인 실패(잠금 등) 시
+      # 스킵하고 경보로 표면화.
+      - name: Collect KRX short selling
+        id: kr_short
+        run: |
+          set -o pipefail
+          python -m collectors.kr_short 2>&1 | tee kr-short.log
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          KRX_ID:                    ${{ secrets.KRX_ID }}
+          KRX_PW:                    ${{ secrets.KRX_PW }}
+        continue-on-error: true
+
       # DART 공시 이벤트 (잠정실적/자사주/증자/공급계약 ...). Taleb's
       # event-risk context + future event-driven signals. 7-day catchup
       # window self-heals missed runs; skips cleanly without the key.
@@ -106,7 +121,7 @@ jobs:
       # This step makes silent failures LOUD: any failed collector outcome
       # → Telegram alert (run still proceeds).
       - name: Alert on silently-failed collectors
-        if: always() && (steps.kr_news.outcome == 'failure' || steps.kr_trade.outcome == 'failure' || steps.macro_refresh.outcome == 'failure' || steps.dart_events.outcome == 'failure')
+        if: always() && (steps.kr_news.outcome == 'failure' || steps.kr_trade.outcome == 'failure' || steps.macro_refresh.outcome == 'failure' || steps.dart_events.outcome == 'failure' || steps.kr_short.outcome == 'failure')
         env:
           BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN }}
           ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
@@ -114,6 +129,7 @@ jobs:
           TRADE_OUTCOME: ${{ steps.kr_trade.outcome }}
           MACRO_OUTCOME: ${{ steps.macro_refresh.outcome }}
           DART_OUTCOME:  ${{ steps.dart_events.outcome }}
+          SHORT_OUTCOME: ${{ steps.kr_short.outcome }}
           RUN_URL:       ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           FAILED=""
@@ -121,6 +137,7 @@ jobs:
           [ "$TRADE_OUTCOME" = "failure" ] && FAILED="$FAILED 수출입동향"
           [ "$MACRO_OUTCOME" = "failure" ] && FAILED="$FAILED 매크로/ETF"
           [ "$DART_OUTCOME" = "failure" ] && FAILED="$FAILED DART공시"
+          [ "$SHORT_OUTCOME" = "failure" ] && FAILED="$FAILED 공매도"
           echo "::warning::collector step(s) failed:$FAILED (run continues)"
           tail -n 15 kr-news.log kr-trade.log 2>/dev/null || true
           if [ -z "$BOT_TOKEN" ] || [ -z "$ADMIN_CHAT_ID" ]; then

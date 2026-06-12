@@ -161,3 +161,12 @@ def test_learned_grade_mult_demotes_distrusted_grade():
         **base_kwargs(),
     )
     assert distrust.get("A00001", 0) < default["A00001"]
+
+def test_short_pressure_dampens_budget_bounded():
+    clean = cand("A00001", sector=None, sigma=0.012, score=1.5, conf=0.8)
+    shorted = Candidate("B00002", None, "STRONG_BUY", 1.5, 0.8, 0.012, short_pressure=1.0)
+    b = target_budgets([clean, shorted], **base_kwargs())
+    assert b["A00001"] > b["B00002"]          # dampened, not equal
+    assert b["B00002"] > 0                     # ...but never vetoed
+    # max dampening is 40% of conviction → budget ratio stays bounded
+    assert b["B00002"] >= b["A00001"] * 0.4

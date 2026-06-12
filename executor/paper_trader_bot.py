@@ -219,6 +219,40 @@ def _sectors(sb, tickers: list[str]) -> dict[str, str | None]:
     return {r["ticker"]: r.get("sector") for r in rows}
 
 
+def _short_pressures(sb, tickers: list[str]) -> dict[str, float]:
+    """ticker → 0..1 short-balance pressure (latest row ≤ 7 days).
+
+    pressure = balance_ratio / 5% capped at 1. Defensive: empty dict on
+    any failure — the optional short feed must never block trading.
+    """
+    if not tickers:
+        return {}
+    try:
+        since = (Date.today() - timedelta(days=7)).isoformat()
+        rows = (
+            sb.table("kr_short_selling")
+            .select("ticker, date, balance_ratio, short_ratio")
+            .in_("ticker", tickers)
+            .gte("date", since)
+            .order("date", desc=True)
+            .execute()
+            .data
+            or []
+        )
+        out: dict[str, float] = {}
+        for r in rows:
+            if r["ticker"] in out:
+                continue
+            br = r.get("balance_ratio")
+            if br is None:
+                continue
+            out[r["ticker"]] = min(1.0, max(0.0, float(br) / 5.0))
+        return out
+    except Exception as exc:
+        log.warning("[paper_bot] short pressure read failed (%s) — ignoring", exc)
+        return {}
+
+
 def _equity_peak(sb) -> int | None:
     rows = fetch_all(sb.table("paper_bot_snapshots").select("total_value"))
     vals = [int(r["total_value"]) for r in rows]
@@ -501,6 +535,7 @@ def place_orders(sb, today: Date | None = None) -> dict[str, int]:
         )
         sigmas = _sigmas(sb, all_tickers)
         sectors = _sectors(sb, all_tickers)
+        shorts = _short_pressures(sb, [s["ticker"] for s in eligible])
 
         held_weights: dict[str, float] = {}
         held_sector_weights: dict[str, float] = {}
@@ -531,6 +566,7 @@ def place_orders(sb, today: Date | None = None) -> dict[str, int]:
                 weighted_score=float(s.get("weighted_score") or 0.0),
                 confidence=float(s.get("confidence") or 0.5),
                 sigma_daily=sigmas.get(s["ticker"], 0.03),
+                short_pressure=shorts.get(s["ticker"], 0.0),
             )
             for s in eligible
         ]
@@ -566,7 +602,13 @@ def place_orders(sb, today: Date | None = None) -> dict[str, int]:
                     "reason": (
                         f"{sig['signal_grade']} 진입 — 확신도×역변동성 사이징 "
                         f"{w_pct:.1f}% (점수 {sig.get('weighted_score')}, "
-                        f"합의 {conf_pct}%, σ {sigma_pct:.1f}%)"
+                        f"합의 {conf_pct}%, σ {sigma_pct:.1f}%"
+                        + (
+                            f", 공매도압력 {shorts[ticker]:.0%} 감쇠"
+                            if shorts.get(ticker, 0) > 0.1
+                            else ""
+                        )
+                        + ")"
                     ),
                 }
             ).execute()
