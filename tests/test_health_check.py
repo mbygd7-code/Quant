@@ -131,13 +131,20 @@ class TestCollectDaily:
 
 
 # ───────────────────────────────────────────────────────────
-# collect_cost_metrics — cache lookup
+# collect_cost_metrics — DB cost ledgers (not the cache!)
 # ───────────────────────────────────────────────────────────
 class TestCollectCost:
-    def test_zero_when_cache_empty(self, monkeypatch):
-        from cognition.utils.cache import InMemoryCache
-        monkeypatch.setattr("cognition.utils.cache.make_cache", lambda: InMemoryCache())
-        monkeypatch.setenv("ANTHROPIC_MODEL", "claude-test")
+    """Cost now comes from DB cost_estimate ledgers, NOT the cache —
+    the in-memory cache counter never survived across GH Actions
+    processes, so the health check always reported 0 calls / $0."""
+
+    def _patch_db(self, monkeypatch, agent_rows, synth_rows):
+        calls = iter([agent_rows, synth_rows])
+        monkeypatch.setattr("db.supabase_client.fetch_all", lambda q: next(calls))
+        monkeypatch.setattr("db.supabase_client.get_admin_client", lambda: MagicMock())
+
+    def test_zero_when_no_db_records(self, monkeypatch):
+        self._patch_db(monkeypatch, [], [])
         monkeypatch.setenv("LLM_DAILY_CAP", "100")
         m = hc.collect_cost_metrics(Date(2026, 5, 4))
         assert m["calls_today"] == 0
@@ -145,17 +152,23 @@ class TestCollectCost:
         assert m["usage_pct"] == 0.0
         assert m["estimated_usd"] == 0.0
 
-    def test_with_cached_count(self, monkeypatch):
-        from cognition.utils.cache import InMemoryCache
-        cache = InMemoryCache()
-        cache.set("llm:count:2026-05-04:claude-test", 75, ttl_seconds=3600)
-        monkeypatch.setattr("cognition.utils.cache.make_cache", lambda: cache)
-        monkeypatch.setenv("ANTHROPIC_MODEL", "claude-test")
+    def test_sums_real_cost_records(self, monkeypatch):
+        agent_rows = [{"cost_estimate": 0.004}] * 10   # 10 voter calls
+        synth_rows = [{"cost_estimate": 0.02}] * 5     # 5 syntheses (×2 calls)
+        self._patch_db(monkeypatch, agent_rows, synth_rows)
         monkeypatch.setenv("LLM_DAILY_CAP", "200")
         m = hc.collect_cost_metrics(Date(2026, 5, 4))
-        assert m["calls_today"] == 75
-        assert m["usage_pct"] == 0.375
-        assert m["estimated_usd"] == 75 * 0.030
+        assert m["calls_today"] == 10 + 5 * 2
+        assert m["agent_calls"] == 10
+        assert m["synth_count"] == 5
+        assert m["usage_pct"] == 20 / 200
+        assert m["estimated_usd"] == round(10 * 0.004 + 5 * 0.02, 2)
+
+    def test_null_cost_estimates_count_as_zero(self, monkeypatch):
+        self._patch_db(monkeypatch, [{"cost_estimate": None}], [])
+        m = hc.collect_cost_metrics(Date(2026, 5, 4))
+        assert m["calls_today"] == 1
+        assert m["estimated_usd"] == 0.0
 
 
 # ───────────────────────────────────────────────────────────

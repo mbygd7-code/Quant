@@ -33,17 +33,33 @@ log = logging.getLogger("orchestrator.health_check")
 # ──────────────────────────────────────────────────────────
 # Metric collection (no Telegram side effects)
 # ──────────────────────────────────────────────────────────
+def _latest_session_count(sb, table: str, col: str, on_date: Date) -> tuple[str | None, int]:
+    """(session_date, row_count) for the most recent collected session.
+
+    The 06:00 pipeline stores the PREVIOUS trading day's bars (KR close
+    and US session are both dated yesterday at health-check time), so
+    counting rows with date == today was always 0 — a false "수집 실패"
+    signal every single morning.
+    """
+    latest = (
+        sb.table(table).select("date")
+          .lte("date", on_date.isoformat())
+          .order("date", desc=True).limit(1).execute().data
+    ) or []
+    if not latest:
+        return None, 0
+    session = latest[0]["date"]
+    rows = sb.table(table).select(col).eq("date", session).execute().data or []
+    return session, len(rows)
+
+
 def collect_daily_metrics(on_date: Date) -> dict:
     from db.supabase_client import get_admin_client
     sb = get_admin_client()
     iso = on_date.isoformat()
 
-    korea_count = len(
-        sb.table("korea_market").select("ticker").eq("date", iso).execute().data or []
-    )
-    global_count = len(
-        sb.table("global_market").select("symbol").eq("date", iso).execute().data or []
-    )
+    korea_session, korea_count = _latest_session_count(sb, "korea_market", "ticker", on_date)
+    global_session, global_count = _latest_session_count(sb, "global_market", "symbol", on_date)
     news_total = len(
         sb.table("news_items").select("id").eq("date", iso).execute().data or []
     )
@@ -60,7 +76,9 @@ def collect_daily_metrics(on_date: Date) -> dict:
     return {
         "date": iso,
         "korea_market_rows": korea_count,
+        "korea_market_session": korea_session,
         "global_market_rows": global_count,
+        "global_market_session": global_session,
         "news_total": news_total,
         "news_scored": news_scored,
         "sentiment_completion_pct": (news_scored / news_total) if news_total else 0.0,
@@ -75,18 +93,44 @@ def collect_daily_metrics(on_date: Date) -> dict:
 
 
 def collect_cost_metrics(on_date: Date) -> dict:
-    from cognition.utils.cache import make_cache
-    cache = make_cache()
-    model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
-    calls = int(cache.get(f"llm:count:{on_date.isoformat()}:{model}") or 0)
+    """Real LLM spend for the KST day, from DB cost records.
+
+    The old version read the `llm:count:*` cache counter — but with no
+    REDIS_URL the cache is in-memory and per-process, so the health
+    check (a separate GH Actions job) ALWAYS read 0. The DB ledgers
+    (agent_outputs / final_signals cost_estimate) record what was
+    actually spent, survive across processes, and can't drift.
+    """
+    from db.supabase_client import fetch_all, get_admin_client
+    sb = get_admin_client()
+
+    # KST calendar day → UTC window: [D-1 15:00, D 15:00)
+    start_utc = f"{(on_date - timedelta(days=1)).isoformat()}T15:00:00"
+    end_utc = f"{on_date.isoformat()}T15:00:00"
+    agent_rows = fetch_all(
+        sb.table("agent_outputs").select("cost_estimate")
+          .gte("cycle_at", start_utc).lt("cycle_at", end_utc)
+    )
+    synth_rows = fetch_all(
+        sb.table("final_signals").select("cost_estimate")
+          .gte("cycle_at", start_utc).lt("cycle_at", end_utc)
+    )
+    # Calls: 1 narrative call per voter output; synthesis ≈ 2 calls
+    # (priced_in + narrative). Sentiment calls aren't individually
+    # logged — the news_scored count in the 수집 block covers them.
+    calls = len(agent_rows) + len(synth_rows) * 2
+    cost_usd = sum(
+        float(r.get("cost_estimate") or 0) for r in agent_rows + synth_rows
+    )
     cap = int(os.environ.get("LLM_DAILY_CAP", "200"))
     return {
-        "model": model,
+        "model": os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
         "calls_today": calls,
+        "agent_calls": len(agent_rows),
+        "synth_count": len(synth_rows),
         "cap": cap,
         "usage_pct": (calls / cap) if cap else 0.0,
-        # Per CLAUDE.md §8: sentiment ~$0.0075, report ~$0.0225 — single counter so over-estimates.
-        "estimated_usd": round(calls * 0.030, 4),
+        "estimated_usd": round(cost_usd, 2),
     }
 
 
@@ -135,18 +179,23 @@ def render_message(daily: dict, cost: dict, weekly: dict | None) -> str:
     lines.append(f"📋 *Daily Health Check* `{escape(daily['date'])}`")
     lines.append("")
     lines.append("*수집*")
-    lines.append(f"\\- KR market: `{daily['korea_market_rows']}` rows")
-    lines.append(f"\\- Global market: `{daily['global_market_rows']}` rows")
+    kr_sess = daily.get("korea_market_session")
+    gl_sess = daily.get("global_market_session")
+    kr_label = f" \\({escape(kr_sess[5:])} 세션\\)" if kr_sess else ""
+    gl_label = f" \\({escape(gl_sess[5:])} 세션\\)" if gl_sess else ""
+    lines.append(f"\\- KR market: `{daily['korea_market_rows']}` rows{kr_label}")
+    lines.append(f"\\- Global market: `{daily['global_market_rows']}` rows{gl_label}")
     lines.append(
         f"\\- News: `{daily['news_scored']}/{daily['news_total']}` scored "
         f"\\({escape(sentiment_pct)}\\)"
     )
     lines.append(f"\\- AI scores: `{daily['scored_tickers']}` tickers")
     lines.append("")
-    lines.append("*LLM 비용*")
+    lines.append("*LLM 비용* \\(DB 기록 기준\\)")
     lines.append(
         f"\\- Calls: `{cost['calls_today']}/{cost['cap']}` "
-        f"\\({escape(usage_pct)}\\)"
+        f"\\({escape(usage_pct)}\\) — voter `{cost.get('agent_calls', 0)}` "
+        f"\\+ 종합 `{cost.get('synth_count', 0)}`×2"
     )
     lines.append(f"\\- Estimated USD: `${escape(cost_usd)}`")
     lines.append("")
