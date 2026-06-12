@@ -37,7 +37,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from db.supabase_client import get_admin_client
+from db.supabase_client import fetch_all, get_admin_client
 
 # Sub-score columns to evaluate individually. Order matches scorer.WeightConfig.
 SUB_SCORE_COLS: tuple[str, ...] = (
@@ -115,16 +115,20 @@ def spearman(xs: list[float], ys: list[float]) -> tuple[float, int]:
 def _fetch_scores(start: date, end: date) -> list[ScoreRow]:
     sb = get_admin_client()
     cols = ",".join(("date", "ticker") + ALL_SCORE_COLS)
-    # Supabase JS-style range is inclusive; .gte/.lte mirrors it server-side.
-    res = (
+    # fetch_all: a single .execute() caps at 1,000 rows (PostgREST). A
+    # 90-day window exceeds that on BOTH loaders here, and the two
+    # arbitrary first-1,000 slices didn't overlap in time — so every
+    # weekly diagnostic run persisted n_pairs=0 (observed 2026-06-07).
+    # Same bug class as compute_sector_betas, fixed the same way.
+    rows = fetch_all(
         sb.table("ai_scores")
         .select(cols)
         .gte("date", start.isoformat())
         .lte("date", end.isoformat())
-        .execute()
+        .order("date")
     )
     out: list[ScoreRow] = []
-    for r in res.data or []:
+    for r in rows:
         out.append(
             ScoreRow(
                 date=date.fromisoformat(r["date"]),
@@ -138,15 +142,15 @@ def _fetch_scores(start: date, end: date) -> list[ScoreRow]:
 def _fetch_prices(start: date, end: date) -> dict[tuple[str, date], float]:
     """Return {(ticker, date): close}. We need close prices through `end + max(HORIZONS)`."""
     sb = get_admin_client()
-    res = (
+    rows = fetch_all(
         sb.table("korea_market")
         .select("ticker, date, close")
         .gte("date", start.isoformat())
         .lte("date", end.isoformat())
-        .execute()
+        .order("date")
     )
     out: dict[tuple[str, date], float] = {}
-    for r in res.data or []:
+    for r in rows:
         if r.get("close") is None:
             continue
         out[(r["ticker"], date.fromisoformat(r["date"]))] = float(r["close"])

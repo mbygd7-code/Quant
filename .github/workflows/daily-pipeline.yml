@@ -69,23 +69,42 @@ jobs:
           DATA_GO_KR_API_KEY:        ${{ secrets.DATA_GO_KR_API_KEY }}
         continue-on-error: true
 
+      # Macro factors / KR indices / sector ETFs are NOT in the Finnhub
+      # daily set — they were backfill-only and silently froze at their
+      # last backfill (observed 2 weeks stale on 06-12: Keynes deltas,
+      # Shiller KOSPI momentum, sector proxies, regime gate, KOSPI
+      # benchmark all degraded). Refresh them daily via yfinance.
+      - name: Refresh macro factors + indices + sector ETFs
+        id: macro_refresh
+        run: |
+          set -o pipefail
+          python -m scripts.backfill_macro_factors --days 7 2>&1 | tee macro.log
+          python -m scripts.backfill_indices --days 7 2>&1 | tee -a macro.log
+          python -m scripts.backfill_sector_etfs --days 7 2>&1 | tee -a macro.log
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        continue-on-error: true
+
       # continue-on-error keeps a flaky collector from blocking the main
       # pipeline, but it also paints the run green — that hid the KR-news
       # outage for a week (URL-too-long) and the NAVER 404 before it.
       # This step makes silent failures LOUD: any failed collector outcome
       # → Telegram alert (run still proceeds).
       - name: Alert on silently-failed collectors
-        if: always() && (steps.kr_news.outcome == 'failure' || steps.kr_trade.outcome == 'failure')
+        if: always() && (steps.kr_news.outcome == 'failure' || steps.kr_trade.outcome == 'failure' || steps.macro_refresh.outcome == 'failure')
         env:
           BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN }}
           ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
           NEWS_OUTCOME:  ${{ steps.kr_news.outcome }}
           TRADE_OUTCOME: ${{ steps.kr_trade.outcome }}
+          MACRO_OUTCOME: ${{ steps.macro_refresh.outcome }}
           RUN_URL:       ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           FAILED=""
           [ "$NEWS_OUTCOME" = "failure" ]  && FAILED="$FAILED KR뉴스"
           [ "$TRADE_OUTCOME" = "failure" ] && FAILED="$FAILED 수출입동향"
+          [ "$MACRO_OUTCOME" = "failure" ] && FAILED="$FAILED 매크로/ETF"
           echo "::warning::collector step(s) failed:$FAILED (run continues)"
           tail -n 15 kr-news.log kr-trade.log 2>/dev/null || true
           if [ -z "$BOT_TOKEN" ] || [ -z "$ADMIN_CHAT_ID" ]; then
