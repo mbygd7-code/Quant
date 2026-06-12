@@ -79,19 +79,33 @@ const GRADE_LABEL: Record<string, string> = {
 export default async function PaperPage() {
   const sb = createAdminClient();
 
-  const [
-    { data: cfgRows },
-    { data: posRows },
-    { data: tradeRows },
-    { data: snapRows },
-    { data: orderRows },
-  ] = await Promise.all([
+  const [cfgRes, posRes, tradeRes, snapRes, orderRes] = await Promise.all([
     sb.from('paper_config').select('*').eq('id', 1),
     sb.from('paper_bot_positions').select('*'),
     sb.from('paper_bot_trades').select('*').order('trade_date', { ascending: false }).order('id', { ascending: false }).limit(60),
     sb.from('paper_bot_snapshots').select('*').order('snap_date').limit(400),
     sb.from('paper_bot_orders').select('*').eq('status', 'pending').order('id'),
   ]);
+
+  // NEVER fall back to fake defaults on a query error. A transient DB
+  // hiccup once rendered this page as "현금 1억 / 보유 0종목" — i.e. a
+  // freshly-reset portfolio — which is far worse than an error screen:
+  // it misreports the audit. Throw so the Next error boundary shows and
+  // a refresh recovers.
+  const failed = [
+    ['paper_config', cfgRes.error],
+    ['paper_bot_positions', posRes.error],
+    ['paper_bot_trades', tradeRes.error],
+    ['paper_bot_snapshots', snapRes.error],
+    ['paper_bot_orders', orderRes.error],
+  ].filter(([, e]) => e);
+  if (failed.length > 0) {
+    const detail = failed
+      .map(([t, e]) => `${t}: ${(e as { message?: string })?.message ?? 'unknown'}`)
+      .join(' · ');
+    throw new Error(`모의투자 데이터 조회 실패 — 새로고침해 주세요 (${detail})`);
+  }
+
   const { data: kospiRows } = await sb
     .from('global_market')
     .select('date, close')
@@ -108,16 +122,16 @@ export default async function PaperPage() {
     .limit(20);
   const policyVersions = (policyRows ?? []) as Parameters<typeof PolicyCard>[0]['versions'];
 
-  const cfg = (cfgRows?.[0] as ConfigRow | undefined) ?? {
+  const cfg = (cfgRes.data?.[0] as ConfigRow | undefined) ?? {
     initial_capital: 100_000_000,
     cash: 100_000_000,
     max_positions: 10,
     started_at: new Date().toISOString(),
   };
-  const positions = (posRows ?? []) as PositionRow[];
-  const trades = (tradeRows ?? []) as TradeRow[];
-  const snapshots = (snapRows ?? []) as SnapshotRow[];
-  const pendingOrders = (orderRows ?? []) as OrderRow[];
+  const positions = (posRes.data ?? []) as PositionRow[];
+  const trades = (tradeRes.data ?? []) as TradeRow[];
+  const snapshots = (snapRes.data ?? []) as SnapshotRow[];
+  const pendingOrders = (orderRes.data ?? []) as OrderRow[];
 
   // Names + latest closes for live valuation.
   const tickers = Array.from(
