@@ -33,7 +33,7 @@ const FACTOR_LABELS: Record<string, string> = {
   fundamental_score: '펀더멘털',
   volume_flow_score: '수급/거래대금',
   risk_penalty: '리스크 패널티',
-  kr_fear_greed_score: '한국 F&G',
+  kr_fear_greed_score: '한국 F&G (역방향)',
   kr_trade_score: '수출입 동향',
 };
 

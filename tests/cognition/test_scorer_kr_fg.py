@@ -70,17 +70,28 @@ class TestCombineWithKrFG:
         light_scorer = self._scorer_with(light_w)
         heavy_scorer = self._scorer_with(heavy_w)
 
+        # CONTRARIAN since 2026-06-12: extreme greed (1.0) LOWERS the
+        # final score — F&G is the textbook contrarian gauge, and the
+        # diagnostic measured t+1 ρ=-0.43 on the raw value.
         light_delta = (
-            light_scorer._combine(sub_extreme) - light_scorer._combine(sub_neutral)
+            light_scorer._combine(sub_neutral) - light_scorer._combine(sub_extreme)
         )
         heavy_delta = (
-            heavy_scorer._combine(sub_extreme) - heavy_scorer._combine(sub_neutral)
+            heavy_scorer._combine(sub_neutral) - heavy_scorer._combine(sub_extreme)
         )
         # Heavy weight (0.10) should produce ~5x the delta of light (0.02).
-        # The 0.5 → 1.0 swing × weight = exact delta if other factors stay constant.
+        # The 0.5 → 1.0 greed swing × weight = exact PENALTY when other
+        # factors stay constant.
         assert heavy_delta == pytest.approx(0.10 * 0.5, abs=0.001)
         assert light_delta == pytest.approx(0.02 * 0.5, abs=0.001)
         assert heavy_delta > light_delta * 4.5
+
+    def test_extreme_greed_lowers_score_contrarian(self):
+        w = WeightConfig()
+        scorer = self._scorer_with(w)
+        greedy = self._make_subscores(kr_fear_greed=1.0)
+        fearful = self._make_subscores(kr_fear_greed=0.0)
+        assert scorer._combine(fearful) > scorer._combine(greedy)
 
     def test_setting_kr_fg_weight_to_zero_makes_factor_inert(self):
         """Rollback property: kr_fear_greed_weight = 0 → 8th term vanishes."""

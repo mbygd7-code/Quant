@@ -575,6 +575,19 @@ class StockScorer:
         # (model_diagnostics) is accumulating evidence; once ≥30-60 days
         # confirm the anti-signal we'll invert it the *correct* way that
         # preserves centering: `+ w.related_us_stock * (1 - sub.related_us_stock)`.
+        # kr_fear_greed enters CONTRARIAN — (1 - sub), centering preserved
+        # (neutral 0.5 still contributes 0.5·w; pure inversion, no bias).
+        # Two independent grounds:
+        #   1) Theory: Fear & Greed is the textbook contrarian gauge —
+        #      extreme greed is a SELL condition. Wiring it bullish (+)
+        #      was a design error.
+        #   2) Data: 2026-06-12 diagnostic, t+1 ρ=-0.426 / t+5 ρ=-0.301
+        #      (n=605 pairs). Caveat honestly noted: F&G is market-wide
+        #      (same value for every ticker per day), so the effective
+        #      sample is ~11 trading DAYS, not 605 — suggestive, not
+        #      conclusive on its own. Theory + data together justify the
+        #      flip; the weekly diagnostic keeps scoring the stored RAW
+        #      value, so accumulating evidence can still overturn this.
         raw = (
             w.global_market * sub.global_market
             + w.sector * sub.sector
@@ -582,7 +595,7 @@ class StockScorer:
             + w.news_sentiment * sub.news_sentiment
             + w.fundamental * sub.fundamental
             + w.volume_flow * sub.volume_flow
-            + w.kr_fear_greed * sub.kr_fear_greed
+            + w.kr_fear_greed * (1.0 - sub.kr_fear_greed)
             + w.kr_trade * sub.kr_trade
             - w.risk_penalty * sub.risk_penalty
         )

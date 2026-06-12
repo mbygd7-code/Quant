@@ -53,7 +53,9 @@ class TestCombination:
         sub = SubScores(
             global_market=1.0, sector=1.0, related_us_stock=1.0,
             news_sentiment=1.0, fundamental=1.0, volume_flow=1.0,
-            risk_penalty=0.0, kr_fear_greed=1.0, kr_trade=1.0,
+            # kr_fear_greed is CONTRARIAN — max bullishness is extreme
+            # FEAR (0.0), which contributes its full weight via (1-sub).
+            risk_penalty=0.0, kr_fear_greed=0.0, kr_trade=1.0,
         )
         # Nine weights sum to 1.0, but _combine SUBTRACTS the risk
         # penalty term — so the max attainable raw score is

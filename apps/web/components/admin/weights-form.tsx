@@ -38,7 +38,7 @@ const WEIGHT_FIELDS: Array<{ key: keyof State; label: string }> = [
   { key: 'fundamental_weight', label: '펀더멘털' },
   { key: 'volume_flow_weight', label: '수급/거래량' },
   { key: 'risk_penalty_weight', label: '리스크 패널티' },
-  { key: 'kr_fear_greed_weight', label: '한국 F&G' },
+  { key: 'kr_fear_greed_weight', label: '한국 F&G (역방향)' },
   { key: 'kr_trade_weight', label: '수출입 동향' },
 ];
 

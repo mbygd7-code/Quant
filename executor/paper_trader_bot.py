@@ -69,6 +69,13 @@ ORDER_STALE_DAYS = 7        # cancel pending orders older than this
 #: concentrated books) hurts compounding far more than any single
 #: month's upside — cutting it is the cheapest risk control we have.
 STOP_LOSS_PCT = -0.10
+#: Minimum holding period before a GRADE-downgrade exit is honored.
+#: The 2026-06-12 diagnostic (n=846 pairs) shows our final_score carries
+#: signal at the t+10 horizon (ρ=+0.32) but is noise at t+1/t+5 — so
+#: churning out of a position days after entry trades on noise and pays
+#: costs for it. Stop-losses are EXEMPT: risk control never waits.
+#: ~10 trading days ≈ 14 calendar days.
+MIN_HOLD_CAL_DAYS = 14
 #: Regime gate: new BUYS pause when KOSPI is below its level ~3 months
 #: ago. Couldn't be validated on our 15-month window (it was risk-on
 #: throughout) — this is downside INSURANCE, not a return lever. Sells
@@ -424,6 +431,17 @@ def place_orders(sb, today: Date | None = None) -> dict[str, int]:
         sig = signals.get(ticker)
         stop_hit = close is not None and (close - avg) / avg <= stop_loss_pct
         grade_exit = sig is not None and sig["signal_grade"] in SELL_GRADES
+        # t+10 horizon alignment: ignore grade downgrades during the
+        # minimum holding window (the score is noise at t+1..5); the
+        # stop-loss still fires at any age.
+        if grade_exit and not stop_hit:
+            held_days = (today - Date.fromisoformat(str(pos["opened_at"]))).days
+            if held_days < MIN_HOLD_CAL_DAYS:
+                log.info(
+                    "[paper_bot] %s downgrade ignored — held %dd < %dd min hold",
+                    ticker, held_days, MIN_HOLD_CAL_DAYS,
+                )
+                continue
         if not stop_hit and not grade_exit:
             continue
         if stop_hit:
