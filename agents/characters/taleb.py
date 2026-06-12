@@ -81,6 +81,9 @@ class TalebInputs:
 
     quotes: list[KrQuoteRow]
     financials: list[KrFinancialsRow]
+    #: A 잠정실적 disclosure landed within the last 2 days — the moment
+    #: of maximum information asymmetry (numbers out, market digesting).
+    recent_earnings_disclosure: bool = False
 
 
 class TalebPayload(BaseModel):
@@ -216,24 +219,36 @@ def asymmetry_components(
     return upside, downside, ratio, score
 
 
+#: Statutory filing deadlines for a December fiscal year (자본시장법):
+#: 분기보고서 = quarter end + 45d (5/15, 11/14), 반기 = 6/30 + 45d (8/14),
+#: 사업보고서 = fiscal year end + 90d (3/31). Every watchlist name is a
+#: Dec-FY KOSPI/KOSDAQ corp, so the fixed calendar applies.
+FILING_DEADLINES: tuple[tuple[int, int], ...] = ((3, 31), (5, 15), (8, 14), (11, 14))
+
+
 def days_to_estimated_earnings(
     today: datetime, financials: list[KrFinancialsRow]
 ) -> int | None:
-    """Estimate days until the next quarterly report by walking forward
-    from the latest ``period_end`` in 91-day steps. Returns ``None``
-    when no period_end is available."""
-    period_ends = [f.period_end for f in financials if f.period_end is not None]
-    if not period_ends:
-        return None
-    latest = max(period_ends)
+    """Days until the next STATUTORY filing deadline.
+
+    Replaces the old "latest period_end + 91d" walk, which drifted up to
+    ±2 weeks (quarters aren't 91 days; filings land on legal deadlines,
+    not anniversaries). The deadline calendar is exact by law for Dec-FY
+    corps — and 잠정실적 disclosures (often earlier than the deadline)
+    are caught separately via dart_disclosures in analyze().
+
+    `financials` kept in the signature for callers/tests; an empty list
+    still yields a valid answer because the calendar is universal.
+    """
+    _ = financials  # calendar-based; retained for API compatibility
     today_date = today.date()
-    delta_days = (today_date - latest).days
-    if delta_days < 0:
-        # latest period_end is in the future (rare data anomaly).
-        return delta_days
-    cycles_passed = delta_days // QUARTER_DAYS
-    next_estimated_offset = (cycles_passed + 1) * QUARTER_DAYS
-    return next_estimated_offset - delta_days
+    candidates = []
+    for year in (today_date.year, today_date.year + 1):
+        for m, d in FILING_DEADLINES:
+            dl = today_date.replace(year=year, month=m, day=d)
+            if dl >= today_date:
+                candidates.append((dl - today_date).days)
+    return min(candidates) if candidates else None
 
 
 def severity_for(
@@ -282,6 +297,35 @@ _SYSTEM_PROMPT = (
 )
 
 
+def _recent_earnings_disclosure(ticker: str, days: int = 2) -> bool:
+    """True if a 잠정실적 disclosure hit DART in the last `days` days.
+
+    Defensive: any failure (table not migrated yet, transient error)
+    returns False — the optional event stream must never break Taleb.
+    """
+    try:
+        from datetime import date as _D
+        from datetime import timedelta as _TD
+
+        from db.supabase_client import get_admin_client
+
+        sb = get_admin_client()
+        since = (_D.today() - _TD(days=days)).isoformat()
+        rows = (
+            sb.table("dart_disclosures")
+            .select("rcept_no")
+            .eq("ticker", ticker)
+            .eq("category", "잠정실적")
+            .gte("rcept_dt", since)
+            .limit(1)
+            .execute()
+            .data
+        )
+        return bool(rows)
+    except Exception:
+        return False
+
+
 class Taleb(Character):
     agent_name: ClassVar[AgentName] = "taleb"
 
@@ -300,7 +344,11 @@ class Taleb(Character):
         # when fundamentals are missing (fine for new IPOs).
         _ = latest_fundamentals(ticker)
         financials = recent_financials(ticker, n=4)
-        return TalebInputs(quotes=quotes, financials=financials)
+        return TalebInputs(
+            quotes=quotes,
+            financials=financials,
+            recent_earnings_disclosure=_recent_earnings_disclosure(ticker),
+        )
 
     def analyze(
         self,
@@ -314,11 +362,12 @@ class Taleb(Character):
         max_dd = max_drawdown_from_peak(bundle.quotes)
         upside, downside, ratio, asym_score = asymmetry_components(vol, max_dd)
 
-        # Check 3 — earnings proximity.
+        # Check 3 — earnings proximity: statutory deadline window OR an
+        # actual 잠정실적 disclosure in the last 2 days (dart_disclosures).
         days_to_earn = days_to_estimated_earnings(cycle_at, bundle.financials)
         earnings_imminent = (
             days_to_earn is not None and days_to_earn <= EARNINGS_PROXIMITY_DAYS
-        )
+        ) or bundle.recent_earnings_disclosure
         unknowns_count = 1 if earnings_imminent else 0
         unknowns_score = -UNKNOWN_PENALTY * Decimal(unknowns_count)
 

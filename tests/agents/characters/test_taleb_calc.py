@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 
 from agents.characters._base import InsufficientDataError
-from agents.characters._data import KrFinancialsRow, KrQuoteRow
+from agents.characters._data import KrQuoteRow
 from agents.characters.taleb import (
     EARNINGS_PROXIMITY_DAYS,
     TalebInputs,
@@ -190,71 +190,28 @@ def test_combine_simple_sum() -> None:
 # ─── days_to_estimated_earnings ─────────────────────────────────────
 
 
-def test_days_to_earnings_none_when_no_period_end() -> None:
-    rows = [
-        KrFinancialsRow(
-            ticker="005930",
-            fiscal_year=2026,
-            reprt_code="11013",
-            period_end=None,
-            revenue=None,
-            operating_income=None,
-            net_income=None,
-            revenue_yoy=None,
-            op_income_yoy=None,
-            net_income_yoy=None,
-        ),
-    ]
+def test_days_to_earnings_works_without_financials() -> None:
+    """Statutory-calendar version: the answer no longer depends on
+    kr_financials at all — 5/9 → 분기보고서 deadline 5/15 = 6 days.
+    (The old period_end+91d walk said 52 days here, completely missing
+    that 5/9 IS filing week.)"""
     today = datetime(2026, 5, 9, tzinfo=UTC)
-    assert days_to_estimated_earnings(today, rows) is None
+    assert days_to_estimated_earnings(today, []) == 6
 
 
-def test_days_to_earnings_estimates_next_quarter() -> None:
-    """period_end 2026-03-31, today 2026-05-09 → next due
-    91 days after period_end = 2026-06-30 → 52 days out."""
-    rows = [
-        KrFinancialsRow(
-            ticker="005930",
-            fiscal_year=2026,
-            reprt_code="11013",
-            period_end=Date(2026, 3, 31),
-            revenue=None,
-            operating_income=None,
-            net_income=None,
-            revenue_yoy=None,
-            op_income_yoy=None,
-            net_income_yoy=None,
-        ),
-    ]
-    today = datetime(2026, 5, 9, tzinfo=UTC)
-    days = days_to_estimated_earnings(today, rows)
-    assert days is not None
-    # 91 - (May 9 - Mar 31 = 39 days) = 52
-    assert days == 52
+def test_days_to_earnings_statutory_deadlines() -> None:
+    """Fixed Dec-FY calendar: 3/31 사업보고서, 5/15 · 11/14 분기,
+    8/14 반기 — exact by law, no 91-day drift."""
+    assert days_to_estimated_earnings(datetime(2026, 6, 12, tzinfo=UTC), []) == 63   # → 8/14
+    assert days_to_estimated_earnings(datetime(2026, 11, 14, tzinfo=UTC), []) == 0   # deadline day
+    assert days_to_estimated_earnings(datetime(2026, 12, 20, tzinfo=UTC), []) == 101  # → 다음해 3/31
 
 
 def test_days_to_earnings_imminent_window() -> None:
-    """today is exactly 91 - EARNINGS_PROXIMITY_DAYS after period_end →
-    days_to_earn = EARNINGS_PROXIMITY_DAYS, on the imminent boundary."""
-    rows = [
-        KrFinancialsRow(
-            ticker="005930",
-            fiscal_year=2026,
-            reprt_code="11013",
-            period_end=Date(2026, 3, 31),
-            revenue=None,
-            operating_income=None,
-            net_income=None,
-            revenue_yoy=None,
-            op_income_yoy=None,
-            net_income_yoy=None,
-        ),
-    ]
-    # We want days_to_earn == EARNINGS_PROXIMITY_DAYS (7 by default).
-    # delta = 91 - 7 = 84 → today = period_end + 84 days = 2026-06-23
-    today = datetime(2026, 6, 23, tzinfo=UTC)
-    days = days_to_estimated_earnings(today, rows)
-    assert days == EARNINGS_PROXIMITY_DAYS
+    """5/8 → 5/15 deadline = exactly EARNINGS_PROXIMITY_DAYS (7) —
+    the imminent boundary."""
+    today = datetime(2026, 5, 8, tzinfo=UTC)
+    assert days_to_estimated_earnings(today, []) == EARNINGS_PROXIMITY_DAYS
 
 
 # ─── analyze() with stubbed LLM ─────────────────────────────────────
@@ -348,7 +305,10 @@ def test_analyze_uses_inputs_argument(
         quotes=_flat_series(60_000, 80), financials=[]
     )
     t = Taleb()
+    # 6/9: next statutory deadline 8/14 (66d away) → no earnings bump;
+    # flat series → severity 1. (5/9 would now correctly bump to 2 —
+    # it sits inside the 5/15 분기보고서 filing week.)
     out = t.analyze(
-        "005930", datetime(2026, 5, 9, tzinfo=UTC), inputs=bundle
+        "005930", datetime(2026, 6, 9, tzinfo=UTC), inputs=bundle
     )
     assert out.severity == 1  # flat series → quiet

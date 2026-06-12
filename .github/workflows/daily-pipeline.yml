@@ -69,6 +69,20 @@ jobs:
           DATA_GO_KR_API_KEY:        ${{ secrets.DATA_GO_KR_API_KEY }}
         continue-on-error: true
 
+      # DART 공시 이벤트 (잠정실적/자사주/증자/공급계약 ...). Taleb's
+      # event-risk context + future event-driven signals. 7-day catchup
+      # window self-heals missed runs; skips cleanly without the key.
+      - name: Collect DART disclosures
+        id: dart_events
+        run: |
+          set -o pipefail
+          python -m collectors.dart_events 2>&1 | tee dart-events.log
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DART_API_KEY:              ${{ secrets.DART_API_KEY }}
+        continue-on-error: true
+
       # Macro factors / KR indices / sector ETFs are NOT in the Finnhub
       # daily set — they were backfill-only and silently froze at their
       # last backfill (observed 2 weeks stale on 06-12: Keynes deltas,
@@ -92,19 +106,21 @@ jobs:
       # This step makes silent failures LOUD: any failed collector outcome
       # → Telegram alert (run still proceeds).
       - name: Alert on silently-failed collectors
-        if: always() && (steps.kr_news.outcome == 'failure' || steps.kr_trade.outcome == 'failure' || steps.macro_refresh.outcome == 'failure')
+        if: always() && (steps.kr_news.outcome == 'failure' || steps.kr_trade.outcome == 'failure' || steps.macro_refresh.outcome == 'failure' || steps.dart_events.outcome == 'failure')
         env:
           BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN }}
           ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
           NEWS_OUTCOME:  ${{ steps.kr_news.outcome }}
           TRADE_OUTCOME: ${{ steps.kr_trade.outcome }}
           MACRO_OUTCOME: ${{ steps.macro_refresh.outcome }}
+          DART_OUTCOME:  ${{ steps.dart_events.outcome }}
           RUN_URL:       ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           FAILED=""
           [ "$NEWS_OUTCOME" = "failure" ]  && FAILED="$FAILED KR뉴스"
           [ "$TRADE_OUTCOME" = "failure" ] && FAILED="$FAILED 수출입동향"
           [ "$MACRO_OUTCOME" = "failure" ] && FAILED="$FAILED 매크로/ETF"
+          [ "$DART_OUTCOME" = "failure" ] && FAILED="$FAILED DART공시"
           echo "::warning::collector step(s) failed:$FAILED (run continues)"
           tail -n 15 kr-news.log kr-trade.log 2>/dev/null || true
           if [ -z "$BOT_TOKEN" ] || [ -z "$ADMIN_CHAT_ID" ]; then
