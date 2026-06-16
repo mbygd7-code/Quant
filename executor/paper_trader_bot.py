@@ -61,6 +61,16 @@ SELL_TAX_RATE = 0.0015      # 0.15% securities transaction tax (2025~)
 SLIPPAGE = 0.0005           # 0.05% adverse on both sides
 BUY_GRADES = ("STRONG_BUY", "BUY")
 SELL_GRADES = ("CAUTION", "RISK")
+#: HOLD-discretionary entry: include a HOLD signal as a junior fill when
+#: its Q2-adjusted weighted_score is at least this positive.  Without
+#: this, weeks where consensus is "weakly bullish across the board"
+#: leave the book stuck at 1-2 positions (no STRONG_BUY/BUY issued),
+#: which defeats the purpose of an always-on engagement bot.  The
+#: HOLD grade still gets a lower conviction multiplier in the sizing
+#: engine (SizingParams.grade_mult["HOLD"]=0.40 by default), so HOLD
+#: entries are smaller than BUY entries; the floor here protects
+#: against entering merely-neutral HOLDs whose score sits near zero.
+HOLD_BUY_MIN_SCORE = 0.10
 SIGNAL_FRESH_DAYS = 3       # only act on signals at most this old
 MIN_CASH_FRACTION = 0.95    # need ≥ slot×this in free cash to order
 ORDER_STALE_DAYS = 7        # cancel pending orders older than this
@@ -512,10 +522,19 @@ def place_orders(sb, today: Date | None = None) -> dict[str, int]:
     if not risk_on:
         log.warning("[paper_bot] regime OFF (KOSPI < 3M trend) — no new buys")
 
+    def _is_buyable(sig: dict) -> bool:
+        grade = sig.get("signal_grade")
+        if grade in BUY_GRADES:
+            return True
+        if grade == "HOLD":
+            score = float(sig.get("weighted_score") or 0.0)
+            return score >= HOLD_BUY_MIN_SCORE
+        return False
+
     eligible = [
         s
         for t, s in signals.items()
-        if s["signal_grade"] in BUY_GRADES
+        if _is_buyable(s)
         and t not in positions
         and t not in pending_buy
         and t not in pending_sell

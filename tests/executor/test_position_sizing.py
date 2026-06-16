@@ -25,8 +25,19 @@ def test_conviction_strong_buy_beats_buy():
 
 
 def test_conviction_zero_for_non_buy_grades():
-    assert conviction(cand(grade="HOLD"), P) == 0.0
+    # HOLD is now an admissible junior fill (paper_trader_bot's
+    # _is_buyable gates on weighted_score >= +0.10 separately).
+    # Outright sell grades stay at zero conviction.
     assert conviction(cand(grade="RISK"), P) == 0.0
+    assert conviction(cand(grade="CAUTION"), P) == 0.0
+
+
+def test_conviction_hold_below_buy():
+    # HOLD gets the junior multiplier (0.40 vs BUY 0.65) so HOLD-
+    # discretionary fills are smaller than BUY fills at equal score.
+    h = conviction(cand(grade="HOLD", score=0.4, conf=0.7), P)
+    b = conviction(cand(grade="BUY", score=0.4, conf=0.7), P)
+    assert 0.0 < h < b
 
 
 def test_conviction_scales_with_score_and_confidence():

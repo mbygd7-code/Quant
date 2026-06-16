@@ -43,8 +43,12 @@ class SizingParams:
     throttle_drawdown: float = 0.08
     #: Conviction multiplier per signal grade. LEARNED by
     #: executor.policy_learner from realized per-grade win rates.
+    #: HOLD-with-positive-score is admitted as a discretionary fill so
+    #: the book stays engaged when STRONG_BUY/BUY is in short supply
+    #: (the consensus is "weakly bullish" most days); the lower mult
+    #: keeps those names a junior allocation.
     grade_mult: dict = field(
-        default_factory=lambda: {"STRONG_BUY": 1.0, "BUY": 0.65}
+        default_factory=lambda: {"STRONG_BUY": 1.0, "BUY": 0.65, "HOLD": 0.40}
     )
     #: Per-sector conviction multiplier (1.0 = neutral). LEARNED from
     #: realized per-sector win rates; absent sectors default to 1.0.
