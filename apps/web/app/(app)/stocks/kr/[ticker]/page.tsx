@@ -440,6 +440,11 @@ export default async function KrStockDetail({ params }: Props) {
                 upper_95: p.upper_95,
                 model_version: p.model_version,
               }))}
+              mlEvaluation={detail.pastPredictions.map((p) => ({
+                target_date: p.target_date,
+                predicted_score: p.predicted_score,
+                model_version: p.model_version,
+              }))}
             />
           </CardContent>
         </Card>

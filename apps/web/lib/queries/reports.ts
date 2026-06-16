@@ -110,6 +110,15 @@ export interface ScorePrediction {
   model_version: string;
 }
 
+export interface PastPrediction {
+  /** date the forecast was made */
+  forecast_date: string;
+  /** date the forecast was for */
+  target_date: string;
+  predicted_score: number;
+  model_version: string;
+}
+
 export interface StockDetailData {
   date: string;
   ticker: string;
@@ -119,12 +128,25 @@ export interface StockDetailData {
   scoreHistory: { date: string; final_score: number; signal: Signal }[];
   ragChunks: RagChunk[];
   commentary: ExpertCommentary | null;
+  /** Future-looking 1..5-day forecast made on `date` (drives the orange dashed line). */
   predictions: ScorePrediction[];
+  /** Past 1-day-ahead forecasts whose target date has already realized.
+   *  Used by ScoreTrend to score the ML model honestly (overlap, MAPE,
+   *  direction, skill) instead of the in-browser 7-day OLS backfit. */
+  pastPredictions: PastPrediction[];
 }
 
 export async function getStockDetail(date: string, ticker: string): Promise<StockDetailData | null> {
   const sb = await getQueryClient();
-  const [stockRes, scoreRes, quoteRes, historyRes, commentaryRes, predictionsRes] = await Promise.all([
+  const [
+    stockRes,
+    scoreRes,
+    quoteRes,
+    historyRes,
+    commentaryRes,
+    predictionsRes,
+    pastPredictionsRes,
+  ] = await Promise.all([
     sb.from('stocks').select('*').eq('ticker', ticker).maybeSingle(),
     sb.from('ai_scores').select('*').eq('date', date).eq('ticker', ticker).maybeSingle(),
     sb.from('korea_market').select('*').eq('date', date).eq('ticker', ticker).maybeSingle(),
@@ -143,11 +165,24 @@ export async function getStockDetail(date: string, ticker: string): Promise<Stoc
       .order('date', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    // Future forecast: today's 1..5-day-ahead predictions (orange line).
     sb.from('score_predictions')
       .select('horizon_day, target_date, predicted_score, lower_95, upper_95, model_version')
       .eq('ticker', ticker)
       .eq('date', date)
       .order('horizon_day', { ascending: true }),
+    // Past forecasts whose target_date has already realized — the
+    // honest input for MAE/MAPE/direction/skill on the diagnostic card.
+    // horizon_day=1 keeps the comparison clean (1 forecast point per
+    // observation date) and maximises overlap as predictions accrue.
+    sb.from('score_predictions')
+      .select('date, target_date, predicted_score, model_version')
+      .eq('ticker', ticker)
+      .eq('horizon_day', 1)
+      .lt('date', date)
+      .lte('target_date', date)
+      .order('target_date', { ascending: false })
+      .limit(120),
   ]);
 
   if (!stockRes.data || !scoreRes.data) return null;
@@ -171,5 +206,16 @@ export async function getStockDetail(date: string, ticker: string): Promise<Stoc
     ragChunks: (chunks ?? []) as RagChunk[],
     commentary: (commentaryRes.data ?? null) as ExpertCommentary | null,
     predictions: (predictionsRes.data ?? []) as ScorePrediction[],
+    pastPredictions: ((pastPredictionsRes.data ?? []) as {
+      date: string;
+      target_date: string;
+      predicted_score: number;
+      model_version: string;
+    }[]).map((p) => ({
+      forecast_date: p.date,
+      target_date: p.target_date,
+      predicted_score: p.predicted_score,
+      model_version: p.model_version,
+    })),
   };
 }

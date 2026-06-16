@@ -183,12 +183,19 @@ export function ScoreTrend({
   data,
   showForecast = true,
   mlPredictions,
+  mlEvaluation,
   initialPeriod = '1M',
 }: {
   ticker?: string;
   data: Point[];
   showForecast?: boolean;
+  /** Future-looking forecast points (drawn on chart). */
   mlPredictions?: MLPrediction[];
+  /** Past 1-day-ahead forecasts whose target date has been realized —
+   *  used to score the model (MAE / MAPE / directional accuracy / skill)
+   *  instead of the in-browser OLS 7-day backfit, which was the source of
+   *  the "신뢰도 항상 5" symptom. Keyed by target_date. */
+  mlEvaluation?: { target_date: string; predicted_score: number; model_version?: string }[];
   initialPeriod?: ScoreTrendPeriod;
 }) {
   const [period, setPeriod] = useState<ScoreTrendPeriod>(initialPeriod);
@@ -295,6 +302,14 @@ export function ScoreTrend({
   // Build a date-keyed lookup for the fitted-past series so we can attach
   // a `predicted` value to every historical row (not just the last one).
   const fittedByDate = new Map(fittedPast.map((p) => [p.date, p.final_score]));
+  // Realised ML forecasts (yesterday's 1-day-ahead → today's actual):
+  // these are what we should use to score the model.  Falls back to
+  // the OLS fittedPast when mlEvaluation is empty (early days or stale
+  // pipeline) so the chart still has SOME residual to show.
+  const mlEvalByDate = new Map(
+    (mlEvaluation ?? []).map((p) => [p.target_date, p.predicted_score]),
+  );
+  const usingMLEval = mlEvalByDate.size > 0;
 
   // Moving averages over the actual-score series — smooths daily noise
   // so the trend is visible without staring at the raw scatter.
@@ -381,15 +396,21 @@ export function ScoreTrend({
   // - `residual` and `residual_pct` are derived for tooltip readout.
   const merged: (ChartRow & { residual: number | null; residual_pct: number | null })[] = [
     ...filteredData.map((p, i) => {
+      // Prefer the realised ML forecast for this date when it exists —
+      // that's what the diagnostic is supposed to score.  Fall back to
+      // the OLS-fitted backfit only as a visual aid (and only on the
+      // last history point so the chart line still connects to the
+      // future forecast).
+      const mlEval = mlEvalByDate.get(p.date) ?? null;
       const fitted = fittedByDate.get(p.date) ?? null;
-      // Make the forecast line connect by setting predicted on the last
-      // history point even if it's outside the OLS window.
       const predicted =
-        fitted !== null
-          ? fitted
-          : i === filteredData.length - 1 && mean.length > 0
-            ? p.final_score
-            : null;
+        mlEval !== null
+          ? mlEval
+          : fitted !== null
+            ? fitted
+            : i === filteredData.length - 1 && mean.length > 0
+              ? p.final_score
+              : null;
       const residual = predicted !== null ? p.final_score - predicted : null;
       const residual_pct =
         predicted !== null && predicted !== 0
@@ -480,28 +501,37 @@ export function ScoreTrend({
     return total > 0 ? (matches / total) * 100 : null;
   })();
 
-  // Composite reliability — weighted blend, each in [0,100], with a
-  // hard sample-size penalty. The old formula maxed out sampleSignal
-  // at 14 overlap days, which gave a reliability of 60+ even with
-  // ~2 weeks of data — misleadingly high. New floor: 60 days = 100%,
-  // and we MULTIPLY the blended score by min(1, n/30) so the headline
-  // can't claim "high reliability" until ai_scores has at least a
-  // month of overlap with the forecast horizon.
-  //  • sample size: how much overlap we have (0 → 0%, 60+ → 100%)
-  //  • MAPE inverse: 0% MAPE → 100, 30%+ MAPE → 0
-  //  • directional accuracy: as-is in 0..100
+  // Composite reliability — Bayesian-style shrinkage toward a neutral
+  // prior so a thin sample doesn't pretend either "great" or "broken".
+  //
+  // Old formula was `(0.3·sample + 0.35·MAPE + 0.35·dir) × min(1, n/30)`
+  // which double-counted sample size (inside the blend AND as an outer
+  // multiplier) and collapsed to 5/100 the moment overlap was small —
+  // even if MAPE/direction were perfect.  Worse, MAPE was being computed
+  // against the in-browser 7-day OLS backfit (not the actual ML model),
+  // so the headline never reflected real model skill.
+  //
+  // New definition:
+  //   perfScore  ∈ [0,100]  =  0.5·mapeSignal + 0.5·dirSignal
+  //   maturity   ∈ [0,1]    =  min(1, overlap/30)
+  //   reliability         =  50·(1 - maturity) + perfScore·maturity
+  //
+  // Properties:
+  //   • Pure model performance — sample size never punishes (or rewards)
+  //     observed MAPE/direction directly.
+  //   • Maturity shrinks the score toward 50 (informational equilibrium,
+  //     "we don't know yet"), not toward 0 ("model is broken").
+  //   • A genuinely poor model with lots of data lands below 50; a great
+  //     model with little data stays near 50 until evidence accumulates.
   const reliability = (() => {
     if (overlap.length === 0 || mape == null) return null;
-    const sampleSignal = Math.min(100, (overlap.length / 60) * 100);
     const mapeSignal = Math.max(0, 100 - (mape / 30) * 100);
     const dirSignal = directionalAcc ?? 50;
-    const blended = 0.3 * sampleSignal + 0.35 * mapeSignal + 0.35 * dirSignal;
-    // Multiplicative penalty: until overlap ≥ 30, ceiling rises linearly
-    // from 0 to 100% of the blended value. Prevents the "MAE looks great
-    // because the series is flat" failure mode from inflating the score.
-    const sampleCap = Math.min(1, overlap.length / 30);
-    return blended * sampleCap;
+    const perfScore = 0.5 * mapeSignal + 0.5 * dirSignal;
+    const maturity = Math.min(1, overlap.length / 30);
+    return 50 * (1 - maturity) + perfScore * maturity;
   })();
+  const reliabilityMaturity = Math.min(1, overlap.length / 30);
 
   const reliabilityTier =
     reliability == null
@@ -925,18 +955,20 @@ export function ScoreTrend({
      )}
 
      {/* Low-reliability banner — informational, doesn't hide the chart.
-         Sample-size case promoted to its own message because the old
-         "신뢰도 낮음" wording made users think the model was broken when
-         the real issue was just insufficient overlap. */}
+         Sample-size case promoted to its own message because "신뢰도 낮음"
+         alone misled users into thinking the model was broken when the
+         real issue was insufficient overlap.  The shrinkage formula
+         keeps the headline honest (n=0 → ~50, neutral) but the banner
+         still flags the maturity state explicitly. */}
      {overlap.length < 30 ? (
        <div className="mb-2 rounded-md border border-status-info/40 bg-status-info/[0.08] px-3 py-2 text-[11px] text-status-info flex items-start gap-2">
          <span aria-hidden>ℹ️</span>
          <span className="leading-relaxed">
-           <b>표본 {overlap.length}일치 — 통계적 신뢰도 한정적.</b>{' '}
-           예측 신뢰구간은 표본 ≥ 30일부터 표시합니다. 매일 ai_scores가
-           누적되어 ~30일이 지나면 자동으로 활성화됩니다.
+           <b>측정 성숙도 {Math.round(reliabilityMaturity * 100)}%</b>{' '}
+           (표본 {overlap.length}일 / 30일 목표){usingMLEval ? ' · 실제 ML 1일-앞 예측 기반' : ' · OLS 7일 fit 기반 (ML 평가 데이터 누적 대기)'}.
+           매일 score_predictions가 평가되며 30일 누적되면 신뢰도가 모델 성능을 100% 반영합니다.
            {directionalAcc !== null && directionalAcc < 50 &&
-             ' 또한 방향성 예측이 coin flip 이하 — 모델이 평탄에 가까운 상태.'}
+             ' 방향성 예측이 coin flip 이하 — 모델이 평균 회귀에 가까운 상태.'}
          </span>
        </div>
      ) : reliabilityTier === 'low' && (
@@ -1394,15 +1426,15 @@ const METRIC_INFO: Record<string, MetricPopInfo> = {
   },
   reliability: {
     title: '신뢰도 (Reliability)',
-    english: 'Reliability Score (0~100)',
-    what: 'MAE/MAPE/방향일치/샘플량을 종합한 한 줄 신뢰 지표.',
+    english: 'Reliability Score (0~100, Bayesian shrinkage)',
+    what: '모델 성능을 측정 성숙도로 보정한 값. 표본이 적으면 50(중립)으로 회귀.',
     how: [
-      '샘플량 신호 (30%): min(100, overlap/14 × 100)',
-      'MAPE 신호 (35%): max(0, 100 − MAPE/30 × 100)',
-      '방향일치 신호 (35%): 그대로 사용',
-      '가중합 → 0~100 점수',
+      'perf = 0.5·max(0, 100 − MAPE/30×100) + 0.5·방향일치',
+      'maturity = min(1, overlap / 30)',
+      'reliability = 50·(1 − maturity) + perf·maturity',
+      '※ ML 과거 예측이 있으면 그것으로 평가, 없으면 OLS 7일 fit 대체',
     ],
-    tip: '70+ 높음 — 참고할 만, 50~69 보통 — 다른 근거 같이 보기, < 50 낮음 — 데이터 부족.',
+    tip: '70+ 높음 — 참고할 만, 50~69 보통 — 다른 근거 같이 보기, < 50 낮음 — 모델이 naive보다 못함.',
   },
   scorePriceCorr: {
     title: '점수 ↔ 주가 상관계수',
