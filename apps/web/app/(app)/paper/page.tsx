@@ -158,6 +158,45 @@ export default async function PaperPage() {
     for (const r of quoteRows ?? []) {
       if (!closes.has(r.ticker)) closes.set(r.ticker, Number(r.close));
     }
+
+    // The paper bot can trade tickers outside the curated watchlist
+    // (newly-listed ETFs, off-universe stocks).  Those don't have a row
+    // in `stocks`, so the table falls back to the raw 6-digit code —
+    // that's what the user just complained about ("464080" instead of
+    // a company name).  For those, ask NAVER for the friendly Korean
+    // name and merge into the lookup.  Cached for a day; names don't
+    // change.
+    const unresolved = tickers.filter((t) => {
+      const n = names.get(t);
+      return !n || n === t;
+    });
+    if (unresolved.length > 0) {
+      const resolved = await Promise.all(
+        unresolved.map(async (t) => {
+          try {
+            const res = await fetch(
+              `https://m.stock.naver.com/api/stock/${t}/integration`,
+              {
+                headers: {
+                  'User-Agent':
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+                  Accept: 'application/json',
+                },
+                next: { revalidate: 86400 },
+              },
+            );
+            if (!res.ok) return null;
+            const j = (await res.json()) as { stockName?: string };
+            return j.stockName ? { ticker: t, name: j.stockName } : null;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      for (const r of resolved) {
+        if (r) names.set(r.ticker, r.name);
+      }
+    }
   }
 
   // Valuation
