@@ -19,6 +19,37 @@ export const FORBIDDEN_WORDS: readonly string[] = [
   '100%',
 ];
 
+/**
+ * Descriptive market/technical compounds that contain '매수'/'매도' as a
+ * substring but are NOT trade recommendations. A naive substring scan
+ * false-positives on these — most damagingly '과매수'/'과매도', which the
+ * technical voter is told to use. Standalone '매수'/'매도' and every
+ * recommendation phrasing ('매수하세요', '매수 추천', '지금 매수') still trip
+ * the guard. Keep in sync with agents/llm/sanitize.py ALLOWED_COMPOUNDS.
+ */
+export const ALLOWED_COMPOUNDS: readonly string[] = [
+  '과매수', '과매도',
+  '순매수', '순매도',
+  '매수세', '매도세',
+  '매수잔량', '매도잔량',
+  '매수호가', '매도호가',
+  '매수주체', '매도주체',
+  '매수우위', '매도우위',
+];
+
+/** True when the banned `word` at `pos` is part of a legitimate compound. */
+function isAllowedCompound(narrative: string, word: string, pos: number): boolean {
+  for (const compound of ALLOWED_COMPOUNDS) {
+    const off = compound.indexOf(word);
+    if (off < 0) continue;
+    const start = pos - off;
+    if (start >= 0 && narrative.slice(start, start + compound.length) === compound) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export class ForbiddenWordError extends Error {
   constructor(
     public readonly word: string,
@@ -40,7 +71,9 @@ export function forbiddenWordsViolations(
     while (true) {
       const found = narrative.indexOf(word, idx);
       if (found < 0) break;
-      out.push([word, found]);
+      if (!isAllowedCompound(narrative, word, found)) {
+        out.push([word, found]);
+      }
       idx = found + word.length;
     }
   }

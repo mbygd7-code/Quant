@@ -40,15 +40,39 @@ def test_violations_lister_returns_all() -> None:
     assert words.count("매도") == 1
 
 
-def test_partial_match_does_not_false_positive() -> None:
-    """'매수세' contains '매수' as a substring — and we *do* flag it.
-    The CLAUDE.md spec is intentionally conservative; if Soros wants
-    to discuss '매수세' he must rephrase. This test pins that
-    behaviour so anyone changing the gate to fuzzy/word-boundary
-    matching has to update this expectation deliberately."""
-    text = "외국인 매수세 강화"
-    with pytest.raises(ForbiddenWordError):
-        sanitize_narrative(text)
+def test_descriptive_compounds_are_exempt() -> None:
+    """Legitimate market/technical compounds that merely CONTAIN '매수'/'매도'
+    as a substring are descriptive, not recommendations, and must pass.
+
+    The guard used to flag these — which redacted ~70% of Turing's RSI
+    narratives ('과매수 영역' → caught on the inner '매수'). The exemption
+    list (ALLOWED_COMPOUNDS) fixes that false-positive while keeping the
+    recommendation ban intact (see test below)."""
+    for text in (
+        "RSI가 과매수 영역에 진입했습니다",
+        "기술적 과매도 구간입니다",
+        "외국인 순매수가 유입되고 있습니다",
+        "기관 순매도 전환",
+        "외국인 매수세 강화",
+        "매도세가 우위입니다",
+        "매수호가 잔량이 매도잔량을 상회",
+        "매수주체가 기관으로 이동",
+    ):
+        assert sanitize_narrative(text) == text
+
+
+def test_recommendation_phrasings_still_blocked() -> None:
+    """The exemption must NOT leak standalone '매수'/'매도' or any trade
+    recommendation — those still trip the guard."""
+    for text in (
+        "지금 매수하세요",
+        "매수 추천 신호입니다",
+        "지금이 매수 적기입니다",
+        "매도 타이밍입니다",
+        "이번 주는 매수를 권합니다",
+    ):
+        with pytest.raises(ForbiddenWordError):
+            sanitize_narrative(text)
 
 
 def test_empty_text_passes() -> None:

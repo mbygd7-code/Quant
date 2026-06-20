@@ -14,6 +14,29 @@ FORBIDDEN_WORDS: tuple[str, ...] = (
     "매수", "매도", "강력 추천", "오늘 오른다", "확정", "보장", "100%",
 )
 
+# Descriptive compounds that contain '매수'/'매도' but are NOT recommendations
+# (과매수/순매수/매수세 …). A naive substring check false-positives on them;
+# standalone '매수'/'매도' and recommendation phrasings still trip the guard.
+# Keep in sync with agents/llm/sanitize.py ALLOWED_COMPOUNDS.
+ALLOWED_COMPOUNDS: tuple[str, ...] = (
+    "과매수", "과매도", "순매수", "순매도", "매수세", "매도세",
+    "매수잔량", "매도잔량", "매수호가", "매도호가",
+    "매수주체", "매도주체", "매수우위", "매도우위",
+)
+
+
+def _is_allowed_compound(text: str, word: str, pos: int) -> bool:
+    """True when the banned ``word`` at ``pos`` is part of a legitimate
+    descriptive compound rather than a standalone trade recommendation."""
+    for compound in ALLOWED_COMPOUNDS:
+        off = compound.find(word)
+        if off < 0:
+            continue
+        start = pos - off
+        if start >= 0 and text[start : start + len(compound)] == compound:
+            return True
+    return False
+
 DISCLAIMER = "\n\n※ 본 정보는 투자 판단 보조 자료이며 매매 권유가 아닙니다."
 
 
@@ -43,11 +66,21 @@ class ReportSkipped(RuntimeError):
 
 
 def validate_report(report: StockReport) -> None:
-    """Check every user-visible string for forbidden words. Raises on violation."""
+    """Check every user-visible string for forbidden words. Raises on violation.
+
+    Descriptive compounds (과매수/순매수/매수세 …) are exempt — only a
+    standalone '매수'/'매도' or a recommendation phrasing trips the guard.
+    """
     full_text = " ".join([report.comment, *report.positive_factors, *report.risk_factors])
     for word in FORBIDDEN_WORDS:
-        if word in full_text:
-            raise ForbiddenWordError(f"Forbidden word found: {word!r}")
+        idx = 0
+        while True:
+            found = full_text.find(word, idx)
+            if found < 0:
+                break
+            if not _is_allowed_compound(full_text, word, found):
+                raise ForbiddenWordError(f"Forbidden word found: {word!r}")
+            idx = found + len(word)
 
 
 def with_disclaimer(report: StockReport) -> StockReport:

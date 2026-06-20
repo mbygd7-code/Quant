@@ -24,6 +24,44 @@ FORBIDDEN_WORDS: tuple[str, ...] = (
     "100%",
 )
 
+#: Legitimate market/technical compounds that CONTAIN '매수'/'매도' as a
+#: substring but are DESCRIPTIVE vocabulary, not trade recommendations.
+#:
+#: The guard used to be a naive substring scan, so it false-positived on
+#: every one of these — most damagingly on '과매수'/'과매도', which Turing's
+#: own system prompt instructs it to use ("기술적 과매수 영역에 진입").
+#: That redacted ~70% of Turing's narratives (768 rows) into the internal
+#: '[narrative redacted …]' placeholder that leaked to the UI.
+#:
+#: This is NOT a relaxation of CLAUDE.md §3-A: a standalone '매수'/'매도'
+#: and every recommendation phrasing ('매수하세요', '매수 추천', '매수 신호',
+#: '지금 매수') still trips the guard. We only exempt these fixed compounds.
+#: Adding a word here is a deliberate change — keep it auditable and in sync
+#: with the TS mirror (apps/web/lib/agents/sanitize.ts) and signals/report.py.
+ALLOWED_COMPOUNDS: tuple[str, ...] = (
+    "과매수", "과매도",      # RSI overbought / oversold (technical state)
+    "순매수", "순매도",      # net buy / net sell (foreign·institution flows)
+    "매수세", "매도세",      # buying / selling pressure
+    "매수잔량", "매도잔량",  # order-book residual quantity (호가창)
+    "매수호가", "매도호가",  # bid / ask price
+    "매수주체", "매도주체",  # buyer / seller (수급 주체)
+    "매수우위", "매도우위",  # buy-side / sell-side dominance
+)
+
+
+def _is_allowed_compound(narrative: str, word: str, pos: int) -> bool:
+    """True when the banned ``word`` found at ``pos`` is actually part of a
+    legitimate descriptive compound (과매수, 순매수, 매수세 …) rather than a
+    standalone trade recommendation."""
+    for compound in ALLOWED_COMPOUNDS:
+        off = compound.find(word)
+        if off < 0:
+            continue
+        start = pos - off
+        if start >= 0 and narrative[start : start + len(compound)] == compound:
+            return True
+    return False
+
 
 class ForbiddenWordError(ValueError):
     """Raised by :func:`sanitize_narrative` when a banned word is
@@ -49,7 +87,8 @@ def forbidden_words_violations(narrative: str) -> list[tuple[str, int]]:
             found = narrative.find(word, idx)
             if found < 0:
                 break
-            out.append((word, found))
+            if not _is_allowed_compound(narrative, word, found):
+                out.append((word, found))
             idx = found + len(word)
     return out
 
