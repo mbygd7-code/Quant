@@ -59,6 +59,21 @@ export async function GET(req: Request) {
     });
   }
 
+  // Master rows we may write back to (never INSERT here), and which of them
+  // carry a PLACEHOLDER name — the 6-digit code itself, or blank. NAVER
+  // resolves these below; we then persist the real name so the DB self-heals.
+  // Without this, a placeholder name survives in stocks.name forever and any
+  // consumer reading it directly (paper bot, /paper ledger) shows a bare
+  // number instead of the company.
+  const masterTickers = new Set(
+    ((data ?? []) as Array<{ ticker: string }>).map((r) => r.ticker),
+  );
+  const placeholderInMaster = new Set(
+    ((data ?? []) as Array<{ ticker: string; name: string }>)
+      .filter((r) => r.name === r.ticker || (r.name ?? '').trim() === '')
+      .map((r) => r.ticker),
+  );
+
   // Tickers not in master OR with a placeholder name (== the ticker code
   // itself) get resolved via NAVER mobile stock API so the LNB can show the
   // real Korean name instead of a 6-digit code.
@@ -111,29 +126,39 @@ export async function GET(req: Request) {
   // master so the watchlist-list endpoint serves the corrected sector on the
   // next fetch — this is what makes the picker's sector filter populate
   // "로봇" automatically without a redeploy.
-  const overrideWrites: Array<{ ticker: string; sector: string }> = [];
+  const writeBack = new Map<string, { name?: string; sector?: string }>();
   for (const t of tickers) {
     const override = SECTOR_OVERRIDES[t];
     if (!override) continue;
     const hit = byTicker.get(t);
     if (hit && hit.sector !== override) {
-      byTicker.set(t, { ...hit, sector: override });
-      overrideWrites.push({ ticker: t, sector: override });
+      byTicker.set(t, { ...hit, sector: override }); // always correct the response
+      if (masterTickers.has(t)) {
+        writeBack.set(t, { ...writeBack.get(t), sector: override });
+      }
     }
   }
-  if (overrideWrites.length > 0) {
+  // Heal placeholder names: a master row whose name was the bare code and
+  // which NAVER just resolved to a real Korean name gets that name persisted.
+  for (const t of Array.from(placeholderInMaster)) {
+    const hit = byTicker.get(t);
+    if (hit && hit.name && hit.name !== t && hit.name.trim() !== '') {
+      writeBack.set(t, { ...writeBack.get(t), name: hit.name });
+    }
+  }
+  if (writeBack.size > 0) {
     try {
       const admin = getAdminClient();
-      // Update one row at a time — `update().in()` would over-write `name`
-      // and `market` for stocks that weren't returned by NAVER. Sector is
-      // the only column we want to touch here.
+      // One row at a time with an explicit per-ticker patch — `update().in()`
+      // would clobber columns for stocks NAVER didn't return. We only touch
+      // the column(s) we actually resolved (name and/or sector).
       await Promise.all(
-        overrideWrites.map((w) =>
-          admin.from('stocks').update({ sector: w.sector }).eq('ticker', w.ticker),
+        Array.from(writeBack.entries()).map(([ticker, patch]) =>
+          admin.from('stocks').update(patch).eq('ticker', ticker),
         ),
       );
     } catch {
-      /* write blip — sectors still get the override in the response below */
+      /* write blip — the response below still carries the corrected values */
     }
   }
 
